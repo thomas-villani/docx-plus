@@ -1,0 +1,104 @@
+[project]
+name = "docx_plus"
+version = "0.1.0"
+description = "OOXML-level extensions for python-docx: style cascade, content controls, fields."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "docx_plus contributors" }]
+keywords = ["docx", "ooxml", "word", "python-docx", "styles", "forms"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "python-docx>=1.0.0",
+    "lxml>=4.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "pdoc>=14.0",
+    "lxml-stubs>=0.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["docx_plus"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "pdoc>=14.0",
+    "lxml-stubs>=0.5",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["docx_plus"]
+show_error_codes = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["docx.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = ["tests/fixtures/*.docx"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "D"]
+ignore = [
+    "D203",  # incompatible with D211
+    "D213",  # incompatible with D212
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"docx_plus/_testing/**" = ["D"]
+"docx_plus/examples/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "requires_libreoffice: smoke tests that need `soffice` on PATH",
+]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["docx_plus"]
+omit = [
+    "docx_plus/_testing/*",
+    "docx_plus/examples/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
