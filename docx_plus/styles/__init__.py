@@ -1,4 +1,4 @@
-"""Style inspection and modification (Phase 2 inspection live; Phase 3 to come)."""
+"""Style inspection and modification."""
 
 from docx_plus.styles.inspect import (
     FormattingSource,
@@ -7,11 +7,37 @@ from docx_plus.styles.inspect import (
     StyleCascadeError,
     resolve_effective_formatting,
 )
+from docx_plus.styles.modify import (
+    StyleExistsError,
+    StyleInfo,
+    StyleInUseError,
+    StyleNotFoundError,
+    StyleProxy,
+    UnknownStylePropertyError,
+    apply_style,
+    create_style,
+    delete_style,
+    ensure_style,
+    list_styles,
+    modify_style,
+)
 
 __all__ = [
     "FormattingSource",
     "MissingPartError",
     "ResolvedFormatting",
     "StyleCascadeError",
+    "StyleExistsError",
+    "StyleInUseError",
+    "StyleInfo",
+    "StyleNotFoundError",
+    "StyleProxy",
+    "UnknownStylePropertyError",
+    "apply_style",
+    "create_style",
+    "delete_style",
+    "ensure_style",
+    "list_styles",
+    "modify_style",
     "resolve_effective_formatting",
 ]

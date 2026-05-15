@@ -509,6 +509,89 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-15 — Phase 3: Style modification — complete
+
+- `styles/modify.py` — full Phase 3 surface: `create_style`, `modify_style`,
+  `apply_style`, `delete_style`, `ensure_style`, `list_styles`, plus
+  `StyleProxy`, `StyleInfo`, and four typed errors (`StyleExistsError`,
+  `StyleNotFoundError`, `StyleInUseError`,
+  `UnknownStylePropertyError(DocxPlusError, TypeError)` so the SPEC §5
+  contract that unknown kwargs raise `TypeError` survives the typed-error
+  invariant from §9.7).
+- Property kwargs accepted by `create_style`/`modify_style` use the same
+  field names as `ResolvedFormatting`, so cascade output round-trips back
+  through the modifier without translation. The supported set covers every
+  SPEC §4 field documented as writeable: `font_name`, `font_size`, `bold`,
+  `italic`, `underline`, `strike`, `color_rgb`, `highlight`, `caps`,
+  `small_caps`, `vanish`, `vert_align`, `alignment`, `indent_*`,
+  `spacing_*`, `line_spacing*`, `keep_*`, `page_break_before`,
+  `outline_level`. Composite elements (`w:ind`, `w:spacing`, `w:rFonts`)
+  use merge semantics — multiple kwargs targeting the same XML element
+  combine rather than overwrite.
+- Schema-strict child orderings for `CT_Style`, `CT_PPr`, `CT_RPr` are
+  enforced by `_ordered_insert`; tests `test_*_children_ordered_correctly`
+  verify the schema order survives create/modify operations. This avoids
+  the silent-Word-repair failure mode called out in IMPLEMENTATION.md §4.
+- Toggle properties (`bold`, `italic`, `caps`, `small_caps`, `strike`,
+  `vanish`) follow SPEC §5 semantics: `True` writes presence, `False`
+  writes `w:val="false"`, `None` removes the element so XOR with the
+  parent style resumes. Inspect.py's reader was extended in this phase to
+  honour `w:val="false"` on `keepNext` / `keepLines` / `pageBreakBefore`
+  so the write→read round-trip is symmetric for those flags.
+- `ensure_style` is idempotent and aware of latent built-ins. The
+  known-built-ins table (`_BUILTIN_STYLES`) covers every id SPEC §5
+  requires "at minimum": `Normal`, `Heading1`–`Heading9`, `Title`,
+  `Subtitle`, `Quote`, `IntenseQuote`, `ListParagraph`, `Caption`,
+  `Hyperlink`, `PlaceholderText`, `DefaultParagraphFont`, `TableNormal`,
+  `NoList`. Built-ins materialise without `w:customStyle="1"` (they are
+  not user-defined) and `Normal`/`DefaultParagraphFont`/`TableNormal`/
+  `NoList` carry `w:default="1"`. Word-2013-era defaults were used for
+  font sizes/colors (e.g. Heading1 = 16pt, color #2F5496); python-docx
+  ships its own Word-2007 versions of most of these (Heading1 = 14pt,
+  color #365F91), so `ensure_style` returns the existing definition
+  unchanged on a fresh `Document()` — it only consults the built-ins
+  table when the id is genuinely missing.
+- `apply_style` accepts `Paragraph | Run | _Cell`. Cell support iterates
+  the contained paragraphs and writes `w:pStyle` to each (matches the
+  "apply style to selection" semantics from Word's UI; OOXML has no
+  per-cell style reference). Type validation runs before any attribute
+  access so non-targets raise `TypeError` cleanly.
+- `delete_style` scans the body (`w:pStyle`, `w:rStyle`, `w:tblStyle`) and
+  the styles part (`w:basedOn`, `w:next`, `w:link`, `w:numStyleLink`,
+  `w:styleLink`) for inbound references. Refs from the style being
+  deleted to itself are excluded so a self-referential basedOn doesn't
+  block its own deletion. Headers/footers are not scanned in v0.1 —
+  documented limitation; revisit when a caller exercises it.
+- 63 new tests in `tests/test_styles_modify.py` (169 total). Coverage
+  spans: every public function's happy path; every supported property
+  via cascade round-trip; schema-order assertions for style/pPr/rPr
+  children; toggle True/False/None semantics; modify-preserves-others;
+  modify-clears-with-None; if_missing="create" fall-through; apply_style
+  to paragraph/run/cell with replace-existing semantics; delete_style
+  reference detection (paragraph + basedOn) and force=True override;
+  ensure_style idempotency, latent materialisation when absent, and
+  "returns existing unchanged" when python-docx already shipped it;
+  list_styles type filtering and include_latent; StyleProxy modify+delete
+  delegation; full save→reopen round-trip via python-docx for both a
+  custom style and `Heading1`.
+- Quality gates green locally: `pytest` 169/169, `mypy --strict`
+  (16 files), `ruff check`, `ruff format --check`.
+
+**Phase 3 exit criteria status**: create-then-resolve works for every
+documented property (cascade round-trip is the test oracle); modify
+preserves untouched properties; ensure_style is idempotent and
+materialises latent built-ins from the table; apply_style round-trips
+through python-docx serialisation. The `examples/restyle_existing.py`
+exit criterion from IMPLEMENTATION.md §10 is deferred to Phase 6 along
+with the rest of the examples directory.
+
+**Next session — Phase 4: Forms.** Per IMPLEMENTATION.md §2 / SPEC §6:
+port `FormBuilder` from the docx-forms skill into `controls/builder.py`,
+adapting it to use `IdRegistry` from `core/`. Then write `controls/read.py`
+(`ControlValue`, `read_controls`, `set_control_value`, `clear_control`).
+Round-trip tests for each control type: build → save → re-open → read →
+modify → save → re-read. Budget 1–2 days (mostly a port).
+
 ### 2026-05-15 — Phase 2: Style inspection — complete
 
 - `styles/theme.py` — read-only theme color resolution. `load_theme()`

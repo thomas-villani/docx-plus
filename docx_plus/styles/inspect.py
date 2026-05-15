@@ -483,12 +483,15 @@ def _apply_ppr(acc: _Accumulator, ppr: etree._Element, source: FormattingSource)
     if spacing is not None:
         _apply_spacing(acc, spacing, source)
 
-    if ppr.find(qn("w:keepNext")) is not None:
-        acc.set("keep_with_next", True, source)
-    if ppr.find(qn("w:keepLines")) is not None:
-        acc.set("keep_lines", True, source)
-    if ppr.find(qn("w:pageBreakBefore")) is not None:
-        acc.set("page_break_before", True, source)
+    for tag, field_name in (
+        ("keepNext", "keep_with_next"),
+        ("keepLines", "keep_lines"),
+        ("pageBreakBefore", "page_break_before"),
+    ):
+        flag_el = ppr.find(qn(f"w:{tag}"))
+        if flag_el is not None:
+            raw = flag_el.get(qn("w:val"))
+            acc.set(field_name, raw not in ("0", "false"), source)
 
     outline = ppr.find(qn("w:outlineLvl"))
     if outline is not None:
