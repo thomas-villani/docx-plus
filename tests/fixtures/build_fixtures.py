@@ -74,12 +74,49 @@ def build_multistyle(path: Path) -> Path:
     return path
 
 
+def build_themed(path: Path) -> Path:
+    """Write a doc whose paragraph style uses a themeColor + themeShade.
+
+    Exercises the Phase 2 theme-resolution path end-to-end: the style
+    ``Themed`` sets ``w:color`` with ``themeColor="accent1"`` and a
+    ``themeShade`` byte, so the resolver has to fetch ``accent1`` from the
+    document's theme part and darken it.
+    """
+    doc = Document()
+    styles_element = doc.styles.element
+
+    themed_style = sub(
+        styles_element,
+        "w:style",
+        **{"w:type": "paragraph", "w:styleId": "Themed"},
+    )
+    sub(themed_style, "w:name", **{"w:val": "Themed"})
+    themed_rpr = sub(themed_style, "w:rPr")
+    sub(
+        themed_rpr,
+        "w:color",
+        **{
+            "w:val": "auto",
+            "w:themeColor": "accent1",
+            "w:themeShade": "80",
+        },
+    )
+
+    para = doc.add_paragraph("Themed paragraph.")
+    para_pr = para._p.get_or_add_pPr()
+    sub(para_pr, "w:pStyle", **{"w:val": "Themed"})
+
+    doc.save(path)
+    return path
+
+
 def build_all(out_dir: Path = FIXTURES_DIR) -> dict[str, Path]:
     """Build every Phase 1 fixture into ``out_dir`` and return their paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
     return {
         "empty": build_empty(out_dir / "empty.docx"),
         "multistyle": build_multistyle(out_dir / "multistyle.docx"),
+        "themed": build_themed(out_dir / "themed.docx"),
     }
 
 

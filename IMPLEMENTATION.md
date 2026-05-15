@@ -509,6 +509,63 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-15 — Phase 2: Style inspection — complete
+
+- `styles/theme.py` — read-only theme color resolution. `load_theme()`
+  reads `word/theme/theme1.xml` via the document part's `theme` relationship,
+  parses `a:clrScheme` into a key → hex map. `resolve_theme_color()` handles
+  the WordprocessingML name aliases (text1=dk1, background1=lt1, etc. per
+  ECMA-376 17.18.97) plus `themeTint` and `themeShade` modifiers. Transforms
+  for `themeTint`/`themeShade`/`lumMod`/`lumOff` are exported as standalone
+  functions and verified against known input/output pairs in
+  `test_styles_theme.py` (22 tests).
+- `styles/inspect.py` — the cascade resolver. `resolve_effective_formatting`
+  walks the six SPEC §4 layers in order: docDefaults → tableStyle → paragraph
+  style chain → numbering → direct pPr → direct rPr, plus linked character
+  style for `Run` targets. `_Accumulator` holds in-progress state and
+  provenance side-by-side; the same walk produces both the value output and
+  the optional provenance dict gated on `include_provenance`. Toggle parity
+  follows ECMA-376 17.7.3 — `w:val="false"`/`"0"` resets, all other values
+  XOR.
+- Cycle detection / depth limit (max 11) on the basedOn walk; both raise
+  `StyleCascadeError`. Theme failures (missing part, malformed XML, unknown
+  name) are non-fatal: `partial=True` plus the unresolved theme name in
+  `color_rgb` so debugging output stays useful (SPEC §4 "Theme references").
+- Conditional table formatting (`w:tblStylePr` for firstRow/lastRow/etc.) is
+  deferred — the table style chain's base pPr/rPr is applied but conditional
+  variants are not. Documented inline; revisit before Phase 6 if a real
+  caller exercises it.
+- Theme font tokens (`majorAscii`, `minorHAnsi`, …) pass through as-is in
+  `font_name` for v0.1. Resolving to actual typefaces would need
+  `a:fontScheme` parsing in `theme.py`; not yet a tested requirement.
+- New fixture: `themed.docx` (style with `themeColor="accent1"` +
+  `themeShade="80"`) exercises the theme path end-to-end.
+- Tests added (49 new, 105 total): `test_styles_theme.py` (22),
+  `test_styles_inspect.py` (21), `test_cascade_toggles.py` (9 — all 5 cases
+  from IMPLEMENTATION.md §5 plus parity variants), `test_cascade_provenance.py`
+  (10 — including the SPEC §4 invariant that provenance flag does not
+  change values), `test_theme_edge_cases.py` (9 — strip-rel and corrupt-blob
+  scenarios).
+- Quality gates green locally: `pytest` 105/105, `mypy --strict` (15 files),
+  `ruff check`, `ruff format --check`.
+
+**Phase 2 exit criteria status**: cascade resolver works on every layer in
+isolation and in combination; toggle XOR honours ECMA-376 17.7.3; cycle and
+depth-limit errors are raised; theme resolution handles the missing /
+malformed / unknown-name edge cases. The provenance feature is plumbed
+through end-to-end. The "`examples/inspect_document.py` produces useful
+output on three real-world documents" criterion from IMPLEMENTATION.md §10
+is deferred to Phase 6 (Polish) along with the rest of the examples
+directory — the cascade core is ready for those examples to consume.
+
+**Next session — Phase 3: Style modification.** Per IMPLEMENTATION.md §2,
+the order is: `create_style` / `modify_style` / `delete_style` /
+`apply_style` → `ensure_style` with the known-built-ins table (the trickiest
+piece; extract definitions from a Word-materialised doc, don't guess) →
+`StyleProxy` / `list_styles` → round-trip tests for every operation. Budget
+2–3 days. The Phase 2 cascade gives Phase 3 a free round-trip verifier:
+modify a style, resolve a paragraph using it, assert the values match.
+
 ### 2026-05-15 — Phase 1: Foundation — complete
 
 - `uv` environment on Python 3.13; `requires-python = ">=3.10"` in pyproject.

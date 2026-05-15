@@ -28,3 +28,9 @@ def empty_docx_path(fixtures: dict[str, Path]) -> Path:
 def multistyle_docx_path(fixtures: dict[str, Path]) -> Path:
     """Path to the freshly-built ``multistyle.docx`` fixture."""
     return fixtures["multistyle"]
+
+
+@pytest.fixture
+def themed_docx_path(fixtures: dict[str, Path]) -> Path:
+    """Path to the freshly-built ``themed.docx`` fixture."""
+    return fixtures["themed"]
