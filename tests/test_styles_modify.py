@@ -31,8 +31,10 @@ from docx_plus.styles.modify import (
     create_style,
     delete_style,
     ensure_style,
+    find_matching_style,
     list_styles,
     modify_style,
+    remap_styles,
 )
 
 
@@ -670,6 +672,208 @@ def test_styleproxy_delete_removes_style() -> None:
     proxy = create_style(doc, "Goner")
     proxy.delete()
     assert all(s.style_id != "Goner" for s in list_styles(doc))
+
+
+# --------------------------------------------------------------------------
+# find_matching_style: case/space-insensitive lookup.
+# --------------------------------------------------------------------------
+
+
+def test_find_matching_style_exact_id_returns_trivial_match() -> None:
+    doc = Document()
+    create_style(doc, "MyStyle")
+    assert find_matching_style(doc, "MyStyle") == "MyStyle"
+
+
+def test_find_matching_style_case_insensitive_on_id() -> None:
+    doc = Document()
+    create_style(doc, "myheading1")
+    assert find_matching_style(doc, "MyHeading1") == "myheading1"
+
+
+def test_find_matching_style_space_insensitive_on_id() -> None:
+    """An id like 'Heading 1' (with a space) matches a target 'Heading1'."""
+    doc = Document()
+    # Strip the python-docx-shipped Heading1 to control the test setup.
+    styles_root = doc.styles.element
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']")
+    if existing is not None:
+        styles_root.remove(existing)
+    # Create a style whose id literally has a space.
+    create_style(doc, "Heading 1")
+    assert find_matching_style(doc, "Heading1") == "Heading 1"
+
+
+def test_find_matching_style_via_name_attribute() -> None:
+    """Match on w:name when the styleId itself doesn't normalise to target."""
+    doc = Document()
+    create_style(doc, "Custom42", name="My Big Heading")
+    assert find_matching_style(doc, "MyBigHeading") == "Custom42"
+
+
+def test_find_matching_style_no_match_returns_none() -> None:
+    doc = Document()
+    assert find_matching_style(doc, "DefinitelyNotAnyStyle") is None
+
+
+# --------------------------------------------------------------------------
+# remap_styles: bulk reconciliation.
+# --------------------------------------------------------------------------
+
+
+def test_remap_styles_no_op_when_all_targets_defined() -> None:
+    """If every requested target already exists exactly, mapping is trivial."""
+    doc = Document()
+    create_style(doc, "Foo")
+    result = remap_styles(doc, targets=["Foo"])
+    assert result == {"Foo": "Foo"}
+
+
+def test_remap_styles_uses_explicit_mapping() -> None:
+    doc = Document()
+    create_style(doc, "ActualHeading")
+    result = remap_styles(
+        doc,
+        targets=["MyHeading"],
+        mapping={"MyHeading": "ActualHeading"},
+    )
+    assert result == {"MyHeading": "ActualHeading"}
+
+
+def test_remap_styles_explicit_mapping_to_unknown_raises() -> None:
+    doc = Document()
+    with pytest.raises(StyleNotFoundError, match="DoesNotExist"):
+        remap_styles(doc, targets=["X"], mapping={"X": "DoesNotExist"})
+
+
+def test_remap_styles_matcher_finds_renamed_style() -> None:
+    """Doc has 'Heading 1' (with space); remap_styles maps target 'Heading1'."""
+    doc = Document()
+    styles_root = doc.styles.element
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']")
+    if existing is not None:
+        styles_root.remove(existing)
+    create_style(doc, "Heading 1")
+    result = remap_styles(doc, targets=["Heading1"])
+    assert result == {"Heading1": "Heading 1"}
+
+
+def test_remap_styles_rewrites_body_refs() -> None:
+    """A paragraph styled with target id gets rewritten to the resolved id."""
+    doc = Document()
+    styles_root = doc.styles.element
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']")
+    if existing is not None:
+        styles_root.remove(existing)
+    create_style(doc, "Heading 1", font_size=20.0)
+    # A paragraph references the *missing* "Heading1" id.
+    p = doc.add_paragraph()
+    ppr = p._p.get_or_add_pPr()
+    sub(ppr, "w:pStyle", **{"w:val": "Heading1"})
+
+    remap_styles(doc, targets=["Heading1"])
+
+    # The reference now points at the matched style and the cascade resolves.
+    pstyle = p._p.find(qn("w:pPr")).find(qn("w:pStyle"))
+    assert pstyle.get(qn("w:val")) == "Heading 1"
+    assert resolve_effective_formatting(p).font_size == 20.0
+
+
+def test_remap_styles_create_missing_materialises_builtin() -> None:
+    doc = Document()
+    styles_root = doc.styles.element
+    # Strip Heading2 to force the create-missing path.
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading2']")
+    if existing is not None:
+        styles_root.remove(existing)
+    result = remap_styles(doc, targets=["Heading2"], create_missing=True)
+    assert result == {"Heading2": "Heading2"}
+    # And the style was actually materialised.
+    assert any(s.style_id == "Heading2" for s in list_styles(doc))
+
+
+def test_remap_styles_unresolved_target_omitted() -> None:
+    """Target with no match, not in built-ins, create_missing=False → omitted."""
+    doc = Document()
+    result = remap_styles(doc, targets=["NoSuchStyle"], create_missing=False)
+    assert "NoSuchStyle" not in result
+
+
+def test_remap_styles_unresolved_with_create_missing_still_omitted_if_not_builtin() -> None:
+    """create_missing only helps for ids in the known-built-ins table."""
+    doc = Document()
+    result = remap_styles(doc, targets=["NotABuiltin"], create_missing=True)
+    assert "NotABuiltin" not in result
+
+
+def test_remap_styles_create_missing_inherits_from_existing_normal() -> None:
+    """The new built-in basedOn=Normal so it picks up the doc's customised Normal."""
+    doc = Document()
+    styles_root = doc.styles.element
+    # Customise Normal with a specific font size.
+    normal = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Normal']")
+    if normal is not None:
+        styles_root.remove(normal)
+    create_style(doc, "Normal", custom=False, font_name="MyCorporateFont")
+    # Now create Heading1 via remap_styles' create_missing.
+    existing_h1 = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']")
+    if existing_h1 is not None:
+        styles_root.remove(existing_h1)
+    remap_styles(doc, targets=["Heading1"], create_missing=True)
+    # A paragraph styled Heading1 inherits the customised Normal's font name.
+    p = doc.add_paragraph()
+    apply_style(p, "Heading1")
+    resolved = resolve_effective_formatting(p)
+    assert resolved.font_name == "MyCorporateFont"
+
+
+def test_remap_styles_default_targets_are_known_builtins() -> None:
+    """Calling with no targets considers every entry in the built-ins table."""
+    doc = Document()
+    result = remap_styles(doc)
+    # Every materialised built-in id should appear self-mapped.
+    assert "Heading1" in result
+    assert result["Heading1"] == "Heading1"
+
+
+# --------------------------------------------------------------------------
+# ensure_style match_existing flag.
+# --------------------------------------------------------------------------
+
+
+def test_ensure_style_match_existing_returns_renamed() -> None:
+    """match_existing=True returns the proxy to the renamed style."""
+    doc = Document()
+    styles_root = doc.styles.element
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']")
+    if existing is not None:
+        styles_root.remove(existing)
+    create_style(doc, "heading 1")  # renamed variant
+    proxy = ensure_style(doc, "Heading1", match_existing=True)
+    assert proxy.style_id == "heading 1"
+
+
+def test_ensure_style_match_existing_false_skips_matcher() -> None:
+    """Without match_existing, the builtin table fires even if a rename exists."""
+    doc = Document()
+    styles_root = doc.styles.element
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']")
+    if existing is not None:
+        styles_root.remove(existing)
+    create_style(doc, "heading 1")  # rename exists
+    proxy = ensure_style(doc, "Heading1")  # match_existing defaults False
+    # The matcher was skipped — we got the built-ins-table materialised one.
+    assert proxy.style_id == "Heading1"
+
+
+def test_ensure_style_match_existing_falls_through_to_builtin_when_no_match() -> None:
+    doc = Document()
+    styles_root = doc.styles.element
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='PlaceholderText']")
+    if existing is not None:
+        styles_root.remove(existing)
+    proxy = ensure_style(doc, "PlaceholderText", match_existing=True)
+    assert proxy.style_id == "PlaceholderText"
 
 
 # --------------------------------------------------------------------------

@@ -18,8 +18,10 @@ from docx_plus.styles.modify import (
     create_style,
     delete_style,
     ensure_style,
+    find_matching_style,
     list_styles,
     modify_style,
+    remap_styles,
 )
 
 __all__ = [
@@ -37,7 +39,9 @@ __all__ = [
     "create_style",
     "delete_style",
     "ensure_style",
+    "find_matching_style",
     "list_styles",
     "modify_style",
+    "remap_styles",
     "resolve_effective_formatting",
 ]

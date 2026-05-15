@@ -501,6 +501,8 @@ def apply_style(target: Paragraph | Run | _Cell, style_id: str) -> None:
 def ensure_style(
     doc: Document,
     style_id: str,
+    *,
+    match_existing: bool = False,
     **defaults_if_creating: Any,
 ) -> StyleProxy:
     """Idempotent style materialisation.
@@ -514,6 +516,14 @@ def ensure_style(
     Args:
         doc: Document to ensure the style on.
         style_id: Identifier to ensure.
+        match_existing: If True, before falling back to creation, search for
+            an existing style whose ``w:styleId`` or ``w:name`` matches
+            ``style_id`` case/space-insensitively (via
+            :func:`find_matching_style`). If found, that proxy is returned —
+            note its ``style_id`` may differ from the requested one, so
+            callers using ``apply_style`` should pass ``proxy.style_id``.
+            For document-wide normalisation, use :func:`remap_styles` which
+            rewrites body references too.
         **defaults_if_creating: Properties to use when creating a *custom*
             style. Ignored when materialising a known built-in (the user
             asked for the built-in; Word's defaults are what matters).
@@ -525,10 +535,139 @@ def ensure_style(
     existing = _find_style_element(styles_root, style_id)
     if existing is not None:
         return StyleProxy(doc, existing)
+    if match_existing:
+        matched_id = find_matching_style(doc, style_id)
+        if matched_id is not None:
+            matched_el = _find_style_element(styles_root, matched_id)
+            if matched_el is not None:
+                return StyleProxy(doc, matched_el)
     builtin = _BUILTIN_STYLES.get(style_id)
     if builtin is not None:
         return _materialise_builtin(doc, style_id, builtin)
     return create_style(doc, style_id, **defaults_if_creating)
+
+
+def find_matching_style(doc: Document, target_id: str) -> str | None:
+    """Find an existing style that fulfils the role of ``target_id``.
+
+    Matches case/space-insensitively against both the ``w:styleId`` and
+    ``w:name`` of every defined style. Useful when a document uses a renamed
+    or differently-cased version of a built-in style (``"Heading 1"`` with a
+    space, ``"heading1"`` lower-case, …).
+
+    Args:
+        doc: Document to search.
+        target_id: The id you want to map onto (e.g. ``"Heading1"``).
+
+    Returns:
+        The :attr:`w:styleId` of the first matching defined style, or
+        ``None`` if none match. If a style with id ``target_id`` is already
+        defined exactly, returns ``target_id`` (the trivial match).
+    """
+    target_norm = _normalize_style_key(target_id)
+    if not target_norm:
+        return None
+    styles_root = doc.styles.element
+    for style_el in styles_root.findall(qn("w:style")):
+        sid: str | None = style_el.get(qn("w:styleId"))
+        if sid is None:
+            continue
+        if _normalize_style_key(sid) == target_norm:
+            return sid
+        name_el = style_el.find(qn("w:name"))
+        if name_el is not None:
+            name: str | None = name_el.get(qn("w:val"))
+            if name is not None and _normalize_style_key(name) == target_norm:
+                return sid
+    return None
+
+
+def remap_styles(
+    doc: Document,
+    *,
+    targets: list[str] | None = None,
+    mapping: dict[str, str] | None = None,
+    create_missing: bool = False,
+) -> dict[str, str]:
+    """Reconcile a doc's styles against a set of canonical ids.
+
+    For each id in ``targets``, resolve it to an existing style by:
+
+    1. Exact match — the id is already defined in ``styles.xml``.
+    2. The supplied ``mapping`` if it names this target.
+    3. :func:`find_matching_style` (case/space-insensitive on id and name).
+    4. If ``create_missing=True`` and the target is in the known built-ins
+       table, materialise it from the table — which declares
+       ``basedOn="Normal"`` so the new style inherits the doc's customised
+       Normal (fonts, colours, …) automatically.
+
+    Body references (``w:pStyle``, ``w:rStyle``, ``w:tblStyle``) pointing at
+    the original target id are rewritten in place to the resolved id, so a
+    subsequent :func:`apply_style` works without further translation. Refs
+    *between* styles in ``styles.xml`` (``basedOn``, ``next``, ``link``) are
+    left untouched — this keeps the remap a non-destructive rewrite.
+
+    Args:
+        doc: Document to remap.
+        targets: Ids to reconcile. Defaults to every entry in the
+            known-built-ins table.
+        mapping: Optional explicit ``{target: existing_id}`` overrides
+            applied before the matcher.
+        create_missing: If True, fall back to materialising from the
+            built-ins table when nothing else matches. Only works for ids
+            that have a built-in entry.
+
+    Returns:
+        ``{target_id: resolved_id}`` for every target resolved. When
+        ``target_id == resolved_id``, the doc already had it or it was just
+        created. Targets unresolved after all four steps are omitted.
+
+    Raises:
+        StyleNotFoundError: If ``mapping`` names an ``existing_id`` that is
+            not defined in the document.
+    """
+    styles_root = doc.styles.element
+    target_ids: list[str] = list(targets) if targets is not None else list(_BUILTIN_STYLES)
+    explicit: dict[str, str] = dict(mapping) if mapping is not None else {}
+
+    for target, existing_id in explicit.items():
+        if _find_style_element(styles_root, existing_id) is None:
+            raise StyleNotFoundError(
+                f"mapping for {target!r} points at undefined style {existing_id!r}"
+            )
+
+    resolved: dict[str, str] = {}
+    for target_id in target_ids:
+        if _find_style_element(styles_root, target_id) is not None:
+            resolved[target_id] = target_id
+            continue
+        if target_id in explicit:
+            resolved[target_id] = explicit[target_id]
+            continue
+        match = find_matching_style(doc, target_id)
+        if match is not None:
+            resolved[target_id] = match
+            continue
+        if create_missing and target_id in _BUILTIN_STYLES:
+            _materialise_builtin(doc, target_id, _BUILTIN_STYLES[target_id])
+            resolved[target_id] = target_id
+            continue
+        # Unresolved — omit from result.
+
+    body_root: Any = doc.part.element
+    for target_id, resolved_id in resolved.items():
+        if target_id == resolved_id:
+            continue
+        for tag in ("pStyle", "rStyle", "tblStyle"):
+            for ref in xpath(body_root, f"//w:{tag}[@w:val='{target_id}']"):
+                if isinstance(ref, etree._Element):
+                    ref.set(qn("w:val"), resolved_id)
+    return resolved
+
+
+def _normalize_style_key(value: str) -> str:
+    """Lowercase + whitespace-stripped key for case/space-insensitive match."""
+    return "".join(ch for ch in value.lower() if not ch.isspace())
 
 
 def list_styles(
@@ -1334,6 +1473,8 @@ __all__ = [
     "create_style",
     "delete_style",
     "ensure_style",
+    "find_matching_style",
     "list_styles",
     "modify_style",
+    "remap_styles",
 ]

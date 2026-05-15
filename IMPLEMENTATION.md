@@ -509,6 +509,36 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-15 — Phase 3.5: Style remapping — complete
+
+- `find_matching_style(doc, target_id) -> str | None` — case/space-insensitive
+  lookup against both `w:styleId` and `w:name` of every defined style. Returns
+  the trivial match when the id is already defined exactly. Solves the
+  "doc was authored with 'Heading 1' (with space) but my code references
+  'Heading1'" problem.
+- `remap_styles(doc, *, targets=None, mapping=None, create_missing=False)` —
+  bulk reconciliation. For each target id walks four steps: exact match →
+  explicit mapping → matcher → optional create-from-built-ins. Rewrites body
+  references (`w:pStyle`, `w:rStyle`, `w:tblStyle`) so subsequent `apply_style`
+  works without translation. Style-to-style refs inside `styles.xml`
+  (`basedOn`, `next`, `link`) are intentionally left alone — keeps the remap
+  a non-destructive rewrite. When `create_missing=True` falls through, the
+  new style is materialised via `_materialise_builtin` so it inherits the
+  doc's customised Normal automatically through `basedOn` (no special
+  inheritance plumbing needed).
+- `ensure_style` gains a `match_existing=False` flag. When True it consults
+  `find_matching_style` before falling back to the built-ins table /
+  custom-create path. The returned proxy may have a `style_id` that differs
+  from the requested one — callers using `apply_style` should pass
+  `proxy.style_id` (or use `remap_styles` for document-wide normalisation).
+- 18 new tests (187 total): matcher coverage on id and name with case/space
+  normalisation; `remap_styles` for the four resolution steps, body-ref
+  rewriting, default-targets behaviour, unresolved-omission, and the
+  "create_missing inherits from customised Normal" round-trip via the
+  cascade; `ensure_style` with `match_existing` True/False.
+- Quality gates green: `pytest` 187/187, `mypy --strict` (16 files),
+  `ruff check`, `ruff format --check`.
+
 ### 2026-05-15 — Phase 3: Style modification — complete
 
 - `styles/modify.py` — full Phase 3 surface: `create_style`, `modify_style`,
