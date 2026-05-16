@@ -509,6 +509,78 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-15 — Phase 3.6: Documentation sweep + test gap audit — complete
+
+- `README.md` rewritten from a 9-line stub into a real quickstart for what
+  Phase 1–3.5 actually ships: motivation, install, three runnable snippets
+  (inspect / modify / ensure-built-in), and a phase status table. Forms,
+  fields, protection listed as not-started rather than fabricated.
+- `docs/ARCHITECTURE.md` authored — present-tense reference covering layout,
+  the six-layer cascade walkthrough with line citations into `inspect.py`,
+  schema-strict insertion patterns (`_STYLE_CHILD_ORDER` / `_PPR_CHILD_ORDER`
+  / `_RPR_CHILD_ORDER` and `_ordered_insert`), the Phase 3.5 four-step
+  style remap, the `_BUILTIN_STYLES` table contents and the
+  "Word-2013-defaults vs python-docx-ships-Word-2007" gotcha, the §9
+  invariants, the typed-error hierarchy table, and the SPEC §10
+  three-layer test strategy.
+- `docs/API.md` authored — hand-curated index of every public symbol grouped
+  by module, with cross-links into `ARCHITECTURE.md`. Points at the
+  MkDocs-generated full reference under `docs/reference/`.
+- `docs/TEST_GAPS.md` authored — the audit deliverable. Severity-tiered
+  (BLOCKER / IMPORTANT / NICE-TO-HAVE) with file:line citations to every
+  test that does or doesn't cover the claim. Recommended fix order at the
+  bottom. Resolved-entries section ready for items to move down as gaps
+  close. Top blocker: SPEC §13's 90% coverage gate is defined in
+  `[tool.coverage.*]` but no `fail_under` is set and CI doesn't pass
+  `--cov-fail-under`. Top importants: save→reopen round-trips missing for
+  3 of 5 modify operations; schema-order assertion only on `create_style`,
+  not on `modify_style`'s merge path; cycle detection only tested with
+  2-node cycles; `delete_style(force=True)` only smoke-checked.
+- `mkdocs.yml` at repo root configures a Material-theme MkDocs site with
+  mkdocstrings (Python handler, Google docstyle, source links). Nav covers
+  Home / Architecture / API Index / Reference (six per-module pages under
+  `docs/reference/`) / Test Gaps. `pyproject.toml` swaps `pdoc` for
+  `mkdocs` + `mkdocs-material` + `mkdocstrings[python]` in both
+  `[project.optional-dependencies] dev` and `[tool.uv] dev-dependencies`.
+  `.gitignore` already excluded `site/` so no change needed there.
+- `docs/index.md` is a slimmed mirror of the README, tailored for the
+  MkDocs landing page (the README still serves GitHub).
+- `docs/reference/` — six pages, one per public-surface module
+  (`core-ns`, `core-oxml`, `core-ids`, `styles-inspect`, `styles-modify`,
+  `styles-theme`), each a thin context paragraph plus `::: module` directive
+  for mkdocstrings to auto-render.
+- No source code touched. No tests added (audit deliverable is the report,
+  per the approved plan). Tests still 187/187 green; `mypy --strict` (16
+  files) still green.
+- **Lint regression surfaced (pre-existing, not introduced here)**: on
+  `uv sync --extra dev` ruff updated to 0.15.13 and now flags 7 issues in
+  test files that prior phase gates claimed were green —
+  `I001` × 4 (import sort) in `tests/test_core_ns.py`,
+  `tests/test_styles_inspect.py`, `tests/test_styles_modify.py`,
+  `tests/test_theme_edge_cases.py`; `F401` × 2 (unused imports) in
+  `tests/test_styles_inspect.py` and `tests/test_styles_theme.py`;
+  `B017` × 1 (`pytest.raises(Exception)`) in
+  `tests/test_styles_inspect.py:310`. Plus `ruff format` wants to
+  reformat 4 test files. All trivially auto-fixable
+  (`uv run ruff check --fix && uv run ruff format`) but out of scope for
+  this documentation-only block. Flag for the start of the next session.
+
+**Phase 3.6 exit criteria status**: README/ARCHITECTURE/API/TEST_GAPS in
+place; MkDocs configuration committed; pdoc removed from deps. Phase 6's
+"`API.md`, `ARCHITECTURE.md`, `README.md` exist and are current" gate
+from SPEC §13 is met for the Phase 1–3.5 surface; those docs will need
+extension as Phases 4–5 land but the structure is fixed and the
+mkdocstrings handler picks up new symbols automatically.
+
+**Next session — Phase 4: Forms** (unchanged from the prior entry). Per
+IMPLEMENTATION.md §2 / SPEC §6: port `FormBuilder` from the docx-forms
+skill into `controls/builder.py`, adapting it to use `IdRegistry` from
+`core/`. Then write `controls/read.py` (`ControlValue`, `read_controls`,
+`set_control_value`, `clear_control`). Round-trip tests per control type.
+Budget 1–2 days. Worth resolving `TEST_GAPS.md` B1 (coverage threshold)
+and I1 (save→reopen for modify/apply/delete) alongside or just before,
+so Phase 4 lands on a tighter test floor.
+
 ### 2026-05-15 — Phase 3.5: Style remapping — complete
 
 - `find_matching_style(doc, target_id) -> str | None` — case/space-insensitive

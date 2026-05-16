@@ -1,0 +1,74 @@
+site_name: docx_plus
+site_description: OOXML-level extensions for python-docx — style cascade, content controls, fields.
+site_author: docx_plus contributors
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Architecture: ARCHITECTURE.md
+  - API Index: API.md
+  - Reference:
+      - docx_plus.core.ns: reference/core-ns.md
+      - docx_plus.core.oxml: reference/core-oxml.md
+      - docx_plus.core.ids: reference/core-ids.md
+      - docx_plus.styles.inspect: reference/styles-inspect.md
+      - docx_plus.styles.modify: reference/styles-modify.md
+      - docx_plus.styles.theme: reference/styles-theme.md
+  - Test Gaps: TEST_GAPS.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: true
+            show_signature_annotations: true
+            members_order: source
+            separate_signature: true
+            line_length: 80
+            merge_init_into_class: true
+            heading_level: 2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.details
+
+# strict: true  # enable in Phase 6 once nav and refs are stable
