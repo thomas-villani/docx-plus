@@ -6,8 +6,11 @@ phases introduce call sites (SPEC §10).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from lxml import etree
+
+from docx_plus.controls.read import ControlType, _classify_sdt
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
 
@@ -53,4 +56,32 @@ def assert_style_defined(doc: Document, style_id: str) -> None:
     assert matches, f"style {style_id!r} not defined in styles.xml"
 
 
-__all__ = ["assert_ids_unique", "assert_style_defined"]
+def count_controls(
+    doc: Document,
+    control_type: ControlType | None = None,
+) -> int:
+    """Count ``w:sdt`` elements in the document body.
+
+    Args:
+        doc: python-docx Document to inspect.
+        control_type: If given, only count controls of this type
+            (``"text"``, ``"dropdown"``, ``"combobox"``, ``"date"``,
+            ``"checkbox"``). ``None`` (default) counts every recognised SDT.
+
+    Returns:
+        The number of matching content controls.
+    """
+    body: Any = doc.element.body
+    count = 0
+    for sdt in xpath(body, ".//w:sdt"):
+        if not isinstance(sdt, etree._Element):
+            continue
+        kind = _classify_sdt(sdt)
+        if kind is None:
+            continue
+        if control_type is None or kind == control_type:
+            count += 1
+    return count
+
+
+__all__ = ["assert_ids_unique", "assert_style_defined", "count_controls"]

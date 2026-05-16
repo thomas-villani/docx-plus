@@ -47,3 +47,7 @@ docs/_build/
 # uv
 # Keep uv.lock committed; ignore uv's local cache only
 .uv-cache/
+
+# Reference artifacts (extracted from docx-skill-files.zip for inspection)
+.skill-ref/
+docx-skill-files.zip

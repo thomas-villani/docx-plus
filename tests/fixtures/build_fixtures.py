@@ -110,6 +110,65 @@ def build_themed(path: Path) -> Path:
     return path
 
 
+def build_existing_form(path: Path) -> Path:
+    """Write a doc with three SDTs built by hand, *not* via FormBuilder.
+
+    Used by the read-side tests to verify ``read_controls`` works on
+    documents that did not originate from ``docx_plus.controls.builder`` —
+    third-party tools, Word itself, or earlier hand-rolled scripts.
+    """
+    doc = Document()
+    para = doc.add_paragraph("Name: ")
+    para_two = doc.add_paragraph("Region: ")
+    para_three = doc.add_paragraph("Subscribe: ")
+
+    # Filled text SDT (no showingPlcHdr).
+    text_sdt = sub(para._p, "w:sdt")
+    text_pr = sub(text_sdt, "w:sdtPr")
+    sub(text_pr, "w:tag", **{"w:val": "name"})
+    sub(text_pr, "w:id", **{"w:val": "100"})
+    sub(text_pr, "w:text")
+    text_content = sub(text_sdt, "w:sdtContent")
+    text_run = sub(text_content, "w:r")
+    text_t = sub(text_run, "w:t")
+    text_t.text = "Ada Lovelace"
+
+    # Dropdown SDT in placeholder state.
+    dd_sdt = sub(para_two._p, "w:sdt")
+    dd_pr = sub(dd_sdt, "w:sdtPr")
+    sub(dd_pr, "w:alias", **{"w:val": "Region selector"})
+    sub(dd_pr, "w:tag", **{"w:val": "region"})
+    sub(dd_pr, "w:id", **{"w:val": "200"})
+    sub(dd_pr, "w:showingPlcHdr")
+    dd_list = sub(dd_pr, "w:dropDownList")
+    sub(dd_list, "w:listItem", **{"w:displayText": "Choose a region", "w:value": ""})
+    sub(dd_list, "w:listItem", **{"w:displayText": "North", "w:value": "N"})
+    sub(dd_list, "w:listItem", **{"w:displayText": "South", "w:value": "S"})
+    dd_content = sub(dd_sdt, "w:sdtContent")
+    dd_run = sub(dd_content, "w:r")
+    dd_run_pr = sub(dd_run, "w:rPr")
+    sub(dd_run_pr, "w:rStyle", **{"w:val": "PlaceholderText"})
+    dd_t = sub(dd_run, "w:t")
+    dd_t.text = "Choose a region"
+
+    # Checkbox SDT, checked.
+    cb_sdt = sub(para_three._p, "w:sdt")
+    cb_pr = sub(cb_sdt, "w:sdtPr")
+    sub(cb_pr, "w:tag", **{"w:val": "subscribe"})
+    sub(cb_pr, "w:id", **{"w:val": "300"})
+    cb_box = sub(cb_pr, "w14:checkbox")
+    sub(cb_box, "w14:checked", **{"w14:val": "1"})
+    sub(cb_box, "w14:checkedState", **{"w14:val": "2612", "w14:font": "MS Gothic"})
+    sub(cb_box, "w14:uncheckedState", **{"w14:val": "2610", "w14:font": "MS Gothic"})
+    cb_content = sub(cb_sdt, "w:sdtContent")
+    cb_run = sub(cb_content, "w:r")
+    cb_t = sub(cb_run, "w:t")
+    cb_t.text = "☒"
+
+    doc.save(path)
+    return path
+
+
 def build_all(out_dir: Path = FIXTURES_DIR) -> dict[str, Path]:
     """Build every Phase 1 fixture into ``out_dir`` and return their paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -117,6 +176,7 @@ def build_all(out_dir: Path = FIXTURES_DIR) -> dict[str, Path]:
         "empty": build_empty(out_dir / "empty.docx"),
         "multistyle": build_multistyle(out_dir / "multistyle.docx"),
         "themed": build_themed(out_dir / "themed.docx"),
+        "existing_form": build_existing_form(out_dir / "existing_form.docx"),
     }
 
 

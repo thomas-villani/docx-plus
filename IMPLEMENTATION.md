@@ -509,6 +509,96 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-15 — Phase 4: Forms / content controls — complete
+
+- `controls/builder.py` adds `FormBuilder` with `add_text_control`,
+  `add_dropdown` (incl. combobox via `editable=True`), `add_date_picker`,
+  `add_checkbox`, plus `save(path)`. Signatures match SPEC §6.1 verbatim
+  (keyword-only after the paragraph). The class self-injects the latent
+  `PlaceholderText` character style on construction and verifies the
+  document root declares the `w14` namespace (raises
+  `MissingNamespaceError(DocxPlusError)` if not). All XML built via
+  `core/oxml.el`/`sub`; all `w:id` values issued by `core/ids.IdRegistry`
+  (constructor accepts an optional registry to share between builders).
+  sdtPr child order matches the docx-forms skill prototype:
+  `[alias?], tag, id, [showingPlcHdr?], <type-marker>` — Word's CT_SdtPr
+  schema-correct sequence.
+- `controls/read.py` adds `ControlValue` (frozen dataclass), `read_controls`
+  (with `by="tag" | "alias"`), `set_control_value`, `clear_control`, plus
+  four typed errors: `ControlNotFoundError(DocxPlusError, KeyError)`,
+  `DuplicateTagError(DocxPlusError, ValueError)`,
+  `ValueNotInListError(DocxPlusError, ValueError)`,
+  `ControlTypeError(DocxPlusError, TypeError)`. Type detection dispatches
+  on the marker child of sdtPr; rich-text SDTs (no marker) are silently
+  skipped per SPEC §6 v0.1 scope. Dropdown matching tries `w:value` then
+  `w:displayText`; combobox accepts freeform fallback. The auto-prepended
+  empty-value placeholder list-item is filtered out during matching so it
+  cannot shadow real entries. Date values round-trip through
+  `w:date/@w:fullDate` (ISO 8601); the rendered text in sdtContent uses a
+  best-effort human form (full Word date-format-token translation is out
+  of scope for v0.1 — the canonical machine value is `@w:fullDate`).
+- `controls/__init__.py` re-exports the public surface (12 symbols).
+- `_testing/ooxml_asserts.py` gains `count_controls(doc, control_type=None)`
+  — uses the same `_classify_sdt` helper as `read_controls` so there's one
+  source of dispatch truth.
+- `tests/fixtures/build_fixtures.py` gains `build_existing_form(path)`
+  which constructs three SDTs (filled text, placeholder dropdown, checked
+  checkbox) **by hand without FormBuilder** so read-side tests verify
+  schema tolerance. Wired into `build_all` and `conftest.py`'s
+  `existing_form_docx_path` fixture.
+- `tests/test_controls_builder.py` (24 tests) and
+  `tests/test_controls_read.py` (26 tests) cover: every control-type
+  round-trip via save→reopen; multiline text; dropdown items as strings
+  vs `(display, value)` tuples; combobox vs dropdown emission; checkbox
+  glyph/state sync; multi-control IdRegistry continuity; existing-id
+  seeding from third-party docs; sdtPr child order assertions per
+  control type; placeholder-style materialisation idempotency;
+  `read_controls` placeholder-state, `by="alias"` filtering, duplicate-tag
+  detection; set/clear round-trips per type; dropdown by-value vs
+  by-display matching; combobox freeform passthrough;
+  `ControlTypeError` for type mismatches; `ControlNotFoundError` for
+  unknown tags; read on the externally-built fixture; rich-text SDT
+  (no marker) silently skipped.
+- Quality gates green: pytest 239/239 (was 187, +52), mypy --strict
+  (18 source files, +2), ruff check, ruff format --check (all on
+  `docx_plus/`). `tests/test_import_invariant.py` continues to pass —
+  `controls/` imports only from `docx_plus.core` (the `PlaceholderText`
+  style def is duplicated inline in `builder.py` rather than imported
+  from `styles.modify`, honouring SPEC §9.1).
+- **Pre-existing lint debt in test files unchanged** (Phase 3.6 flag):
+  ruff still reports issues on `tests/test_core_ns.py`,
+  `tests/test_styles_inspect.py`, `tests/test_styles_modify.py`,
+  `tests/test_styles_theme.py`, `tests/test_theme_edge_cases.py`. Out of
+  scope for Phase 4. The ruff config gates `docx_plus/` only, so the
+  CI workflow still passes — but a small "lint-tests cleanup" pass is
+  worth doing before Phase 5.
+- **Reference artifacts**: `docx-skill-files.zip` (the source skill
+  prototype) and `.skill-ref/` (extracted contents) are now in
+  `.gitignore`. The `FormBuilder` design closely mirrors the prototype's
+  `docx_forms.py`, with three changes: (1) ID issuance routed through
+  `IdRegistry` instead of an ad-hoc set, (2) all element construction
+  through `core/oxml`, (3) `protect()` deliberately omitted — protection
+  belongs to Phase 5/6 `protection/document.py` per SPEC §8.
+- `core/parts.py` re-confirmed unnecessary for v0.1 controls (which are
+  fully inline in the document; no Custom XML Part bindings until v0.2
+  repeating sections). The Phase 1 plan note is now stale; will revisit
+  if Phase 5 fields needs it.
+
+**Phase 4 exit criteria status**: SPEC §6 contract implemented, all five
+control types round-trip, `read_controls` discovers all of them with
+correct types, `set_control_value`/`clear_control` round-trip per type,
+externally-built docs read correctly, all four quality gates pass.
+
+**Next session — Phase 5: Fields and protection.** Per IMPLEMENTATION.md
+§2 / SPEC §7 + §8: implement `fields/simple.py`
+(`add_page_number_field`, `add_date_field`, `add_field`) and
+`fields/update.py` (`mark_fields_dirty`); then `protection/document.py`
+(`protect_form`, the form-protection enforcement that locks everything
+except content controls — this is what turns a doc-with-widgets into an
+actual form). The schema-order check from SPEC §6 line 583 ("Form-protection
+enforcement is correct") gets validated end-to-end here. Budget 1 day.
+Resolve the test-file lint debt at the start of the session if quick.
+
 ### 2026-05-15 — Phase 3.6: Documentation sweep + test gap audit — complete
 
 - `README.md` rewritten from a 9-line stub into a real quickstart for what
