@@ -33,7 +33,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Sync dependencies
-        run: uv sync --python ${{ matrix.python-version }}
+        run: uv sync --python ${{ matrix.python-version }} --extra dev
 
       - name: Run pytest with coverage
         run: uv run --python ${{ matrix.python-version }} pytest --cov=docx_plus --cov-fail-under=90
@@ -53,7 +53,7 @@ jobs:
         run: uv python install 3.13
 
       - name: Sync dependencies
-        run: uv sync --python 3.13
+        run: uv sync --python 3.13 --extra dev
 
       - name: mypy --strict
         run: uv run mypy --strict docx_plus/
@@ -73,7 +73,7 @@ jobs:
         run: uv python install 3.13
 
       - name: Sync dependencies
-        run: uv sync --python 3.13
+        run: uv sync --python 3.13 --extra dev
 
       - name: ruff check
         run: uv run ruff check docx_plus/ tests/

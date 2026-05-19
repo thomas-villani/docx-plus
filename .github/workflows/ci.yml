@@ -26,7 +26,7 @@ jobs:
         run: uv python install 3.13
 
       - name: Sync dependencies
-        run: uv sync --python 3.13
+        run: uv sync --python 3.13 --extra dev
 
       - name: ruff check
         run: uv run ruff check docx_plus/ tests/
@@ -49,7 +49,7 @@ jobs:
         run: uv python install 3.13
 
       - name: Sync dependencies
-        run: uv sync --python 3.13
+        run: uv sync --python 3.13 --extra dev
 
       - name: mypy --strict
         run: uv run mypy --strict docx_plus/
@@ -104,7 +104,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Sync dependencies
-        run: uv sync --python ${{ matrix.python-version }}
+        run: uv sync --python ${{ matrix.python-version }} --extra dev
 
       - name: Install LibreOffice (for Layer 3 smoke tests)
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
