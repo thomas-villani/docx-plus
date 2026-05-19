@@ -146,22 +146,28 @@ recommended fix order.
 
 - **Where:** `tests/test_styles_modify.py:609`
   (`test_ensure_style_all_known_builtins_succeed`) iterates every entry
-  in `_BUILTIN_STYLES` (`modify.py:1154`, 19 entries) and asserts
-  `ensure_style` returns a proxy. Heading1 has a dedicated round-trip at
-  `:584` and `:911`, but Heading2–9, Title, Subtitle, Quote, IntenseQuote,
-  ListParagraph, and Caption do not.
-- **Plausible bug:** A missing property in one built-in's `properties`
-  dict (e.g. Heading3 missing `spacing_before`) materializes successfully
-  — the `properties=` kwargs are optional — but the resolved paragraph
-  using that style lacks the expected formatting. The bulk test never
-  inspects the resolved output.
+  in `_BUILTIN_STYLES` (`modify.py:1154`, **107 entries** across seven
+  tiers) and asserts `ensure_style` returns a proxy. Heading1 has a
+  dedicated round-trip at `:584` and `:911`, but no other built-in has
+  property-level round-trip coverage — they're only checked for "doesn't
+  raise."
+- **Plausible bug:** A missing or wrong property in one built-in's
+  `properties` dict (e.g. Heading3 missing `spacing_before`,
+  `TableofFigures` keyed under the wrong case as happened on
+  2026-05-19) materializes successfully — the `properties=` kwargs are
+  optional and `ensure_style` falls through to `create_style` on a
+  table miss — but the resolved paragraph using that style lacks the
+  expected formatting. The bulk test never inspects the resolved output.
 - **SPEC ref:** SPEC §5 ("Test that materialization of each produces a
   style Word accepts.")
 - **Fix:** Parametrize a single test over a list of `(style_id,
   expected_properties)` tuples; for each, `ensure_style`, apply to a
   paragraph, `resolve_effective_formatting`, and assert each
-  `expected_properties` field matches. Targets at minimum the 14 SPEC §5
-  "at minimum" set; can be extended to all 19 in `_BUILTIN_STYLES`.
+  `expected_properties` field matches. With 107 entries in the table now
+  this is high-value: a regression like the `TableOfFigures`→
+  `TableofFigures` styleId case bug would be caught immediately. Start
+  with the 14 SPEC §5 "at minimum" set, then expand to all
+  sample-sourced tiers (E/F/G).
 
 ### I7. `remap_styles` four-step resolution not tested as a sequence
 

@@ -67,8 +67,13 @@ doc.save("out.docx")
 ```python
 from docx_plus.styles import ensure_style
 
-ensure_style(doc, "Heading1")  # materialises Word's built-in if missing
+ensure_style(doc, "Heading1")  # one of 107 known built-ins
+ensure_style(doc, "TOC2")
+ensure_style(doc, "BlockText")
 ```
+
+See [`ARCHITECTURE.md` §5](ARCHITECTURE.md#5-built-in-styles-table) for
+the full tiered table.
 
 ## Roadmap
 
@@ -78,6 +83,6 @@ ensure_style(doc, "Heading1")  # materialises Word's built-in if missing
 | 2 | Style inspection | ✓ complete |
 | 3 | Style modification | ✓ complete |
 | 3.5 | Style remapping | ✓ complete |
-| 4 | Content controls | not started |
+| 4 | Content controls | ✓ complete |
 | 5 | Fields + protection | not started |
 | 6 | Polish (examples, smoke tests, CI doc build) | not started |

@@ -84,9 +84,11 @@ ones you remember to update.
 
 ### Ensure: materialise a built-in latent style
 
-Word's built-ins (`Heading1`–`Heading9`, `Title`, `Quote`, …) are
-*latent* — defined by Word's defaults but not actually present in
-`styles.xml` until they're used. `ensure_style` knows about them:
+Word's built-ins (`Heading1`–`Heading9`, `Title`, `Quote`, `TOC1`–`TOC9`,
+`FootnoteText`, `BlockText`, `PlainText`, …) are *latent* — defined by
+Word's defaults but not actually present in `styles.xml` until they're
+used. `ensure_style` knows about **107** of them, with defaults
+extracted from real Word-saved samples (not guessed):
 
 ```python
 from docx import Document
@@ -95,8 +97,13 @@ from docx_plus.styles import ensure_style, apply_style
 doc = Document()
 ensure_style(doc, "Heading1")           # idempotent — materialises if absent
 ensure_style(doc, "Heading1")           # ...no-op the second time
+ensure_style(doc, "TOC2")               # also works for less-common built-ins
+ensure_style(doc, "BlockText")
 apply_style(doc.add_paragraph("Intro"), "Heading1")
 ```
+
+The full list is tiered in [`docs/ARCHITECTURE.md` §5](docs/ARCHITECTURE.md#5-built-in-styles-table)
+— Core/A–G cover essentially every style a Word user reaches for.
 
 For documents authored elsewhere where IDs may not match (e.g. style
 named `"Heading 1"` with a space), `ensure_style(doc, "Heading1",
@@ -112,7 +119,7 @@ for document-wide normalisation.
 | 2 | Style inspection (`styles/inspect`, `styles/theme`) | ✓ complete |
 | 3 | Style modification (`styles/modify`) | ✓ complete |
 | 3.5 | Style remapping (`find_matching_style`, `remap_styles`, `ensure_style(match_existing=)`) | ✓ complete |
-| 4 | Content controls (`controls/`) | not started |
+| 4 | Content controls (`controls/`) | ✓ complete |
 | 5 | Fields + document protection (`fields/`, `protection/`) | not started |
 | 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | not started |
 

@@ -1390,9 +1390,13 @@ _BUILTIN_STYLES: dict[str, dict[str, Any]] = {
         "ui_priority": 30,
         "q_format": True,
         "properties": {
+            "spacing_before": 360,
+            "spacing_after": 360,
+            "indent_left": 864,
+            "indent_right": 864,
+            "alignment": "center",
             "italic": True,
-            "bold": True,
-            "color_rgb": "2F5496",
+            "color_rgb": "0F4761",
         },
     },
     "ListParagraph": {
@@ -1414,9 +1418,10 @@ _BUILTIN_STYLES: dict[str, dict[str, Any]] = {
         "q_format": True,
         "properties": {
             "spacing_after": 200,
+            "line_spacing": 1.0,
             "font_size": 9.0,
             "italic": True,
-            "color_rgb": "44546A",
+            "color_rgb": "0E2841",
         },
     },
     "Hyperlink": {
@@ -1436,6 +1441,911 @@ _BUILTIN_STYLES: dict[str, dict[str, Any]] = {
         "ui_priority": 99,
         "properties": {
             "color_rgb": "808080",
+        },
+    },
+    # ----------------------------------------------------------------------
+    # Tier A — structural essentials (verified against python-docx's bundled
+    # default.docx, where these are already materialised).
+    # ----------------------------------------------------------------------
+    "NoSpacing": {
+        "style_type": "paragraph",
+        "name": "No Spacing",
+        "ui_priority": 1,
+        "q_format": True,
+        "properties": {
+            "spacing_before": 0,
+            "spacing_after": 0,
+            "line_spacing": 1.0,
+        },
+    },
+    "Header": {
+        "style_type": "paragraph",
+        "name": "header",
+        "based_on": "Normal",
+        "linked_style": "HeaderChar",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 0,
+            "line_spacing": 1.0,
+        },
+    },
+    "HeaderChar": {
+        "style_type": "character",
+        "name": "Header Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Header",
+        "ui_priority": 99,
+    },
+    "Footer": {
+        "style_type": "paragraph",
+        "name": "footer",
+        "based_on": "Normal",
+        "linked_style": "FooterChar",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 0,
+            "line_spacing": 1.0,
+        },
+    },
+    "FooterChar": {
+        "style_type": "character",
+        "name": "Footer Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Footer",
+        "ui_priority": 99,
+    },
+    "TableGrid": {
+        "style_type": "table",
+        "name": "Table Grid",
+        "based_on": "TableNormal",
+        "ui_priority": 59,
+    },
+    # ----------------------------------------------------------------------
+    # Tier B — inline emphasis (character styles).
+    # ----------------------------------------------------------------------
+    "Strong": {
+        "style_type": "character",
+        "name": "Strong",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 22,
+        "q_format": True,
+        "properties": {
+            "bold": True,
+        },
+    },
+    "Emphasis": {
+        "style_type": "character",
+        "name": "Emphasis",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 20,
+        "q_format": True,
+        "properties": {
+            "italic": True,
+        },
+    },
+    "IntenseEmphasis": {
+        "style_type": "character",
+        "name": "Intense Emphasis",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 21,
+        "q_format": True,
+        "properties": {
+            "bold": True,
+            "italic": True,
+            "color_rgb": "4F81BD",
+        },
+    },
+    "SubtleEmphasis": {
+        "style_type": "character",
+        "name": "Subtle Emphasis",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 19,
+        "q_format": True,
+        "properties": {
+            "italic": True,
+            "color_rgb": "808080",
+        },
+    },
+    "IntenseReference": {
+        "style_type": "character",
+        "name": "Intense Reference",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 32,
+        "q_format": True,
+        "properties": {
+            "bold": True,
+            "small_caps": True,
+            "color_rgb": "C0504D",
+            "underline": "single",
+        },
+    },
+    "SubtleReference": {
+        "style_type": "character",
+        "name": "Subtle Reference",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 31,
+        "q_format": True,
+        "properties": {
+            "small_caps": True,
+            "color_rgb": "C0504D",
+            "underline": "single",
+        },
+    },
+    "BookTitle": {
+        "style_type": "character",
+        "name": "Book Title",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 33,
+        "q_format": True,
+        "properties": {
+            "bold": True,
+            "small_caps": True,
+        },
+    },
+    # ----------------------------------------------------------------------
+    # Tier C — linked character styles for the heading / title family.
+    # Word auto-creates these when the paragraph style has a w:link; carrying
+    # them in the table lets ensure_style materialise them on docs that lack
+    # them, so the link target isn't dangling.
+    # ----------------------------------------------------------------------
+    "Heading1Char": {
+        "style_type": "character",
+        "name": "Heading 1 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading1",
+        "ui_priority": 9,
+        "properties": {
+            "bold": True,
+            "font_size": 14.0,
+            "color_rgb": "2F5496",
+        },
+    },
+    "Heading2Char": {
+        "style_type": "character",
+        "name": "Heading 2 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading2",
+        "ui_priority": 9,
+        "properties": {
+            "bold": True,
+            "font_size": 13.0,
+            "color_rgb": "2F5496",
+        },
+    },
+    "Heading3Char": {
+        "style_type": "character",
+        "name": "Heading 3 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading3",
+        "ui_priority": 9,
+        "properties": {
+            "bold": True,
+            "font_size": 12.0,
+            "color_rgb": "1F3763",
+        },
+    },
+    "Heading4Char": {
+        "style_type": "character",
+        "name": "Heading 4 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading4",
+        "ui_priority": 9,
+        "properties": {
+            "italic": True,
+            "color_rgb": "2F5496",
+        },
+    },
+    "Heading5Char": {
+        "style_type": "character",
+        "name": "Heading 5 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading5",
+        "ui_priority": 9,
+        "properties": {
+            "color_rgb": "2F5496",
+        },
+    },
+    "Heading6Char": {
+        "style_type": "character",
+        "name": "Heading 6 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading6",
+        "ui_priority": 9,
+        "properties": {
+            "color_rgb": "1F3763",
+        },
+    },
+    "Heading7Char": {
+        "style_type": "character",
+        "name": "Heading 7 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading7",
+        "ui_priority": 9,
+        "properties": {
+            "italic": True,
+            "color_rgb": "1F3763",
+        },
+    },
+    "Heading8Char": {
+        "style_type": "character",
+        "name": "Heading 8 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading8",
+        "ui_priority": 9,
+        "properties": {
+            "font_size": 10.5,
+            "color_rgb": "272727",
+        },
+    },
+    "Heading9Char": {
+        "style_type": "character",
+        "name": "Heading 9 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Heading9",
+        "ui_priority": 9,
+        "properties": {
+            "italic": True,
+            "font_size": 10.5,
+            "color_rgb": "272727",
+        },
+    },
+    "TitleChar": {
+        "style_type": "character",
+        "name": "Title Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Title",
+        "ui_priority": 10,
+        "properties": {
+            "font_size": 28.0,
+            "color_rgb": "000000",
+        },
+    },
+    "SubtitleChar": {
+        "style_type": "character",
+        "name": "Subtitle Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Subtitle",
+        "ui_priority": 11,
+        "properties": {
+            "italic": True,
+            "font_size": 11.0,
+            "color_rgb": "5A5A5A",
+        },
+    },
+    "QuoteChar": {
+        "style_type": "character",
+        "name": "Quote Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "Quote",
+        "ui_priority": 29,
+        "properties": {
+            "italic": True,
+            "color_rgb": "404040",
+        },
+    },
+    "IntenseQuoteChar": {
+        "style_type": "character",
+        "name": "Intense Quote Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "IntenseQuote",
+        "ui_priority": 30,
+        "properties": {
+            "italic": True,
+            "color_rgb": "0F4761",
+        },
+    },
+    # ----------------------------------------------------------------------
+    # Tier D — list paragraph variants (1–5 levels).
+    # The numPr child Word writes for these styles is a placeholder without
+    # @val (no concrete numbering link); we omit it here and rely on basedOn
+    # plus indent. Callers wanting actual auto-numbering should attach a
+    # numbering definition separately.
+    # ----------------------------------------------------------------------
+    "List": {
+        "style_type": "paragraph",
+        "name": "List",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "indent_left": 360,
+            "indent_first_line": -360,
+        },
+    },
+    "List2": {
+        "style_type": "paragraph",
+        "name": "List 2",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "indent_left": 720,
+            "indent_first_line": -360,
+        },
+    },
+    "List3": {
+        "style_type": "paragraph",
+        "name": "List 3",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "indent_left": 1080,
+            "indent_first_line": -360,
+        },
+    },
+    "ListBullet": {
+        "style_type": "paragraph",
+        "name": "List Bullet",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListBullet2": {
+        "style_type": "paragraph",
+        "name": "List Bullet 2",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListBullet3": {
+        "style_type": "paragraph",
+        "name": "List Bullet 3",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListBullet4": {
+        "style_type": "paragraph",
+        "name": "List Bullet 4",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListBullet5": {
+        "style_type": "paragraph",
+        "name": "List Bullet 5",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListNumber": {
+        "style_type": "paragraph",
+        "name": "List Number",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListNumber2": {
+        "style_type": "paragraph",
+        "name": "List Number 2",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListNumber3": {
+        "style_type": "paragraph",
+        "name": "List Number 3",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListNumber4": {
+        "style_type": "paragraph",
+        "name": "List Number 4",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListNumber5": {
+        "style_type": "paragraph",
+        "name": "List Number 5",
+        "based_on": "Normal",
+        "ui_priority": 99,
+    },
+    "ListContinue": {
+        "style_type": "paragraph",
+        "name": "List Continue",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+            "indent_left": 360,
+        },
+    },
+    "ListContinue2": {
+        "style_type": "paragraph",
+        "name": "List Continue 2",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+            "indent_left": 720,
+        },
+    },
+    "ListContinue3": {
+        "style_type": "paragraph",
+        "name": "List Continue 3",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+            "indent_left": 1080,
+        },
+    },
+    "ListContinue4": {
+        "style_type": "paragraph",
+        "name": "List Continue 4",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+            "indent_left": 1440,
+        },
+    },
+    "ListContinue5": {
+        "style_type": "paragraph",
+        "name": "List Continue 5",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+            "indent_left": 1800,
+        },
+    },
+    # ----------------------------------------------------------------------
+    # Tier E — TOC / index / table-of-* navigation styles.
+    # TOC1–9 and TOC Heading defaults extracted from a Word-saved sample
+    # (tests/fixtures/word_samples/sample-1.docx, 2026-05-19): TOC1 spacing_after=100
+    # with no indent; TOC2..9 add a 240-twip progressive indent (240, 480, 720,
+    # 960, 1200, 1440, 1680, 1920). TOCHeading is basedOn=Heading1 with a
+    # 240-twip spacing_before and outline_level=9.
+    # ----------------------------------------------------------------------
+    "TOCHeading": {
+        "style_type": "paragraph",
+        "name": "TOC Heading",
+        "based_on": "Heading1",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "q_format": True,
+        "properties": {
+            "spacing_before": 240,
+            "outline_level": 9,
+        },
+    },
+    "TOC1": {
+        "style_type": "paragraph",
+        "name": "toc 1",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+        },
+    },
+    "TOC2": {
+        "style_type": "paragraph",
+        "name": "toc 2",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 240,
+        },
+    },
+    "TOC3": {
+        "style_type": "paragraph",
+        "name": "toc 3",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 480,
+        },
+    },
+    "TOC4": {
+        "style_type": "paragraph",
+        "name": "toc 4",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 720,
+        },
+    },
+    "TOC5": {
+        "style_type": "paragraph",
+        "name": "toc 5",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 960,
+        },
+    },
+    "TOC6": {
+        "style_type": "paragraph",
+        "name": "toc 6",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 1200,
+        },
+    },
+    "TOC7": {
+        "style_type": "paragraph",
+        "name": "toc 7",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 1440,
+        },
+    },
+    "TOC8": {
+        "style_type": "paragraph",
+        "name": "toc 8",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 1680,
+        },
+    },
+    "TOC9": {
+        "style_type": "paragraph",
+        "name": "toc 9",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 39,
+        "properties": {
+            "spacing_after": 100,
+            "indent_left": 1920,
+        },
+    },
+    "IndexHeading": {
+        "style_type": "paragraph",
+        "name": "index heading",
+        "based_on": "Normal",
+        "next_style": "Index1",
+        "ui_priority": 99,
+        "properties": {
+            "bold": True,
+        },
+    },
+    "Index1": {
+        "style_type": "paragraph",
+        "name": "index 1",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "indent_left": 240,
+            "indent_first_line": -240,
+        },
+    },
+    # Word writes these with a lowercase 'o' in the styleId (TableofFigures,
+    # not TableOfFigures) — verified against a Word-saved sample.
+    "TableofFigures": {
+        "style_type": "paragraph",
+        "name": "table of figures",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 0,
+        },
+    },
+    "TableofAuthorities": {
+        "style_type": "paragraph",
+        "name": "table of authorities",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 0,
+            "indent_left": 240,
+            "indent_first_line": -240,
+        },
+    },
+    "TOAHeading": {
+        "style_type": "paragraph",
+        "name": "toa heading",
+        "based_on": "Normal",
+        "next_style": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_before": 120,
+            "bold": True,
+        },
+    },
+    # ----------------------------------------------------------------------
+    # Tier F — footnotes / endnotes / comments / balloons. Foot/endnote and
+    # comment defaults extracted from sample-1.docx and Balloon* from
+    # sample-2.docx (tests/fixtures/word_samples/, 2026-05-19): 10pt text,
+    # single line spacing, superscript for the reference styles, Segoe UI
+    # 9pt for Balloon*.
+    # ----------------------------------------------------------------------
+    "FootnoteText": {
+        "style_type": "paragraph",
+        "name": "footnote text",
+        "based_on": "Normal",
+        "linked_style": "FootnoteTextChar",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 0,
+            "font_size": 10.0,
+        },
+    },
+    "FootnoteTextChar": {
+        "style_type": "character",
+        "name": "Footnote Text Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "FootnoteText",
+        "ui_priority": 99,
+        "properties": {
+            "font_size": 10.0,
+        },
+    },
+    "FootnoteReference": {
+        "style_type": "character",
+        "name": "footnote reference",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 99,
+        "properties": {
+            "vert_align": "superscript",
+        },
+    },
+    "EndnoteText": {
+        "style_type": "paragraph",
+        "name": "endnote text",
+        "based_on": "Normal",
+        "linked_style": "EndnoteTextChar",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 0,
+            "font_size": 10.0,
+        },
+    },
+    "EndnoteTextChar": {
+        "style_type": "character",
+        "name": "Endnote Text Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "EndnoteText",
+        "ui_priority": 99,
+        "properties": {
+            "font_size": 10.0,
+        },
+    },
+    "EndnoteReference": {
+        "style_type": "character",
+        "name": "endnote reference",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 99,
+        "properties": {
+            "vert_align": "superscript",
+        },
+    },
+    "CommentText": {
+        "style_type": "paragraph",
+        "name": "annotation text",
+        "based_on": "Normal",
+        "linked_style": "CommentTextChar",
+        "ui_priority": 99,
+        "properties": {
+            "line_spacing": 1.0,
+            "font_size": 10.0,
+        },
+    },
+    "CommentTextChar": {
+        "style_type": "character",
+        "name": "Comment Text Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "CommentText",
+        "ui_priority": 99,
+        "properties": {
+            "font_size": 10.0,
+        },
+    },
+    "CommentReference": {
+        "style_type": "character",
+        "name": "annotation reference",
+        "based_on": "DefaultParagraphFont",
+        "ui_priority": 99,
+        "properties": {
+            "font_size": 8.0,
+        },
+    },
+    "CommentSubject": {
+        "style_type": "paragraph",
+        "name": "annotation subject",
+        "based_on": "CommentText",
+        "next_style": "CommentText",
+        "linked_style": "CommentSubjectChar",
+        "ui_priority": 99,
+        "properties": {
+            "bold": True,
+        },
+    },
+    "CommentSubjectChar": {
+        "style_type": "character",
+        "name": "Comment Subject Char",
+        "based_on": "CommentTextChar",
+        "linked_style": "CommentSubject",
+        "ui_priority": 99,
+        "properties": {
+            "bold": True,
+            "font_size": 10.0,
+        },
+    },
+    "BalloonText": {
+        "style_type": "paragraph",
+        "name": "Balloon Text",
+        "based_on": "Normal",
+        "linked_style": "BalloonTextChar",
+        "ui_priority": 99,
+        "properties": {
+            "font_name": "Segoe UI",
+            "font_size": 9.0,
+            "spacing_after": 0,
+            "line_spacing": 1.0,
+        },
+    },
+    "BalloonTextChar": {
+        "style_type": "character",
+        "name": "Balloon Text Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "BalloonText",
+        "ui_priority": 99,
+        "properties": {
+            "font_name": "Segoe UI",
+            "font_size": 9.0,
+        },
+    },
+    # ----------------------------------------------------------------------
+    # Tier G — misc text-block styles (code, macro, indents). BodyText/2/3
+    # and their Char companions, MacroText/Char, and the Header/Footer pair
+    # (Tier A above) all extracted from a Word-saved sample (2026-05-19).
+    # Tabs on Header/Footer/MacroText and theme fonts on IndexHeading are
+    # known limitations of the property writer and intentionally omitted.
+    # ----------------------------------------------------------------------
+    "BodyText": {
+        "style_type": "paragraph",
+        "name": "Body Text",
+        "based_on": "Normal",
+        "linked_style": "BodyTextChar",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+        },
+    },
+    "BodyTextChar": {
+        "style_type": "character",
+        "name": "Body Text Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "BodyText",
+        "ui_priority": 99,
+    },
+    "BodyText2": {
+        "style_type": "paragraph",
+        "name": "Body Text 2",
+        "based_on": "Normal",
+        "linked_style": "BodyText2Char",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+            "line_spacing": 2.0,
+        },
+    },
+    "BodyText2Char": {
+        "style_type": "character",
+        "name": "Body Text 2 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "BodyText2",
+        "ui_priority": 99,
+    },
+    "BodyText3": {
+        "style_type": "paragraph",
+        "name": "Body Text 3",
+        "based_on": "Normal",
+        "linked_style": "BodyText3Char",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 120,
+            "font_size": 8.0,
+        },
+    },
+    "BodyText3Char": {
+        "style_type": "character",
+        "name": "Body Text 3 Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "BodyText3",
+        "ui_priority": 99,
+        "properties": {
+            "font_size": 8.0,
+        },
+    },
+    "MacroText": {
+        "style_type": "paragraph",
+        "name": "macro",
+        "linked_style": "MacroTextChar",
+        "ui_priority": 99,
+        "properties": {
+            "spacing_after": 0,
+            "font_name": "Consolas",
+            "font_size": 10.0,
+        },
+    },
+    "MacroTextChar": {
+        "style_type": "character",
+        "name": "Macro Text Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "MacroText",
+        "ui_priority": 99,
+        "properties": {
+            "font_name": "Consolas",
+            "font_size": 10.0,
+        },
+    },
+    "HTMLPreformatted": {
+        "style_type": "paragraph",
+        "name": "HTML Preformatted",
+        "based_on": "Normal",
+        "linked_style": "HTMLPreformattedChar",
+        "ui_priority": 99,
+        "properties": {
+            "font_name": "Consolas",
+            "font_size": 10.0,
+        },
+    },
+    "HTMLPreformattedChar": {
+        "style_type": "character",
+        "name": "HTML Preformatted Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "HTMLPreformatted",
+        "ui_priority": 99,
+        "properties": {
+            "font_name": "Consolas",
+            "font_size": 10.0,
+        },
+    },
+    "PlainText": {
+        "style_type": "paragraph",
+        "name": "Plain Text",
+        "based_on": "Normal",
+        "linked_style": "PlainTextChar",
+        "ui_priority": 99,
+        "properties": {
+            "font_name": "Consolas",
+            "font_size": 10.5,
+        },
+    },
+    "PlainTextChar": {
+        "style_type": "character",
+        "name": "Plain Text Char",
+        "based_on": "DefaultParagraphFont",
+        "linked_style": "PlainText",
+        "ui_priority": 99,
+        "properties": {
+            "font_name": "Consolas",
+            "font_size": 10.5,
+        },
+    },
+    "NormalIndent": {
+        "style_type": "paragraph",
+        "name": "Normal Indent",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "indent_left": 720,
+        },
+    },
+    "BlockText": {
+        "style_type": "paragraph",
+        "name": "Block Text",
+        "based_on": "Normal",
+        "ui_priority": 99,
+        "properties": {
+            "indent_left": 1152,
+            "indent_right": 1152,
+            "italic": True,
+            "color_rgb": "156082",
         },
     },
 }

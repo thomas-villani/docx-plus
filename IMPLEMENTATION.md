@@ -509,6 +509,149 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-19 — Second-pass refinement from sample doc #2 — complete
+
+- User produced `tests/fixtures/word_samples/sample-2.docx` covering the 24
+  remaining entries (Header/Footer, BodyText family, MacroText,
+  BalloonText, IndexHeading, TOC3–9). All 22 of the actively-sourced
+  targets now have authoritative Word values.
+- Confirmations (no change needed): TOC3–9 indent progression
+  480/720/960/1200/1440/1680/1920 exactly matches the previous
+  240-twip-step refinement. BodyText / BodyText2 (line=480 = 2.0x) /
+  BodyText3 (sz=16 = 8pt) all already correct. IndexHeading already
+  carries `bold: True` (Word adds majorHAnsi theme fonts on top, but
+  those aren't writer-supported and are documented as a limitation).
+- Refinements:
+  - **Header / Footer**: added `line_spacing: 1.0` so the header/footer
+    paragraph overrides Normal's 1.08 line spacing back to single, as
+    Word does. Tabs (`center@4680, right@9360`) intentionally omitted —
+    no tab-stop support in `_write_paragraph_property`.
+  - **MacroText / MacroTextChar**: font `Courier` → `Consolas` (Word's
+    actual choice for monospace styles); added `spacing_after: 0` on
+    MacroText. 9-tab progression at every 480 twips omitted (same
+    limitation as Header/Footer).
+  - **BalloonText / BalloonTextChar**: font `Tahoma` → `Segoe UI` (Word
+    365's current default for comment balloons); size 8.0 → 9.0; added
+    `line_spacing: 1.0` on BalloonText.
+- Tier G header comment updated to cite the sample as authoritative.
+- Gates: pytest 239/239, mypy --strict clean, ruff check + format clean.
+
+### 2026-05-19 — Latent built-in defaults refined from Word sample — complete
+
+- Extracted authoritative style XML from a Word-saved sample
+  (`tests/fixtures/word_samples/sample-1.docx`) the user produced after applying
+  each latent style to a paragraph and saving in Word 365. The sample
+  materialised 60 styles, of which 23 of our 47 target latent entries.
+- Refined `_BUILTIN_STYLES` in `docx_plus/styles/modify.py`:
+  - **TOC2..9 indent progression**: was 220-twip step (220/440/660/880/
+    1100/1320/1540/1760); now 240-twip (240/480/720/960/1200/1440/1680/
+    1920) to match Word's stock pattern.
+  - **TOCHeading**: added `spacing_before: 240` to match Word's stock
+    spacing (kept `outline_level: 9` and `q_format: True`).
+  - **TOAHeading**: removed `font_size: 12.0` — Word inherits size via the
+    majorHAnsi theme font, so a literal override is wrong. Kept `bold`
+    and `spacing_before: 120`.
+  - **Index1**: indent 200/-200 → 240/-240 (hanging indent in twips).
+  - **CommentText**: dropped `spacing_after: 0` (Word doesn't set it),
+    added `line_spacing: 1.0` and `font_size: 10.0`.
+  - **CommentTextChar / CommentSubjectChar**: added `font_size: 10.0`.
+  - **BlockText**: indent 1440/1440 → 1152/1152, dropped
+    `spacing_after: 120`, added `italic: True` and `color_rgb: "156082"`
+    (Word's accent1-tracked grey-blue). Border (`pBdr`) intentionally
+    omitted — our property writer doesn't model paragraph borders.
+- Tier E and Tier F header comments updated to cite the Word-sample as
+  the source of authority (replacing the prior "ECMA-376 pattern, refine
+  later" notes).
+- **Bug fix** flushed out by the sample: `TableofFigures` and
+  `TableofAuthorities` were keyed under `TableOfFigures` / `TableOfAuthorities`
+  (capital `O`) in `_BUILTIN_STYLES`. Word writes the styleId with a
+  lowercase `o`. Renamed the keys and refined defaults from the sample
+  (`spacing_after: 0` on both; `indent_left: 240, indent_first_line:
+  -240` on TableofAuthorities). `IntenseQuote`/`IntenseQuoteChar` also
+  refined: removed `bold` (Word doesn't set it), color `2F5496` →
+  `0F4761` (Word's accent1-shaded), added `spacing_before/after: 360`,
+  `indent_left/right: 864`, `alignment: "center"`. `Caption` color
+  `44546A` → `0E2841` (Word's text2 theme color), added
+  `line_spacing: 1.0`.
+- Out of scope for this pass: Header/Footer, Body Text 1-3 family, Macro
+  Text, Balloon Text, Index Heading, TOC3-9 spot checks (the 240-step is
+  the source-of-truth) — these didn't materialise in the sample (Word
+  only materialises a latent style after it's applied to content).
+  Current entries stay as ECMA-376-pattern defaults.
+- Gates: pytest 239/239 green, mypy --strict clean, ruff check + format
+  clean. Visual smoke check on materialised XML confirms every refined
+  entry round-trips correctly via python-docx.
+- Note on `ensure_style` semantics: for styles already present in
+  python-docx's bundled `default.docx` (TOCHeading, ListBullet, etc.),
+  `ensure_style` is a no-op — the template wins. The refined
+  `_BUILTIN_STYLES` entries take effect for stripped templates,
+  third-party docs missing the style, and `remap_styles(create_missing=
+  True)` paths. This is the intentional idempotency contract.
+
+### 2026-05-15 — Built-in styles table expansion — complete
+
+- `_BUILTIN_STYLES` in `docx_plus/styles/modify.py` grew from 22 → 107
+  entries (+85). Coverage is now well past SPEC §5's "at minimum" set, into
+  the territory of "every style a real Word user is likely to reach for"
+  per the Exhaustive scope choice.
+- **Tier A — structural essentials** (6): `NoSpacing`, `Header`,
+  `HeaderChar`, `Footer`, `FooterChar`, `TableGrid`.
+- **Tier B — inline emphasis (character)** (7): `Strong`, `Emphasis`,
+  `IntenseEmphasis`, `SubtleEmphasis`, `IntenseReference`,
+  `SubtleReference`, `BookTitle`.
+- **Tier C — linked Char counterparts of paragraph styles** (13):
+  `Heading1Char`–`Heading9Char`, `TitleChar`, `SubtitleChar`, `QuoteChar`,
+  `IntenseQuoteChar`. These are the targets of `linked_style` on the
+  paragraph-style entries; without them the link refs would dangle on docs
+  that need both materialised.
+- **Tier D — list paragraph variants** (18): `List`/`List2`/`List3`,
+  `ListBullet`/`2`/`3`/`4`/`5`, `ListNumber`/`2`/`3`/`4`/`5`,
+  `ListContinue`/`2`/`3`/`4`/`5`. The Word `numPr` placeholder child is
+  intentionally omitted — the table seeds shape (basedOn=Normal + indent),
+  and callers wanting actual auto-numbering should attach a numbering
+  definition separately.
+- **Tier E — TOC / index / table-of-* navigation** (16): `TOCHeading`,
+  `TOC1`–`TOC9`, `IndexHeading`, `Index1`, `TableofFigures`,
+  `TableofAuthorities`, `TOAHeading`. `TOC1`–`TOC9` use Word's stock
+  240-twip per-level indent progression.
+- **Tier F — footnotes / endnotes / comments / balloons** (12):
+  `FootnoteText`/`Char`, `FootnoteReference`, `EndnoteText`/`Char`,
+  `EndnoteReference`, `CommentText`/`Char`, `CommentReference`,
+  `CommentSubject`/`Char`, `BalloonText`/`Char`. Word uses the legacy
+  `annotation*` names (`annotation text`, `annotation reference`,
+  `annotation subject`) — we follow that convention for `w:name` while
+  exposing the modern `Comment*` style ids users actually type.
+- **Tier G — misc text-block** (13): `BodyText`/`Char`, `BodyText2`/`Char`,
+  `BodyText3`/`Char`, `MacroText`/`Char`, `HTMLPreformatted`/`Char`,
+  `PlainText`/`Char`, `NormalIndent`, `BlockText`.
+- **Defaults sourcing — important per IMPLEMENTATION.md §7 "Latent
+  built-ins"**: ~40 of the 85 new entries (Header/Footer/NoSpacing/Strong/
+  Emphasis/list variants/BodyText/MacroText/heading & title Char styles/
+  TOCHeading/TableGrid) had structural fields extracted directly from
+  python-docx's bundled `default.docx` template — these are
+  Word-authoritative. The remaining ~45 (TOC1–9, footnote/endnote/comment/
+  balloon family, index, table-of-*, HTMLPreformatted, PlainText,
+  NormalIndent, BlockText) are truly latent (in the latentStyles block but
+  never materialised) and use Word's documented defaults from ECMA-376
+  conventions. **Action item**: refine these against a Word-saved sample
+  doc when one is available — the user offered to produce one in MS Word.
+- Theme-color attributes (`themeColor`, `themeShade`, `asciiTheme`) and
+  presence-only flags (`semiHidden`, `unhideWhenUsed`) are intentionally
+  not emitted — they require new property kinds in `_BUILTIN_STYLES`'s
+  schema. Result: visible formatting is correct but theme-tracked colors
+  resolve to plain RGB. Acceptable for v0.1; can extend if needed.
+- Quality gates green: pytest 239/239 (the existing
+  `test_ensure_style_all_known_builtins_succeed` iterates every entry in
+  `_BUILTIN_STYLES` so all 85 new entries are exercised), mypy --strict
+  (18 source files), ruff check, ruff format --check on `docx_plus/`.
+- Smoke check (transient script): 32 sampled new entries `ensure_style`'d,
+  saved via python-docx, reopened, and present in the resulting
+  `styles.xml`. No regressions in the 239-test suite.
+
+**Next**: when a Word-saved sample doc is provided, re-extract authoritative
+defaults for the ~45 truly-latent entries to replace the ECMA-376-pattern
+guesses. Then proceed to Phase 5 (Fields + protection).
+
 ### 2026-05-15 — Phase 4: Forms / content controls — complete
 
 - `controls/builder.py` adds `FormBuilder` with `add_text_control`,

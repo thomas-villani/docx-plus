@@ -230,38 +230,60 @@ document-wide normalisation.
 
 ## §5 Built-in styles table
 
-`_BUILTIN_STYLES` in `styles/modify.py:1154` enumerates 19 of Word's
-built-in styles, covering the SPEC §5 "at minimum" set:
+`_BUILTIN_STYLES` in `styles/modify.py:1154` enumerates **107 of Word's
+built-in styles** — well past SPEC §5's "at minimum" set, covering
+essentially every style a real Word user reaches for. The entries are
+grouped into seven tiers:
 
-| Style ID | Type | Notes |
-|---|---|---|
-| `Normal` | paragraph | default; ui_priority=0; qFormat |
-| `Heading1` – `Heading9` | paragraph | ui_priority=9; qFormat; sizes 16/13/12/11/11/11/11/10/9 pt (Word-2013 defaults) |
-| `Title` | paragraph | ui_priority=10; qFormat; 28pt |
-| `Subtitle` | paragraph | ui_priority=11; qFormat; italic 11pt |
-| `Quote` | paragraph | ui_priority=29; qFormat; italic |
-| `IntenseQuote` | paragraph | ui_priority=30; qFormat; italic + bold |
-| `ListParagraph` | paragraph | ui_priority=34; qFormat; indent_left=720 |
-| `Caption` | paragraph | ui_priority=35; qFormat; italic 9pt |
-| `DefaultParagraphFont` | character | default; ui_priority=1 |
-| `Hyperlink` | character | ui_priority=99; color #0563C1; underline single |
-| `PlaceholderText` | character | ui_priority=99; color #808080 |
-| `TableNormal` | table | default; ui_priority=99 |
-| `NoList` | numbering | default; ui_priority=99 |
+| Tier | Count | Coverage |
+|---|---:|---|
+| Core | 19 | `Normal`, `Heading1`–`Heading9`, `Title`, `Subtitle`, `Quote`, `IntenseQuote`, `ListParagraph`, `Caption`, `DefaultParagraphFont`, `Hyperlink`, `PlaceholderText`, `TableNormal`, `NoList` |
+| A — structural essentials | 6 | `NoSpacing`, `Header`/`HeaderChar`, `Footer`/`FooterChar`, `TableGrid` |
+| B — character emphasis | 7 | `Strong`, `Emphasis`, `IntenseEmphasis`, `SubtleEmphasis`, `IntenseReference`, `SubtleReference`, `BookTitle` |
+| C — heading linked-Char | 13 | `Heading1Char`–`Heading9Char`, `TitleChar`, `SubtitleChar`, `QuoteChar`, `IntenseQuoteChar` |
+| D — lists | 18 | `List`/`List2`/`List3`, `ListBullet`/`2`–`5`, `ListNumber`/`2`–`5`, `ListContinue`/`2`–`5` |
+| E — TOC / index / table-of-* | 16 | `TOCHeading`, `TOC1`–`TOC9`, `IndexHeading`, `Index1`, `TableofFigures`, `TableofAuthorities`, `TOAHeading` |
+| F — footnotes / endnotes / comments | 12 | `FootnoteText`/`Char`, `FootnoteReference`, `EndnoteText`/`Char`, `EndnoteReference`, `CommentText`/`Char`, `CommentReference`, `CommentSubject`/`Char`, `BalloonText`/`Char` |
+| G — body / macro / preformatted | 16 | `BodyText`/`2`/`3` + Char companions, `MacroText`/`Char`, `HTMLPreformatted`/`Char`, `PlainText`/`Char`, `NormalIndent`, `BlockText` |
 
-The numbers come from extracting `styles.xml` from documents Word has
-itself materialised, not from guessing. Built-ins materialise *without*
-`w:customStyle="1"` (they are not user-defined) and the four `default`
-entries carry `w:default="1"`.
+Defaults come from extracting `styles.xml` from real Word-saved
+documents (Word 365, 2026-05-19) — *not* from guessing or copying
+Word-2007 numbers. About 65 entries (Core, A, B, the most-common subset
+of C–G) are sourced from python-docx's bundled `default.docx`; the
+latent remainder (TOC*, footnote/endnote/comment family, Index*, table-
+of-*, HTMLPreformatted, PlainText, BodyText, MacroText, BalloonText,
+BlockText) were extracted from Word-saved sample docs that materialise
+each style after it's applied to a paragraph.
+
+Built-ins materialise *without* `w:customStyle="1"` (they are not
+user-defined) and the four `default` entries carry `w:default="1"`.
+
+**Known property-writer limitations.** A handful of Word's defaults
+can't currently be emitted because the property writer doesn't model
+them — these are intentionally omitted from `_BUILTIN_STYLES`:
+
+- **Theme attributes** (`themeColor`, `themeShade`, `asciiTheme`, etc.)
+  on `Heading*Char`, `Caption`, `IntenseQuote`, `IndexHeading`,
+  `TOAHeading`. Literal RGB/font values are emitted instead — visually
+  equivalent for users on Word's default Office theme.
+- **`semiHidden` / `unhideWhenUsed`** presence-only flags on latent
+  styles. Not a property kind we expose; styles still work, they just
+  always show in Word's style gallery.
+- **Tab stops** on `Header`, `Footer`, `MacroText`.
+- **Paragraph borders** (`pBdr`) on `IntenseQuote`, `BlockText`.
+- **`numPr` placeholder** on `ListBullet`/`ListNumber` — these styles
+  in Word's default ship with an empty `numPr` child (a hint, no real
+  numbering link). Skipped; callers attach numbering separately.
 
 `ensure_style` is idempotent and aware that **python-docx already ships
-a `styles.xml` with most of these latent built-ins materialised**, but
-at Word-2007 defaults (e.g. Heading1 = 14pt #365F91), not Word-2013.
+a `styles.xml` with many of these latent built-ins materialised** at
+Word-2007 defaults (e.g. Heading1 = 14pt #365F91), not Word-2013/365.
 This is deliberate: `ensure_style` consults the built-ins table **only**
 when the ID is genuinely missing from `styles.xml`. If python-docx
 already shipped it, the existing definition is returned unchanged. The
 table is a "the style is absent, here is what Word would have written"
-fallback, not a "force my preferred defaults" mechanism.
+fallback, not a "force my preferred defaults" mechanism — for that,
+use `modify_style` or `remap_styles`.
 
 ---
 
