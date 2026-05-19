@@ -5,7 +5,7 @@ description = "OOXML-level extensions for python-docx: style cascade, content co
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
-authors = [{ name = "docx_plus contributors" }]
+authors = [{ name = "Tom Villani, PhD", email = "tomrhobus@gmail.com" }]
 keywords = ["docx", "ooxml", "word", "python-docx", "styles", "forms"]
 classifiers = [
     "Development Status :: 3 - Alpha",

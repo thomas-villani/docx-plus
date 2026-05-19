@@ -1,6 +1,6 @@
 site_name: docx_plus
 site_description: OOXML-level extensions for python-docx — style cascade, content controls, fields.
-site_author: docx_plus contributors
+site_author: Tom Villani, PhD
 
 docs_dir: docs
 

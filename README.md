@@ -204,4 +204,4 @@ cover dates and any other complex field (TOC, REF, MERGEFIELD, …).
 
 ## License
 
-MIT (placeholder — confirm before publishing). See [`LICENSE`](LICENSE).
+MIT. Copyright (c) 2026 Tom Villani, PhD. See [`LICENSE`](LICENSE).
