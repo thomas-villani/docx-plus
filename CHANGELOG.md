@@ -6,7 +6,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.2.0] — 2026-MM-DD
+## [0.2.0] — 2026-05-19
 
 Second cycle. Four new capability modules — anchored comments, layout
 extras, bookmarks with cross-references, and footnotes / endnotes —
@@ -68,7 +68,7 @@ plus a `core/parts.py` foundation for separate OOXML parts.
   (`STYLEREF`, sequence fields).
 - Everything else from SPEC §15 unchanged.
 
-## [0.1.0] — 2026-MM-DD
+## [0.1.0] — 2026-05-19
 
 First public release. The library composes with `python-docx` rather
 than replacing it: callers keep their `Document` object and use
