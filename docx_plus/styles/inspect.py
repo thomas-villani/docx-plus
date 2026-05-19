@@ -90,6 +90,15 @@ class ResolvedFormatting:
 
     Every field is ``None`` until some layer of the cascade sets it. Toggle
     properties carry their XOR-resolved boolean. SPEC §4 specifies the fields.
+
+    The six toggle properties currently surfaced (``bold``, ``italic``,
+    ``caps``, ``small_caps``, ``strike``, ``vanish``) are the ones with a
+    direct counterpart on this dataclass. SPEC §4 lists six others
+    (``bCs``, ``iCs``, ``emboss``, ``imprint``, ``outline``, ``shadow``)
+    that are spec-toggles but not yet exposed here — they are recognised
+    by the cascade walker but their XOR result is discarded. Documents
+    using those properties will not see them in the resolved output;
+    extending coverage is v0.2 work.
     """
 
     # Identity
@@ -667,7 +676,7 @@ def _document_of(target: Paragraph | Run | _Cell) -> Document:
 
 
 def _find_style(styles_root: etree._Element, style_id: str) -> etree._Element | None:
-    matches = xpath(styles_root, f"./w:style[@w:styleId='{style_id}']")
+    matches = xpath(styles_root, "./w:style[@w:styleId=$sid]", sid=style_id)
     return matches[0] if matches else None
 
 
@@ -711,7 +720,7 @@ def _enclosing_paragraph(r_element: etree._Element) -> etree._Element:
         if isinstance(node.tag, str) and etree.QName(node.tag).localname == "p":
             return node
         node = node.getparent()
-    raise ValueError("run is not inside a paragraph")
+    raise StyleCascadeError("run is not inside a paragraph")
 
 
 def _enclosing_cell(p_element: etree._Element) -> etree._Element | None:
@@ -748,7 +757,7 @@ def _numbering_root(doc: Document) -> etree._Element | None:
 
 
 def _resolve_abstract_num(numbering_root: etree._Element, num_id: int) -> etree._Element | None:
-    num_matches = xpath(numbering_root, f"./w:num[@w:numId='{num_id}']")
+    num_matches = xpath(numbering_root, "./w:num[@w:numId=$nid]", nid=str(num_id))
     if not num_matches:
         return None
     num_el = num_matches[0]
@@ -758,12 +767,16 @@ def _resolve_abstract_num(numbering_root: etree._Element, num_id: int) -> etree.
     abstract_id = abstract_ref.get(qn("w:val"))
     if abstract_id is None:
         return None
-    abstract_matches = xpath(numbering_root, f"./w:abstractNum[@w:abstractNumId='{abstract_id}']")
+    abstract_matches = xpath(
+        numbering_root,
+        "./w:abstractNum[@w:abstractNumId=$aid]",
+        aid=abstract_id,
+    )
     return abstract_matches[0] if abstract_matches else None
 
 
 def _find_level(abstract_num: etree._Element, ilvl: int) -> etree._Element | None:
-    matches = xpath(abstract_num, f"./w:lvl[@w:ilvl='{ilvl}']")
+    matches = xpath(abstract_num, "./w:lvl[@w:ilvl=$lvl]", lvl=str(ilvl))
     return matches[0] if matches else None
 
 

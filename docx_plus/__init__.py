@@ -1,7 +1,6 @@
 """docx_plus — OOXML-level extensions for python-docx.
 
-See ``SPEC.md`` at the project root for the public API contract. v0.1 is in
-progress; the package surface will grow as phases land.
+See ``SPEC.md`` at the project root for the public API contract.
 """
 
 from docx_plus.core import DocxPlusError

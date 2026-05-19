@@ -56,24 +56,37 @@ def sub(parent: etree._Element, tag: str, **attrs: str) -> etree._Element:
     return child
 
 
-def xpath(node: etree._Element, expr: str) -> list[Any]:
+def xpath(node: etree._Element, expr: str, **variables: Any) -> list[Any]:
     """Run an XPath query with the library's namespace map pre-bound.
 
     Uses :class:`lxml.etree.XPath` so the call works equally on raw lxml
     elements and on python-docx's :class:`BaseOxmlElement` subclasses (whose
     own ``xpath`` method does not accept a ``namespaces=`` kwarg).
 
+    Values that vary per call (style ids, numbering ids, etc.) should be
+    passed as ``**variables`` and referenced with ``$name`` in the
+    expression — this lets lxml escape them as XPath variables rather than
+    splicing the caller's string into the query, which avoids quote-handling
+    bugs and the obvious injection class.
+
     Args:
         node: Context node.
         expr: XPath expression that may reference ``w:``, ``w14:``, ``r:``,
-            ``mc:``, ``a:`` prefixes.
+            ``mc:``, ``a:`` prefixes plus any ``$name`` placeholders bound by
+            ``**variables``.
+        **variables: Values for ``$name`` placeholders in ``expr``. lxml
+            accepts ``bool``, ``int``, ``float``, and ``str``.
 
     Returns:
         The XPath result list (elements, attribute strings, etc.). Returned
         as ``list[Any]`` because XPath result types vary.
+
+    Example:
+        >>> # safe variable binding instead of f-string interpolation
+        >>> # xpath(styles_root, "./w:style[@w:styleId=$sid]", sid=style_id)
     """
     compiled = etree.XPath(expr, namespaces=NSMAP)
-    result = compiled(node)
+    result = compiled(node, **variables)
     if isinstance(result, list):
         return result
     return [result]

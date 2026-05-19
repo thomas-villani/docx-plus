@@ -8,6 +8,7 @@ from docx_plus.styles.inspect import (
     resolve_effective_formatting,
 )
 from docx_plus.styles.modify import (
+    InvalidColorError,
     StyleExistsError,
     StyleInfo,
     StyleInUseError,
@@ -26,6 +27,7 @@ from docx_plus.styles.modify import (
 
 __all__ = [
     "FormattingSource",
+    "InvalidColorError",
     "MissingPartError",
     "ResolvedFormatting",
     "StyleCascadeError",

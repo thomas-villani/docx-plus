@@ -353,6 +353,9 @@ def _read_date_value(sdt_pr: etree._Element) -> datetime | None:
     iso = date_el.get(qn("w:fullDate"))
     if iso is None:
         return None
+    # The ``Z`` → ``+00:00`` swap supports Python 3.10's ``fromisoformat``,
+    # which doesn't accept ``Z``. Drop the replacement once the minimum
+    # Python bumps to 3.11+, which parses ``Z`` natively.
     try:
         return datetime.fromisoformat(iso.replace("Z", "+00:00"))
     except ValueError:
@@ -476,6 +479,11 @@ def _render_date(value: datetime, fmt: str | None) -> str:
     ``w:date/@w:fullDate`` (ISO 8601), so the rendered text only needs to be
     a sane human-readable form. We special-case the common Word default and
     fall back to ISO date for anything else.
+
+    Word re-renders the displayed text on next open from the canonical
+    ``w:fullDate`` using the saved ``w:dateFormat``, so a "looks ISO until
+    Word touches it" output is correct, just not visually identical to
+    what Word would produce in the meantime.
     """
     if fmt == "M/d/yyyy" or fmt is None:
         return f"{value.month}/{value.day}/{value.year}"

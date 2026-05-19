@@ -1,9 +1,12 @@
 """Package part / relationship helpers.
 
-v0.1 stub. The actual call sites for these helpers are introduced in
-Phase 4 (Custom XML Part relationships for content controls binding is v0.2,
-but a small relationship-add helper is needed for controls in v0.1).
-SPEC §2 lists the responsibilities; this file will be fleshed out then.
+Intentionally empty in v0.1. Reserved for v0.2 binding work — adding
+Custom XML Parts and the relationships that wire repeating-section
+content controls to them. v0.1's content controls and fields write
+inline into the document body, so no relationship plumbing is needed
+yet. SPEC §2 lists the eventual responsibilities; SPEC §15 ("Data
+binding of content controls to Custom XML Parts") records the
+deferral.
 """
 
 from __future__ import annotations

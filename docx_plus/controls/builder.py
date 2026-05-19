@@ -49,6 +49,14 @@ class MissingNamespaceError(DocxPlusError):
     """Raised when a required namespace is not declared on the document root."""
 
 
+class InvalidDropdownItemError(DocxPlusError, TypeError):
+    """Raised when a dropdown ``items`` entry is not a ``str`` or ``(str, str)``.
+
+    Subclasses ``TypeError`` so existing ``except TypeError:`` clauses still
+    catch it; also subclasses :class:`DocxPlusError` per SPEC §9.7.
+    """
+
+
 # --------------------------------------------------------------------------
 # Module constants — match Word's defaults so the rendered controls look
 # right before the user touches them in Word.
@@ -57,8 +65,9 @@ class MissingNamespaceError(DocxPlusError):
 _PLACEHOLDER_STYLE_ID = "PlaceholderText"
 _PLACEHOLDER_STYLE_NAME = "Placeholder Text"
 
-_CHECKBOX_CHECKED_GLYPH = "☒"  # ☒
-_CHECKBOX_UNCHECKED_GLYPH = "☐"  # ☐
+# Match Word's default checkbox glyphs (MS Gothic, U+2612 / U+2610).
+_CHECKBOX_CHECKED_GLYPH = "☒"
+_CHECKBOX_UNCHECKED_GLYPH = "☐"
 _CHECKBOX_CHECKED_HEX = "2612"
 _CHECKBOX_UNCHECKED_HEX = "2610"
 _CHECKBOX_FONT = "MS Gothic"
@@ -350,7 +359,7 @@ def _normalise_dropdown_item(raw: DropdownItem) -> tuple[str, str]:
         return raw, raw
     if isinstance(raw, tuple) and len(raw) == 2 and all(isinstance(p, str) for p in raw):
         return raw[0], raw[1]
-    raise TypeError(
+    raise InvalidDropdownItemError(
         f"dropdown item must be str or (str, str) tuple; got {type(raw).__name__}: {raw!r}",
     )
 
@@ -374,7 +383,7 @@ def _ensure_placeholder_style(doc: DocxDocument) -> None:
     (controls/ may not import styles/). The definition mirrors Word's default.
     """
     styles_root: Any = doc.styles.element
-    for style in xpath(styles_root, f"./w:style[@w:styleId='{_PLACEHOLDER_STYLE_ID}']"):
+    for style in xpath(styles_root, "./w:style[@w:styleId=$sid]", sid=_PLACEHOLDER_STYLE_ID):
         if isinstance(style, etree._Element):
             return
 
@@ -392,4 +401,4 @@ def _ensure_placeholder_style(doc: DocxDocument) -> None:
     styles_root.append(style_el)
 
 
-__all__ = ["DropdownItem", "FormBuilder", "MissingNamespaceError"]
+__all__ = ["DropdownItem", "FormBuilder", "InvalidDropdownItemError", "MissingNamespaceError"]

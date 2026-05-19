@@ -3,6 +3,7 @@
 from docx_plus.controls.builder import (
     DropdownItem,
     FormBuilder,
+    InvalidDropdownItemError,
     MissingNamespaceError,
 )
 from docx_plus.controls.read import (
@@ -25,6 +26,7 @@ __all__ = [
     "DropdownItem",
     "DuplicateTagError",
     "FormBuilder",
+    "InvalidDropdownItemError",
     "MissingNamespaceError",
     "ValueNotInListError",
     "clear_control",

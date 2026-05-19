@@ -14,8 +14,76 @@ permissions:
   id-token: write
 
 jobs:
+  test:
+    name: Test ${{ matrix.python-version }} (release gate)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Run pytest with coverage
+        run: uv run --python ${{ matrix.python-version }} pytest --cov=docx_plus --cov-fail-under=90
+
+  typecheck:
+    name: mypy --strict (release gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --python 3.13
+
+      - name: mypy --strict
+        run: uv run mypy --strict docx_plus/
+
+  lint:
+    name: ruff (release gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --python 3.13
+
+      - name: ruff check
+        run: uv run ruff check docx_plus/ tests/
+
+      - name: ruff format --check
+        run: uv run ruff format --check docx_plus/ tests/
+
   build:
     name: Build distribution artifacts
+    needs: [test, typecheck, lint]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,15 +98,28 @@ jobs:
 
       - name: Verify tag matches pyproject version
         # Belt-and-braces: stop early if someone tags v0.2.0 while
-        # pyproject still says version = "0.1.0".
+        # pyproject still says version = "0.1.0". Python is used (not
+        # sed) so the check is identical on Linux and Windows runners
+        # and a malformed regex can't silently pass.
+        shell: python
+        env:
+          GITHUB_REF: ${{ github.ref }}
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          PROJECT_VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/^version = "(.+)"$/\1/')
-          if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
-            echo "::error::Tag v$TAG_VERSION does not match pyproject.toml version $PROJECT_VERSION"
-            exit 1
-          fi
-          echo "Tag and pyproject.toml agree on version $TAG_VERSION"
+          import os
+          import sys
+          import tomllib
+
+          tag_ref = os.environ["GITHUB_REF"]
+          tag_version = tag_ref.removeprefix("refs/tags/v")
+          with open("pyproject.toml", "rb") as f:
+              project_version = tomllib.load(f)["project"]["version"]
+          if tag_version != project_version:
+              print(
+                  f"::error::Tag v{tag_version} does not match "
+                  f"pyproject.toml version {project_version}"
+              )
+              sys.exit(1)
+          print(f"Tag and pyproject.toml agree on version {tag_version}")
 
       - name: Build distribution
         run: uv build

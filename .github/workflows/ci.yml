@@ -54,6 +54,31 @@ jobs:
       - name: mypy --strict
         run: uv run mypy --strict docx_plus/
 
+  min-deps:
+    name: Lower-bound deps (python-docx==1.0.0, lxml==4.9.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Sync dependencies
+        # Pin runtime deps to their declared minimums in pyproject.toml so
+        # we exercise the lower bound users might pin against. Dev deps
+        # stay floating.
+        run: |
+          uv sync --python 3.10 --extra dev
+          uv pip install "python-docx==1.0.0" "lxml==4.9.0"
+
+      - name: Run pytest
+        run: uv run --python 3.10 pytest -q --no-cov
+
   test:
     name: Test ${{ matrix.os }} / Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}

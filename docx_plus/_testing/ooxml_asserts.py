@@ -52,7 +52,7 @@ def assert_style_defined(doc: Document, style_id: str) -> None:
         AssertionError: If no ``w:style`` element with that id exists.
     """
     styles_element = doc.styles.element
-    matches = xpath(styles_element, f".//w:style[@w:styleId='{style_id}']")
+    matches = xpath(styles_element, ".//w:style[@w:styleId=$sid]", sid=style_id)
     assert matches, f"style {style_id!r} not defined in styles.xml"
 
 

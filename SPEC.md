@@ -406,11 +406,43 @@ def apply_style(
 def ensure_style(
     doc: Document,
     style_id: str,
+    *,
+    match_existing: bool = False,
     **defaults_if_creating,
 ) -> StyleProxy:
     """Idempotent: if the style is defined (including as a latent built-in),
     return a proxy to it; if not, create it with `defaults_if_creating`.
-    Never overwrites an existing definition."""
+    Never overwrites an existing definition.
+
+    `match_existing=True` consults `find_matching_style` before falling
+    back to the built-ins / custom-create path: a doc that already
+    contains a style whose `w:styleId` or `w:name` matches `style_id`
+    case- and space-insensitively is reused. The returned proxy's
+    `style_id` may differ from the requested one; callers using
+    `apply_style` should pass `proxy.style_id` (or use `remap_styles`
+    for document-wide normalisation)."""
+
+def find_matching_style(doc: Document, target_id: str) -> Optional[str]:
+    """Look up an existing style whose `w:styleId` or `w:name` matches
+    `target_id` case- and space-insensitively. Returns the matched
+    `w:styleId`, or `None` if no defined style matches. Trivial-match
+    case (exact `target_id` defined) returns `target_id`."""
+
+def remap_styles(
+    doc: Document,
+    *,
+    targets: Optional[list[str]] = None,
+    mapping: Optional[dict[str, str]] = None,
+    create_missing: bool = False,
+) -> dict[str, str]:
+    """Reconcile a document's styles against canonical ids. For each id
+    in `targets` (defaults to the known-built-ins table), resolve by
+    four-step fall-through: exact match → supplied `mapping` →
+    `find_matching_style` → optional create-from-built-ins. Rewrites
+    body references (`w:pStyle`, `w:rStyle`, `w:tblStyle`) in place;
+    style-to-style references (`basedOn`, `next`, `link`) are left
+    untouched. Returns `{target_id: resolved_id}` for every target
+    resolved; unresolved targets are omitted."""
 
 def list_styles(
     doc: Document,
@@ -421,10 +453,10 @@ def list_styles(
     """List defined styles. `include_latent=True` also returns built-in
     styles not yet materialized in styles.xml."""
 
-def delete_style(doc: Document, style_id: str) -> None:
-    """Remove a style. Raises if any paragraph/run references it (unless
-    `force=True`, which leaves dangling references — Word will fall back to
-    Normal)."""
+def delete_style(doc: Document, style_id: str, *, force: bool = False) -> None:
+    """Remove a style. Raises `StyleInUseError` if any paragraph/run
+    references it (unless `force=True`, which leaves dangling references —
+    Word will fall back to Normal)."""
 ```
 
 ### Properties accepted
@@ -466,7 +498,10 @@ current state.
 
 - `StyleExistsError`
 - `StyleNotFoundError`
+- `StyleInUseError`
 - `StyleCascadeError` (re-used from inspect)
+- `UnknownStylePropertyError` (raised for unrecognised `**properties` kwarg;
+  dual-inherits `TypeError` so `except TypeError:` still catches)
 
 ### Test requirements
 
@@ -839,16 +874,20 @@ not, regardless of how good the code looks.
 
 ## 14. Build & Packaging
 
-- **Package name (PyPI)**: TBD before publishing. Working name `docx_plus`
-  in-source.
+- **Package name (PyPI)**: `docx_plus` (PyPI canonicalises to
+  `docx-plus`). Verify availability before the first upload — the name
+  is permanent.
 - **Python**: 3.10+ (for `T | None` syntax and `Literal[...]`).
 - **Runtime deps**: `python-docx>=1.0.0`, `lxml>=4.9` (transitive via
   python-docx but pin explicitly).
-- **Dev deps**: `pytest`, `pytest-cov`, `mypy`, `ruff`, `pdoc` (or
-  `mkdocs-material` + `mkdocstrings`).
+- **Dev deps**: `pytest`, `pytest-cov`, `mypy`, `ruff`,
+  `mkdocs-material`, `mkdocstrings`, `lxml-stubs`.
 - **Build system**: `hatchling` via `pyproject.toml`. No `setup.py`.
+- **Typing marker**: `docx_plus/py.typed` is shipped (PEP 561) so
+  downstream `mypy` users see the type hints.
 - **Versioning**: SemVer. v0.1.0 is the target of this spec.
-- **License**: MIT (placeholder; confirm before publishing).
+- **License**: MIT (`LICENSE` at repo root, classifier in
+  `pyproject.toml`).
 
 ---
 
@@ -857,6 +896,9 @@ not, regardless of how good the code looks.
 Explicit roadmap for what comes after v0.1. Not for implementation in this
 pass. Listed here so reviewers know the deferred items are tracked, not
 forgotten.
+
+(*Note*: `find_matching_style` and `remap_styles`, originally drafted as
+v0.2 work, **landed in v0.1** as Phase 3.5. See §5 for their public API.)
 
 - **Sections, headers, footers** as a first-class API (`sections/` module)
 - **Table cell merging, borders, shading** beyond python-docx defaults
@@ -869,6 +911,45 @@ forgotten.
 - **A high-level "restyle" planner** that takes a target `ResolvedFormatting`
   and computes the minimal cascade modification to achieve it (the inverse
   of the inspector; deferred because the design space is large)
+
+---
+
+## 16. Error Taxonomy
+
+Every typed error in `docx_plus` subclasses `DocxPlusError` (§9.7). For
+errors with a clear builtin analogue, the typed error multiple-inherits
+from that builtin so existing `except ValueError:` / `except KeyError:`
+clauses still catch — and so `isinstance(err, ValueError)` keeps working
+for boundary-layer code.
+
+| Error | Module | Bases | Raised by |
+|---|---|---|---|
+| `DocxPlusError` | `core` | `Exception` | Root; subclass-only |
+| `InvalidNamespaceError` | `core.ns` | `DocxPlusError, ValueError` | `qn` on malformed name or unknown prefix |
+| `DuplicateIdError` | `core.ids` | `DocxPlusError, ValueError` | `IdRegistry.reserve` on collision |
+| `IdRangeError` | `core.ids` | `DocxPlusError, ValueError` | `IdRegistry.reserve` on out-of-range id |
+| `StyleCascadeError` | `styles.inspect` | `DocxPlusError` | `basedOn` cycle / depth-limit overflow; or a `Run` not contained in any paragraph |
+| `MissingPartError` | `styles.inspect` | `DocxPlusError` | Required part absent (reserved; no caller yet) |
+| `ThemeError` | `styles.theme` | `DocxPlusError` | Structurally invalid input to theme transforms |
+| `StyleExistsError` | `styles.modify` | `DocxPlusError` | `create_style` on duplicate id |
+| `StyleNotFoundError` | `styles.modify` | `DocxPlusError` | Reference to undefined style id |
+| `StyleInUseError` | `styles.modify` | `DocxPlusError` | `delete_style` without `force=True` on referenced style |
+| `UnknownStylePropertyError` | `styles.modify` | `DocxPlusError, TypeError` | Unknown `**properties` kwarg |
+| `InvalidColorError` | `styles.modify` | `DocxPlusError, ValueError` | `color_rgb` is not a valid `RRGGBB` hex string |
+| `MissingNamespaceError` | `controls.builder` | `DocxPlusError` | Document root lacks `w14` |
+| `InvalidDropdownItemError` | `controls.builder` | `DocxPlusError, TypeError` | `add_dropdown` item is not `str` or `(str, str)` |
+| `ControlNotFoundError` | `controls.read` | `DocxPlusError, KeyError` | Tag missing in `set_control_value` / `clear_control` |
+| `DuplicateTagError` | `controls.read` | `DocxPlusError, ValueError` | Two SDTs share a tag |
+| `ValueNotInListError` | `controls.read` | `DocxPlusError, ValueError` | Dropdown value matches neither `w:value` nor `w:displayText` |
+| `ControlTypeError` | `controls.read` | `DocxPlusError, TypeError` | `set_control_value` type mismatch |
+
+Library code never raises raw `ValueError`/`RuntimeError`/`TypeError`
+for caller-facing conditions. The two carve-outs are
+`IdRegistry.next()` raising `RuntimeError` on 31-bit exhaustion (cannot
+happen in practice) and a small set of `TypeError` raises at the public
+boundary when the caller passes something that is not `Paragraph` /
+`Run` / `_Cell` — those *are* programmer errors and `TypeError` is the
+right semantic.
 
 ---
 

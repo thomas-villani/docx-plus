@@ -1,11 +1,11 @@
 # docx_plus — Architecture
 
 Present-tense reference for how `docx_plus` is laid out and why. This
-document describes what currently exists (end of Phase 5). The contract
-that constrains it is `SPEC.md`; the meta-guidance on how it was built and
-how to extend it is `IMPLEMENTATION.md`. Read this when you need to
-understand the library's shape; read those when you need to decide what to
-add or how.
+document describes what currently exists at the end of v0.1 (Phase 6).
+The contract that constrains it is `SPEC.md`; the meta-guidance on how
+it was built and how to extend it is `IMPLEMENTATION.md`. Read this when
+you need to understand the library's shape; read those when you need to
+decide what to add or how.
 
 Audience: a developer extending or debugging `docx_plus` itself, or a user
 who wants more than the README before reading source.
@@ -46,7 +46,7 @@ docx_plus/
 │   ├── __init__.py          # re-exports the public surface
 │   └── document.py          # protect_document, unprotect_document, is_protected,
 │                            # ProtectionMode Literal
-├── examples/                # empty stub — Phase 6 target
+├── examples/                # inspect_document, restyle_existing, build_form, populate_form
 └── _testing/                # internal test helpers (not public API)
     └── ooxml_asserts.py     # assert_ids_unique, assert_style_defined,
                              # count_controls, assert_protected, assert_field_dirty

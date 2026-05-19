@@ -5,8 +5,7 @@ the library every python-docx power user ends up writing badly: hardened
 helpers for OOXML operations that sit just past python-docx's
 abstraction boundary.
 
-Status: **early development** (v0.1 in progress). Pre-publication — not
-yet on PyPI.
+Status: **v0.1 complete**. Pre-publication — not yet on PyPI.
 
 ## What's in v0.1
 
@@ -54,6 +53,7 @@ from docx_plus.styles import create_style, apply_style
 doc = Document()
 create_style(
     doc, "BrandHeading",
+    style_type="paragraph",
     based_on="Heading1",
     font_name="Inter",
     font_size=18.0,
@@ -120,4 +120,4 @@ See [`ARCHITECTURE.md` §7](ARCHITECTURE.md#7-fields-and-protection).
 | 3.5 | Style remapping | ✓ complete |
 | 4 | Content controls | ✓ complete |
 | 5 | Fields + protection | ✓ complete |
-| 6 | Polish (examples, smoke tests, CI doc build) | not started |
+| 6 | Polish (examples, smoke tests, CI doc build) | ✓ complete |

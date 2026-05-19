@@ -55,6 +55,14 @@ class UnknownStylePropertyError(DocxPlusError, TypeError):
     """Raised when a property kwarg is not a recognised style property."""
 
 
+class InvalidColorError(DocxPlusError, ValueError):
+    """Raised when a ``color_rgb`` value is not a valid ``RRGGBB`` hex string.
+
+    Subclasses ``ValueError`` so existing ``except ValueError:`` clauses still
+    catch it; also subclasses :class:`DocxPlusError` per SPEC §9.7.
+    """
+
+
 # --------------------------------------------------------------------------
 # Schema-correct child orderings.
 # --------------------------------------------------------------------------
@@ -661,7 +669,7 @@ def remap_styles(
         if target_id == resolved_id:
             continue
         for tag in ("pStyle", "rStyle", "tblStyle"):
-            for ref in xpath(body_root, f"//w:{tag}[@w:val='{target_id}']"):
+            for ref in xpath(body_root, f"//w:{tag}[@w:val=$sid]", sid=target_id):
                 if isinstance(ref, etree._Element):
                     ref.set(qn("w:val"), resolved_id)
     return resolved
@@ -940,8 +948,11 @@ def _write_color(style_el: etree._Element, value: str | None) -> None:
         return
     cleaned = value.lstrip("#").upper()
     if len(cleaned) != 6:
-        raise ValueError(f"color_rgb expects RRGGBB hex, got {value!r}")
-    int(cleaned, 16)  # validate hex
+        raise InvalidColorError(f"color_rgb expects RRGGBB hex, got {value!r}")
+    try:
+        int(cleaned, 16)  # validate hex
+    except ValueError as exc:
+        raise InvalidColorError(f"color_rgb expects RRGGBB hex, got {value!r}") from exc
     _set_rpr_child(style_el, "color", {"w:val": cleaned})
 
 
@@ -1082,7 +1093,7 @@ def _set_run_style(r_element: etree._Element, style_id: str) -> None:
 
 
 def _find_style_element(styles_root: etree._Element, style_id: str) -> etree._Element | None:
-    matches = xpath(styles_root, f"./w:style[@w:styleId='{style_id}']")
+    matches = xpath(styles_root, "./w:style[@w:styleId=$sid]", sid=style_id)
     return matches[0] if matches else None
 
 
@@ -1092,13 +1103,13 @@ def _find_references(doc: Document, style_id: str) -> list[etree._Element]:
     body_root = doc.part.element
     # Body references: pStyle, rStyle, tblStyle.
     for tag in ("pStyle", "rStyle", "tblStyle"):
-        refs.extend(xpath(body_root, f"//w:{tag}[@w:val='{style_id}']"))
+        refs.extend(xpath(body_root, f"//w:{tag}[@w:val=$sid]", sid=style_id))
     # Style-to-style references in styles.xml. Don't count the deletion target
     # itself even if it has a basedOn pointing nowhere — we want OUTBOUND
     # references *to* this id from other styles.
     styles_root = doc.styles.element
     for tag in ("basedOn", "next", "link", "numStyleLink", "styleLink"):
-        for ref in xpath(styles_root, f"//w:{tag}[@w:val='{style_id}']"):
+        for ref in xpath(styles_root, f"//w:{tag}[@w:val=$sid]", sid=style_id):
             owning_style = _enclosing_style_element(ref)
             if owning_style is None:
                 continue

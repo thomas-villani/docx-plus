@@ -31,6 +31,14 @@ class DuplicateIdError(DocxPlusError, ValueError):
     """
 
 
+class IdRangeError(DocxPlusError, ValueError):
+    """Raised when a reserved ID falls outside the 31-bit positive range.
+
+    Subclasses ``ValueError`` for backward compatibility; also subclasses
+    :class:`DocxPlusError` per SPEC §9.7.
+    """
+
+
 class IdRegistry:
     """Tracks issued ``w:id`` values for one document-edit session.
 
@@ -103,12 +111,12 @@ class IdRegistry:
             ``value`` (echoed so the call composes inline).
 
         Raises:
+            IdRangeError: If ``value`` is outside the 31-bit positive range.
             DuplicateIdError: If ``value`` has already been issued or
                 reserved on this registry.
-            ValueError: If ``value`` is outside the 31-bit positive range.
         """
         if not 1 <= value <= _MAX_W_ID:
-            raise ValueError(f"id {value!r} outside 31-bit positive range")
+            raise IdRangeError(f"id {value!r} outside 31-bit positive range")
         if value in self._issued:
             raise DuplicateIdError(f"id {value} already issued")
         self._issued.add(value)
@@ -119,4 +127,4 @@ class IdRegistry:
         return frozenset(self._issued)
 
 
-__all__ = ["DuplicateIdError", "IdRegistry"]
+__all__ = ["DuplicateIdError", "IdRangeError", "IdRegistry"]

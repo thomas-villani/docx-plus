@@ -218,14 +218,6 @@ Defensive completeness — worth adding but not blocking Phase 4.
   cascade. xfail-strict means the test will start failing the moment
   someone fixes the underlying behavior, which is the desired signal.
 
-### N3. No headless LibreOffice smoke test exists yet
-
-- **Where:** `pyproject.toml:87-89` declares the
-  `requires_libreoffice` pytest marker but no test uses it.
-- **SPEC ref:** SPEC §10 Layer 3 explicitly defers this to the polish
-  phase; this entry is just to record that it's tracked.
-- **Fix:** Phase 6.
-
 ---
 
 ## Correction note
@@ -260,6 +252,18 @@ alongside Phase 4 work.
 
 ### 2026-05-19 — Phase 6
 
+- **N3 — Headless LibreOffice smoke tests shipped.** The
+  `requires_libreoffice` marker is now used by
+  `tests/test_examples_libreoffice.py` (one test per example script:
+  builds, converts to PDF via headless `soffice`, asserts conversion
+  succeeds and the PDF has the expected page count). Skipped
+  automatically when `soffice` is not on PATH; the Ubuntu/Python 3.13
+  CI job installs LibreOffice to exercise them.
+- **Coverage scope note.** The 90% gate runs over `core/`, `styles/`,
+  and `controls/`. `docx_plus/_testing/*` (test infrastructure) and
+  `docx_plus/examples/*` (covered by Layer 3 smoke tests, not unit
+  tests) are listed in `pyproject.toml`'s `[tool.coverage.run] omit`
+  by design.
 - **B1 — Coverage gate flipped on.** `fail_under = 90` added to
   `[tool.coverage.report]` in `pyproject.toml`; `ci.yml` now runs
   `pytest ... --cov-fail-under=90`. Coverage at 91.76% aggregate

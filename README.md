@@ -25,8 +25,8 @@ can't reach.
 ## Install (development)
 
 ```bash
-git clone <repo-url> docx_plus
-cd docx_plus
+git clone https://github.com/thomas-villani/docx-plus.git
+cd docx-plus
 uv sync --extra dev      # or: pip install -e ".[dev]"
 ```
 
@@ -104,13 +104,13 @@ ensure_style(doc, "BlockText")
 apply_style(doc.add_paragraph("Intro"), "Heading1")
 ```
 
-The full list is tiered in [`docs/ARCHITECTURE.md` §5](docs/ARCHITECTURE.md#5-built-in-styles-table)
+The full list is tiered in [Architecture §5](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#5-built-in-styles-table)
 — Core/A–G cover essentially every style a Word user reaches for.
 
 For documents authored elsewhere where IDs may not match (e.g. style
 named `"Heading 1"` with a space), `ensure_style(doc, "Heading1",
 match_existing=True)` will find the existing definition via case- and
-space-insensitive matching, or use [`remap_styles`](docs/ARCHITECTURE.md#4-style-remapping-phase-35)
+space-insensitive matching, or use [`remap_styles`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#4-style-remapping-phase-35)
 for document-wide normalisation.
 
 ### Forms: build a fillable document with `FormBuilder`
@@ -177,9 +177,21 @@ cover dates and any other complex field (TOC, REF, MERGEFIELD, …).
 `unprotect_document(doc)` removes any protection;
 `is_protected(doc)` is a one-liner predicate.
 
-## Roadmap
+## What's next
 
-| Phase | Capability | Status |
+v0.1 ships the four capabilities listed at the top of this README.
+The [`v0.2 deferred list`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/)
+(SPEC §15) tracks what comes after — anchored comments, footnotes /
+endnotes, bookmarks and cross-references, a `sections/` API for
+columns and mid-document section breaks, content-control data binding
+to Custom XML Parts, theme writing, and password-protected forms.
+Open an issue if your use case needs any of these and you'd like to
+help shape the design.
+
+<details>
+<summary>Build phases (for contributors)</summary>
+
+| Phase | Deliverable | Status |
 |---|---|---|
 | 1 | Foundation (`core/ns`, `core/oxml`, `core/ids`, `_testing/`) | ✓ complete |
 | 2 | Style inspection (`styles/inspect`, `styles/theme`) | ✓ complete |
@@ -189,17 +201,25 @@ cover dates and any other complex field (TOC, REF, MERGEFIELD, …).
 | 5 | Fields + document protection (`fields/`, `protection/`) | ✓ complete |
 | 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | ✓ complete |
 
+</details>
+
 ## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module layout,
-  cascade algorithm, schema-strict insertion, error hierarchy,
-  invariants
-- [`docs/API.md`](docs/API.md) — hand-curated index of every public
-  symbol with links to the auto-generated reference
-- [`docs/TEST_GAPS.md`](docs/TEST_GAPS.md) — honest accounting of
-  where the test suite has real holes (snapshot at end of Phase 5)
-- `docs/reference/` — per-module API reference, rendered by
-  [MkDocs](https://www.mkdocs.org) + [mkdocstrings](https://mkdocstrings.github.io).
+Full docs (rendered by [MkDocs](https://www.mkdocs.org) +
+[mkdocstrings](https://mkdocstrings.github.io)) are published at
+<https://thomas-villani.github.io/docx-plus/>.
+
+- [Architecture](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/)
+  — module layout, cascade algorithm, schema-strict insertion, error
+  hierarchy, invariants
+- [API Index](https://thomas-villani.github.io/docx-plus/API/) —
+  hand-curated index of every public symbol with links to the
+  auto-generated reference
+- [Test Gaps](https://thomas-villani.github.io/docx-plus/TEST_GAPS/) —
+  honest accounting of where the test suite has real holes (snapshot
+  at end of Phase 5)
+- Per-module API reference lives under
+  <https://thomas-villani.github.io/docx-plus/reference/>;
   `uv run mkdocs serve` to browse locally.
 
 ## License
