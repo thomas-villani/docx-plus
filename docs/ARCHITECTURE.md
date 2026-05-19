@@ -1,7 +1,7 @@
 # docx_plus — Architecture
 
 Present-tense reference for how `docx_plus` is laid out and why. This
-document describes what currently exists (end of Phase 3.5). The contract
+document describes what currently exists (end of Phase 5). The contract
 that constrains it is `SPEC.md`; the meta-guidance on how it was built and
 how to extend it is `IMPLEMENTATION.md`. Read this when you need to
 understand the library's shape; read those when you need to decide what to
@@ -19,11 +19,11 @@ docx_plus/
 ├── __init__.py              # top-level re-exports (DocxPlusError, __version__)
 ├── core/                    # foundation primitives — every capability depends on these
 │   ├── __init__.py          # DocxPlusError (base of all typed errors)
-│   ├── ns.py                # namespace constants + qn()
+│   ├── ns.py                # W, W14, R, MC, A, XML namespace constants + qn()
 │   ├── oxml.py              # el(), sub(), xpath(), remove()
 │   ├── ids.py               # IdRegistry, DuplicateIdError
-│   └── parts.py             # package part / relationship helpers (Phase 1 stub; Phase 4 fills it)
-├── styles/                  # complete: inspect, modify, theme
+│   └── parts.py             # package part / relationship helpers (reserved; v0.2 binding work)
+├── styles/                  # inspect, modify, theme
 │   ├── __init__.py          # re-exports every public symbol from the submodules
 │   ├── inspect.py           # resolve_effective_formatting + ResolvedFormatting + FormattingSource
 │   ├── modify.py            # create_style, modify_style, apply_style, delete_style,
@@ -31,12 +31,25 @@ docx_plus/
 │   │                        # StyleProxy, StyleInfo, _BUILTIN_STYLES table
 │   └── theme.py             # ThemeColors, load_theme, resolve_theme_color,
 │                            # apply_theme_tint, apply_theme_shade, apply_lum_mod, apply_lum_off
-├── controls/                # empty stub — Phase 4 target
-├── fields/                  # empty stub — Phase 5 target
-├── protection/              # empty stub — Phase 5 target
+├── controls/                # content controls (SDTs)
+│   ├── __init__.py          # re-exports the public surface
+│   ├── builder.py           # FormBuilder, MissingNamespaceError, DropdownItem
+│   └── read.py              # ControlValue, read_controls, set_control_value, clear_control,
+│                            # ControlNotFoundError, DuplicateTagError, ValueNotInListError,
+│                            # ControlTypeError
+├── fields/                  # complex field insertion + update flag
+│   ├── __init__.py          # re-exports the public surface
+│   ├── simple.py            # add_page_number_field, add_date_field, add_field,
+│   │                        # PageFieldName Literal
+│   └── update.py            # mark_fields_dirty
+├── protection/              # document-level protection enforcement
+│   ├── __init__.py          # re-exports the public surface
+│   └── document.py          # protect_document, unprotect_document, is_protected,
+│                            # ProtectionMode Literal
 ├── examples/                # empty stub — Phase 6 target
 └── _testing/                # internal test helpers (not public API)
-    └── ooxml_asserts.py     # assert_ids_unique, assert_style_defined
+    └── ooxml_asserts.py     # assert_ids_unique, assert_style_defined,
+                             # count_controls, assert_protected, assert_field_dirty
 ```
 
 The flat structure is deliberate. Each capability (`styles/`, `controls/`,
@@ -287,7 +300,144 @@ use `modify_style` or `remap_styles`.
 
 ---
 
-## §6 Invariants
+## §6 Content controls
+
+`controls/builder.py:FormBuilder` is the build-side surface and
+`controls/read.py` is the read/modify side. Both target the five SDT
+control types Word's UI ribbon offers: text (single- and multi-line),
+dropdown / combobox, date picker, and checkbox. Rich-text SDTs (no
+marker child) are recognised but skipped — they're a v0.2 deferred case.
+
+### `FormBuilder`
+
+The wrapper accepts an existing `Document`, a path, or `None` (start
+fresh). On construction it does three things:
+
+1. **Materialises the `PlaceholderText` character style** in
+   `styles.xml` if it's absent — without it Word's grey placeholder
+   text fails to render. This duplicates the style definition rather
+   than importing it from `styles/modify.py` (SPEC §9.1 forbids
+   capability-to-capability imports).
+2. **Verifies the `w14` namespace is declared on the document root.**
+   Required by `w14:checkbox`. python-docx 1.2.0 declares it by default;
+   if a future version drops it, construction raises `MissingNamespaceError`.
+3. **Seeds an `IdRegistry`** from existing SDT IDs in the body, or
+   accepts one passed in via the `id_registry=` kwarg for callers that
+   need to share allocation across multiple builders.
+
+Each `add_*` method appends its SDT inline at the end of the paragraph
+you pass — so put the field's label text in the paragraph first. The
+SDT's `w:sdtPr` children are emitted in CT_SdtPr schema order
+(`alias? → tag → id → showingPlcHdr? → <type-marker>`). The `<type-marker>`
+distinguishes the controls: `w:text` for text/multiline, `w:dropDownList`
+or `w:comboBox` for selectors, `w:date` for date pickers, `w14:checkbox`
+for checkboxes.
+
+### `read_controls` and `set_control_value`
+
+`read_controls(doc, *, by="tag")` returns a `dict[str, ControlValue]`
+keyed by tag (default) or alias. Control-type dispatch lives in
+`_classify_sdt` and is shared with `_testing.ooxml_asserts.count_controls`
+so there is one source of truth. Repeating tags raise `DuplicateTagError`
+— a precondition v0.1 enforces because Custom-XML-Part data binding
+(the v0.2 feature that supports repeating sections) isn't shipped yet.
+
+`set_control_value(doc, tag, value)` accepts `str | bool | datetime`
+matched against the control type. Type mismatches raise
+`ControlTypeError`. Dropdowns try `w:value` first then `w:displayText`,
+raising `ValueNotInListError` if neither matches — unless the control
+is a combobox, in which case any string is accepted (matching Word's
+freeform-input behaviour). Date values round-trip through
+`w:date/@w:fullDate` (ISO 8601); the human-readable rendered text in
+`sdtContent` is best-effort because full Word date-format-token
+translation is a v0.2 concern.
+
+`clear_control(doc, tag)` resets to the placeholder state.
+
+---
+
+## §7 Fields and protection
+
+`fields/` covers complex-field insertion and the "Word recalculates on
+open" flag; `protection/` covers document-level enforcement. Both are
+small modules (≤100 lines each) and mostly schema-strict insertion into
+`settings.xml`.
+
+### Complex fields
+
+A Word field is **not** a single element. It's a sequence of five runs
+that bracket an instruction (`w:instrText`) and a cached result (`w:t`):
+
+```
+<w:r><w:fldChar w:fldCharType="begin"/></w:r>
+<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
+<w:r><w:fldChar w:fldCharType="separate"/></w:r>
+<w:r><w:t xml:space="preserve">1</w:t></w:r>
+<w:r><w:fldChar w:fldCharType="end"/></w:r>
+```
+
+`fields/simple.py:_build_complex_field` is the single private helper
+that emits this sequence; the three public functions
+(`add_page_number_field`, `add_date_field`, `add_field`) all route
+through it. Both the instruction and the cached result carry
+`xml:space="preserve"` so Word's XML reader does not collapse the
+spaces that the field-instruction grammar requires.
+
+Each public helper returns the begin `<w:r>` element so callers can
+navigate or relocate the field. The `xml` namespace was added to
+`core/ns.py:NSMAP` in Phase 5 specifically to make `qn("xml:space")`
+work; before that the prefix was unknown to the library.
+
+### `mark_fields_dirty`
+
+`fields/update.py:mark_fields_dirty(doc)` writes
+`<w:updateFields w:val="true"/>` into `settings.xml`. Word reads this
+flag on open, recalculates every field in the document, and resets the
+flag to `false` — it's a one-shot mechanism, not persistent state. The
+function is idempotent: a second call updates the existing element
+rather than duplicating it.
+
+### `protect_document`
+
+`protection/document.py:protect_document(doc, *, mode=...)` emits
+`<w:documentProtection w:edit="MODE" w:enforcement="1"/>` into
+`settings.xml`. `mode` accepts the four `ProtectionMode` literals:
+
+- `"forms"` (default) — only content controls are editable. Pair with
+  `FormBuilder` to produce a fillable form readers can't drift outside.
+- `"readOnly"` — entire document is read-only.
+- `"comments"` — readers may only add comments.
+- `"trackedChanges"` — readers may edit with revisions on.
+
+Idempotent: a second call replaces the mode rather than stacking.
+`unprotect_document(doc)` removes the element, no-op when absent.
+`is_protected(doc)` is the presence predicate (does not introspect the
+mode).
+
+Protection is **unpassworded** in v0.1 (SPEC §1 non-goal). The
+`w:enforcement="1"` flag stops accidental editing in Word's UI but does
+not stop a determined user from rewriting `settings.xml`.
+Password-protected forms (legacy hash algorithm) are deferred to v0.2.
+
+### Schema-strict insertion in `settings.xml`
+
+`w:documentProtection` and `w:updateFields` both live deep in
+`CT_Settings`'s child sequence (ECMA-376 17.15.1.78). Inserting them
+at the wrong position produces a file Word will silently "repair" on
+open — sometimes correctly, sometimes not. Both modules apply the
+same `_insert_before_first_anchor(parent, new_element, anchor_tags)`
+pattern, walking a tuple of later-siblings (`w:defaultTabStop`,
+`w:compat`, `w:rsids`, etc.) and inserting before the first match.
+If no anchor is present, they fall back to appending — the
+no-anchor case is exercised by
+`test_mark_fields_dirty_appends_when_no_anchor`. The helper is
+duplicated in each module rather than shared via `core/` because
+SPEC §9.1 forbids capability-to-capability imports and pulling it into
+`core/oxml.py` for two callers is premature abstraction.
+
+---
+
+## §8 Invariants
 
 These are the architectural commitments. Each is enforced by a test.
 
@@ -323,8 +473,8 @@ These are the architectural commitments. Each is enforced by a test.
 
 7. **Errors are typed.** Every raised library-level error subclasses
    `DocxPlusError` (defined in `core/__init__.py`). Some dual-inherit
-   `ValueError` or `TypeError` for callers that still catch the stdlib
-   bases. See §7.
+   `ValueError`, `TypeError`, or `KeyError` for callers that still catch
+   the stdlib bases. See §9.
 
 8. **No unrequested side effects on the input document.** Functions
    that mutate document state document the mutation in the docstring.
@@ -332,7 +482,7 @@ These are the architectural commitments. Each is enforced by a test.
 
 ---
 
-## §7 Error hierarchy
+## §9 Error hierarchy
 
 Every library-raised exception subclasses `DocxPlusError`. A few also
 dual-inherit a stdlib base when an existing API contract (or SPEC
@@ -349,26 +499,42 @@ sentence) calls for it.
 | `StyleCascadeError` | `DocxPlusError` | `styles/inspect.py` | `basedOn` chain cycles or exceeds depth 11 |
 | `MissingPartError` | `DocxPlusError` | `styles/inspect.py` | A referenced part is required but absent (currently unused — see §2 layer 4) |
 | `ThemeError` | `DocxPlusError` | `styles/theme.py` | Structurally invalid theme input to the transform functions |
+| `MissingNamespaceError` | `DocxPlusError` | `controls/builder.py` | `FormBuilder` constructed against a doc whose root doesn't declare `w14` |
+| `ControlNotFoundError` | `DocxPlusError`, `KeyError` | `controls/read.py` | `set_control_value`/`clear_control` referenced a tag that doesn't exist |
+| `DuplicateTagError` | `DocxPlusError`, `ValueError` | `controls/read.py` | `read_controls` found two SDTs sharing a tag (v0.1 doesn't support repeating sections) |
+| `ValueNotInListError` | `DocxPlusError`, `ValueError` | `controls/read.py` | `set_control_value` against a dropdown got a value that matches no item (combobox is exempt — it accepts freeform) |
+| `ControlTypeError` | `DocxPlusError`, `TypeError` | `controls/read.py` | `set_control_value` got a value whose Python type doesn't match the control type (e.g. `str` to a checkbox) |
 
-The dual-inheritance pattern (`DuplicateIdError`, `UnknownStylePropertyError`)
-exists because SPEC sentences predating §9.7's typed-error invariant
-documented `ValueError`/`TypeError` as the raised type. Rather than
+`fields/` and `protection/` deliberately add **no new error classes**.
+Their argument types are `Literal[...]` so mypy catches misuse
+statically; runtime misuse produces a structurally-valid file with a
+semantically-wrong attribute that Word surfaces in its UI. The
+alternative — runtime validation duplicating the type system — would
+add noise without catching real bugs.
+
+The dual-inheritance pattern (`DuplicateIdError`, `UnknownStylePropertyError`,
+the four Phase 4 `controls/read.py` errors) exists because SPEC sentences
+predating §9.7's typed-error invariant documented
+`ValueError` / `TypeError` / `KeyError` as the raised type. Rather than
 breaking the spec contract, both bases sit on the class — `except
 ValueError` and `except DocxPlusError` both catch.
 
 ---
 
-## §8 Testing strategy
+## §10 Testing strategy
 
 SPEC §10 specifies three layers:
 
-- **Layer 1 — structural unit tests.** One file per module, fast,
-  no I/O beyond reading fixtures. Currently 165+ tests covering
-  `core/`, `styles/theme`, `styles/inspect`, `styles/modify`.
+- **Layer 1 — structural unit tests.** One file per module, fast, no
+  I/O beyond reading fixtures. **285 tests** at end of Phase 5
+  spanning `core/` (29), `styles/{theme,inspect,modify}` (188),
+  `controls/{builder,read}` (50), `fields/` (24), and `protection/`
+  (18), plus 12 import-invariant cases and 6 misc (smoke, integration).
 - **Layer 2 — round-trip tests.** Build → save → reopen with
   `python-docx` → assert. The high-value class for OOXML
-  correctness (`IMPLEMENTATION.md §8`). Two tests at end of Phase 3.5;
-  `TEST_GAPS.md` I1 lists the missing ones.
+  correctness (`IMPLEMENTATION.md §8`). Phase 5 added round-trips for
+  every field type plus the protect/unprotect cycle;
+  `TEST_GAPS.md` I1 lists the remaining gaps on the modify side.
 - **Layer 3 — headless render smoke.** Run each example, convert to
   PDF with LibreOffice headless, assert exit-0 and page count. Gated
   on the `requires_libreoffice` pytest marker; deferred to Phase 6.
@@ -376,22 +542,34 @@ SPEC §10 specifies three layers:
 Test fixtures live in `tests/fixtures/build_fixtures.py` (the build
 script is the source of truth, not the `.docx` files it produces —
 `.gitignore` excludes the generated docx files). `empty.docx`,
-`multistyle.docx`, and `themed.docx` exist as of Phase 2.
+`multistyle.docx`, `themed.docx`, and `existing_form.docx` are built
+on demand.
 
-Shared assertions live in `docx_plus/_testing/ooxml_asserts.py`. The
-module is internal — not re-exported from the top-level package — and is
-built out lazily as later tests demand more helpers.
+Shared assertions live in `docx_plus/_testing/ooxml_asserts.py`:
+`assert_ids_unique`, `assert_style_defined`, `count_controls`,
+`assert_protected`, `assert_field_dirty`. The module is internal —
+not re-exported from the top-level package — and is built out lazily
+as later tests demand more helpers. Of the SPEC §10 helper list, only
+`assert_style_not_defined` and `assert_no_orphan_relationships`
+remain unwritten.
 
 For a frozen snapshot of where the suite has real holes, see
 [`TEST_GAPS.md`](TEST_GAPS.md).
 
 ---
 
-## §9 What's next
+## §11 What's next
 
-Phases 4 (Forms), 5 (Fields + Protection), 6 (Polish: examples,
-LibreOffice smoke tests, CI doc generation) are still ahead. The
-architectural shape they will fit into is fixed: each is a sibling
-under `docx_plus/`, each imports from `core/` only, each enforces the
-invariants in §6 at its own boundary. See `IMPLEMENTATION.md` for the
-phase-by-phase plan; see `SPEC.md` for the contract.
+Phase 6 (Polish: examples directory, LibreOffice headless smoke tests,
+CI documentation build, final SPEC §13 quality-gate sweep) is the only
+remaining v0.1 phase. The architectural shape it will fit into is
+fixed: examples land under `docx_plus/examples/`, smoke tests use the
+`requires_libreoffice` marker already declared in `pyproject.toml`, and
+the coverage gate flagged in `TEST_GAPS.md` B1 gets flipped on. See
+`IMPLEMENTATION.md §2` for the phase-by-phase plan and `SPEC.md §13`
+for the gate list.
+
+v0.2 capability work — sections/headers/footers as a first-class API,
+data binding to Custom XML Parts (repeating sections), comments and
+tracked changes, password-protected forms — is enumerated in
+`SPEC.md §15`. None of it ships in v0.1.

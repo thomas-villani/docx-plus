@@ -10,11 +10,13 @@ can't reach.
 - **Style cascade**: read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
   the Word-native way rather than scattering direct formatting.
-- **Content controls** (Phase 4, not yet shipped): create text /
-  dropdown / date / checkbox controls; read values back; enforce form
-  protection.
-- **Fields** (Phase 5, not yet shipped): insert simple fields,
-  mark them dirty so Word recalculates them on next open.
+- **Content controls**: build text / dropdown / date / checkbox
+  controls with `FormBuilder`; read their values back; round-trip them
+  through save/reopen.
+- **Fields**: insert PAGE / NUMPAGES / DATE / generic complex fields;
+  mark fields dirty so Word recalculates them on next open.
+- **Protection**: enforce form-fill, read-only, comments-only, or
+  tracked-changes mode at the document level.
 
 > **Status:** early development (v0.1 in progress). Pre-publication —
 > not yet on PyPI. Read [`SPEC.md`](SPEC.md) for the API contract and
@@ -111,6 +113,70 @@ match_existing=True)` will find the existing definition via case- and
 space-insensitive matching, or use [`remap_styles`](docs/ARCHITECTURE.md#4-style-remapping-phase-35)
 for document-wide normalisation.
 
+### Forms: build a fillable document with `FormBuilder`
+
+```python
+from docx_plus.controls import FormBuilder
+
+fb = FormBuilder()  # or FormBuilder("template.docx")
+fb.doc.add_heading("New employee form", level=1)
+
+p = fb.doc.add_paragraph("Full name: ")
+fb.add_text_control(p, tag="full_name", placeholder="Type your name")
+
+p = fb.doc.add_paragraph("Department: ")
+fb.add_dropdown(p, tag="dept", items=["Engineering", "Design", "Ops"])
+
+p = fb.doc.add_paragraph("Start date: ")
+fb.add_date_picker(p, tag="start_date", date_format="M/d/yyyy")
+
+p = fb.doc.add_paragraph("Remote? ")
+fb.add_checkbox(p, tag="remote", checked=False)
+
+fb.save("form.docx")
+```
+
+Read or update an existing form's values with `read_controls` /
+`set_control_value`:
+
+```python
+from docx import Document
+from docx_plus.controls import read_controls, set_control_value
+
+doc = Document("form.docx")
+set_control_value(doc, "full_name", "Ada Lovelace")
+set_control_value(doc, "dept", "Engineering")
+doc.save("form_filled.docx")
+
+values = read_controls(Document("form_filled.docx"))
+print(values["full_name"].value)   # 'Ada Lovelace'
+print(values["dept"].value)        # 'Engineering'
+```
+
+### Fields and protection: page numbers + lock-down
+
+```python
+from docx import Document
+from docx_plus.fields import add_page_number_field, mark_fields_dirty
+from docx_plus.protection import protect_document
+
+doc = Document()
+p = doc.add_paragraph("Page ")
+add_page_number_field(p)
+p.add_run(" of ")
+add_page_number_field(p, field="NUMPAGES")
+
+mark_fields_dirty(doc)               # Word recalculates fields on open
+protect_document(doc, mode="forms")  # only content controls editable
+
+doc.save("report.docx")
+```
+
+`add_date_field` and the generic `add_field(instruction=..., initial_text=...)`
+cover dates and any other complex field (TOC, REF, MERGEFIELD, …).
+`unprotect_document(doc)` removes any protection;
+`is_protected(doc)` is a one-liner predicate.
+
 ## Roadmap
 
 | Phase | Capability | Status |
@@ -120,7 +186,7 @@ for document-wide normalisation.
 | 3 | Style modification (`styles/modify`) | ✓ complete |
 | 3.5 | Style remapping (`find_matching_style`, `remap_styles`, `ensure_style(match_existing=)`) | ✓ complete |
 | 4 | Content controls (`controls/`) | ✓ complete |
-| 5 | Fields + document protection (`fields/`, `protection/`) | not started |
+| 5 | Fields + document protection (`fields/`, `protection/`) | ✓ complete |
 | 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | not started |
 
 ## Documentation
@@ -131,7 +197,7 @@ for document-wide normalisation.
 - [`docs/API.md`](docs/API.md) — hand-curated index of every public
   symbol with links to the auto-generated reference
 - [`docs/TEST_GAPS.md`](docs/TEST_GAPS.md) — honest accounting of
-  where the test suite has real holes (snapshot at end of Phase 3.5)
+  where the test suite has real holes (snapshot at end of Phase 5)
 - `docs/reference/` — per-module API reference, rendered by
   [MkDocs](https://www.mkdocs.org) + [mkdocstrings](https://mkdocstrings.github.io).
   `uv run mkdocs serve` to browse locally.

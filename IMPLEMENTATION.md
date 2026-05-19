@@ -509,6 +509,122 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-19 — Phase 5: Fields and protection — complete
+
+- **Lint debt cleared** (from Phase 3.6 / Phase 4 carry-over): `uv run ruff
+  check tests/ --fix` resolved 9 of 10 issues (I001 import sorts × 5, F401
+  unused imports × 2, quoted-annotation cleanups × 2). The remaining `B017`
+  in `tests/test_styles_inspect.py:310` was hand-narrowed from
+  `pytest.raises(Exception)` to `pytest.raises(dataclasses.FrozenInstanceError)`.
+  Six test files reformatted via `ruff format`. `tests/` now passes both
+  `ruff check` and `ruff format --check`.
+- **`core/ns.py` xml namespace**: added `XML = "http://www.w3.org/XML/1998/
+  namespace"` constant and `"xml"` key in `NSMAP`, so `qn("xml:space")`
+  works. Needed by `w:instrText` (and the field result `w:t`) to keep Word
+  from collapsing the surrounding whitespace on the field instruction.
+  Added `test_qn_xml_namespace` to `test_core_ns.py` and updated the
+  `test_nsmap_keys` set expectation.
+- **`fields/simple.py`** — three public functions all routing through a
+  single private `_build_complex_field(p_element, instruction, initial_text)`
+  helper that emits the canonical 5-run sequence
+  (begin / instrText / separate / result-text / end). Each `w:instrText`
+  and the result `w:t` get `xml:space="preserve"`.
+  - `add_page_number_field(paragraph, *, field="PAGE", format=None)` —
+    builds `" PAGE "` (or `" {field} {format} "`); seeds initial result
+    `"1"` so offline viewers see something before Word recalculates.
+    Accepts `PageFieldName = Literal["PAGE", "NUMPAGES", "SECTIONPAGES"]`.
+  - `add_date_field(paragraph, *, format="MMMM d, yyyy", auto_update=True)`
+    — emits `DATE \@ "..."` when `auto_update=True`, `CREATEDATE \@ "..."`
+    otherwise. Initial text empty (Word fills on open).
+  - `add_field(paragraph, *, instruction, initial_text="")` — generic
+    passthrough; strips and re-wraps the instruction in single spaces so
+    callers can pass it either way.
+  - All three return the begin `<w:r>` element so callers can navigate or
+    relocate the field. Uses `paragraph._p` (python-docx-private — called
+    out in §7 as an acceptable contained internal-API touch).
+- **`fields/update.py`** — single function `mark_fields_dirty(doc)`
+  matching the §4 reference (idempotent, updates existing
+  `val="false"` → `"true"`). Uses anchor-before-insertion against a
+  12-entry tuple of CT_Settings children that come after `w:updateFields`
+  (`w:hdrShapeDefaults`, `w:footnotePr`, `w:endnotePr`, `w:compat`,
+  `w:docVars`, `w:rsids`, `w:mathPr`, `w:themeFontLang`,
+  `w:clrSchemeMapping`, `w:shapeDefaults`, `w:decimalSymbol`,
+  `w:listSeparator`). python-docx's stock `settings.xml` includes `w:compat`
+  and `w:rsids`, so blank documents hit the anchor path (verified in test).
+- **`protection/document.py`** — three public functions per SPEC §8:
+  - `protect_document(doc, *, mode="forms")` accepts the four `ProtectionMode`
+    literals (`forms`/`readOnly`/`comments`/`trackedChanges`). Emits
+    `<w:documentProtection w:edit=MODE w:enforcement="1"/>`. Idempotent: a
+    second call replaces the mode rather than stacking.
+  - `unprotect_document(doc)` removes the element, no-op when absent.
+  - `is_protected(doc)` returns presence-only (does not introspect mode).
+  - Anchor-before-insertion against an 11-entry tuple of CT_Settings
+    children that come after `w:documentProtection` (`w:autoFormatOverride`,
+    `w:styleLockTheme`, `w:styleLockQFSet`, `w:defaultTabStop`,
+    `w:autoHyphenation`, etc.). python-docx's stock settings has
+    `w:defaultTabStop`, so blank documents hit the anchor path —
+    schema-correctness is verified by `test_protect_document_precedes_defaultTabStop`.
+  - Both fields/update.py and protection/document.py duplicate the 4-line
+    `_insert_before_first_anchor` helper privately rather than share via
+    `core/`. Premature abstraction risk over DRY purity; SPEC §9.1 also
+    forbids capability-to-capability imports.
+- **No new error classes for Phase 5.** Both modules' inputs are
+  Literal-typed; mypy catches misuse statically. Runtime misuse produces
+  a structurally-valid file with a semantically-wrong field/edit attribute
+  that Word will surface in its UI — consistent with SPEC's "no silent
+  fallbacks" but without piling on validation that duplicates the type
+  system.
+- **`_testing/ooxml_asserts.py`** gained the two helpers SPEC §10 promises:
+  - `assert_protected(doc, mode=None)` — verifies presence + `w:enforcement="1"`;
+    optionally validates `w:edit`.
+  - `assert_field_dirty(doc)` — verifies `w:updateFields val="true"`.
+- **`docx_plus/fields/__init__.py`** and **`docx_plus/protection/__init__.py`**
+  re-export the public surface (5 symbols + 4 symbols respectively).
+  Top-level `docx_plus/__init__.py` unchanged — consistent with Phase 4
+  pattern of consuming via `from docx_plus.<module> import ...`.
+- **Tests**: `test_fields.py` (24 tests) + `test_protection.py` (18 tests).
+  Coverage: every field type's structure assertion (instruction text, run
+  count, initial result, xml:space presence), generic-field whitespace
+  normalisation, two-fields-in-one-paragraph composition, save→reopen
+  round-trips per field type. For protection: every mode (parametrised
+  over the four Literal values), schema-position invariant, idempotency,
+  mode-replacement, unprotect-after-protect, round-trip, plus negative
+  tests on the assertion helper. The `test_import_invariant.py` parametrised
+  test picked up `fields/` and `protection/` automatically (12 cases now,
+  up from 10).
+- **Round-trip smoke (transient, not committed)**: a script that does
+  protect + 2 PAGE fields + mark_fields_dirty + save + reopen confirms the
+  produced ~36KB `.docx` survives the full chain; `is_protected()` returns
+  True, `assert_protected(mode="forms")` passes, `assert_field_dirty`
+  passes, and `paragraphs[0].text` reads as `"Page 1 of 1"` (the seeded
+  initial results). No LibreOffice on this dev box so the soffice headless
+  smoke is deferred to Phase 6's CI plumbing.
+- **Quality gates green**: pytest 285/285 (was 239, +46: 24 fields + 18
+  protection + 1 ns + 3 import-invariant parametrisations), mypy --strict
+  (21 source files, +3), ruff check + ruff format --check on **both**
+  `docx_plus/` and `tests/` (the test-file lint debt is now gone — tests/
+  is part of the gate too).
+
+**Phase 5 exit criteria status**: SPEC §7 + §8 contracts implemented;
+`mark_fields_dirty` idempotent and schema-correct; `protect_document`
+schema-correct (precedes `w:defaultTabStop`); the assertion helpers from
+SPEC §10 are in place. The "page numbers show correct values after Word
+opens" criterion from IMPLEMENTATION.md §10 is **only partially verifiable
+in CI** — the structural + python-docx round-trip is the test-suite
+proxy; full verification needs Microsoft Word (or LibreOffice headless,
+which Phase 6 will wire up).
+
+**Next session — Phase 6: Polish.** Per IMPLEMENTATION.md §2 / SPEC §11 + §13:
+write the four examples (`inspect_document.py`, `restyle_existing.py`,
+`build_form.py`, `populate_form.py`); add Layer 3 LibreOffice-headless
+smoke tests gated behind `pytest.mark.requires_libreoffice`; final
+quality-gate sweep against SPEC §13 (the 90% coverage threshold from
+`tool.coverage.report` needs to be enforced via `--cov-fail-under` in
+CI — flagged in `docs/TEST_GAPS.md` B1); update `README.md` /
+`ARCHITECTURE.md` to cover the Phase 4+5 surface (forms / fields /
+protection sections); `API.md` index gets four new module entries.
+Budget 1-2 days.
+
 ### 2026-05-19 — Second-pass refinement from sample doc #2 — complete
 
 - User produced `tests/fixtures/word_samples/sample-2.docx` covering the 24

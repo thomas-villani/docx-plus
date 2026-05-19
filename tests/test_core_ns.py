@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from docx_plus.core.ns import A, MC, NSMAP, R, W, W14, qn
+from docx_plus.core.ns import MC, NSMAP, W14, XML, A, R, W, qn
 
 
 def test_qn_main_namespace() -> None:
@@ -27,6 +27,11 @@ def test_qn_markup_compatibility_namespace() -> None:
     assert qn("mc:Choice") == f"{{{MC}}}Choice"
 
 
+def test_qn_xml_namespace() -> None:
+    """``xml:space`` is needed by ``w:instrText`` to preserve field whitespace."""
+    assert qn("xml:space") == f"{{{XML}}}space"
+
+
 def test_qn_rejects_unqualified() -> None:
     with pytest.raises(ValueError, match="prefix:local"):
         qn("notqualified")
@@ -38,4 +43,4 @@ def test_qn_rejects_unknown_prefix() -> None:
 
 
 def test_nsmap_keys() -> None:
-    assert set(NSMAP) == {"w", "w14", "r", "mc", "a"}
+    assert set(NSMAP) == {"w", "w14", "r", "mc", "a", "xml"}

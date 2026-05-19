@@ -1,16 +1,15 @@
 # Test Suite Gap Audit
 
-**Snapshot date:** 2026-05-15 (end of Phase 3.5)
-**Scope:** Phases 1, 2, 3, 3.5 — `core/`, `styles/inspect.py`, `styles/modify.py`, `styles/theme.py`
-**Suite size at snapshot:** 187 tests across 12 files; mypy `--strict`, ruff `check`, ruff `format --check` all green
+**Snapshot date:** 2026-05-19 (end of Phase 5)
+**Scope:** Phases 1–5 — `core/`, `styles/`, `controls/`, `fields/`, `protection/`
+**Suite size at snapshot:** 285 tests across 17 files; mypy `--strict`, ruff `check`, ruff `format --check` all green on both `docx_plus/` and `tests/`
 
 This is an honest accounting of where the existing test suite has real holes,
 not a comprehensive coverage report. Items are listed by severity. Each entry
 cites the file/line that exercises (or fails to exercise) the path and the
-SPEC / `IMPLEMENTATION.md` section that motivates it. Phase 4–6 capabilities
-(`controls/`, `fields/`, `protection/`, `examples/`) are intentionally
-excluded — they are not yet built, so missing tests there are expected and
-not a "gap" in the sense used here.
+SPEC / `IMPLEMENTATION.md` section that motivates it. Phase 6 (`examples/`)
+is intentionally excluded — it is not yet built, so missing tests there are
+expected and not a "gap" in the sense used here.
 
 Entries close (move to a `## Resolved` section at the bottom) as gaps are
 filled. Update this file when you fix one.
@@ -208,19 +207,20 @@ recommended fix order.
 
 Defensive completeness — worth adding but not blocking Phase 4.
 
-### N1. Shared assertion library is sparse
+### N1. Shared assertion library — two helpers still missing
 
-- **Where:** `docx_plus/_testing/ooxml_asserts.py` exports
-  `assert_ids_unique` and `assert_style_defined`. SPEC §10 also lists
-  `assert_style_not_defined`, `assert_no_orphan_relationships`,
-  `assert_protected`, `assert_field_dirty`, `count_controls`.
-- **Status:** Four of the five missing helpers (`assert_protected`,
-  `assert_field_dirty`, `count_controls`, `assert_no_orphan_relationships`)
-  are legitimately blocked on Phases 4–5 — no callers yet. The fifth,
-  `assert_style_not_defined`, has obvious callers in current code (e.g.
-  the delete-style tests use ad-hoc XPath instead).
-- **Fix:** Add `assert_style_not_defined`. Defer the others until Phase 4
-  starts.
+- **Where:** `docx_plus/_testing/ooxml_asserts.py` now exports
+  `assert_ids_unique`, `assert_style_defined`, `count_controls`,
+  `assert_protected`, `assert_field_dirty`. SPEC §10 also lists
+  `assert_style_not_defined` and `assert_no_orphan_relationships`,
+  neither of which exists yet.
+- **Status:** Reduced from "two-of-seven" to "five-of-seven" across
+  Phases 4 and 5. `assert_style_not_defined` has obvious callers in
+  current code (the delete-style tests use ad-hoc XPath instead);
+  `assert_no_orphan_relationships` is still blocked on a real caller
+  needing it.
+- **Fix:** Add `assert_style_not_defined`. Defer the relationship
+  helper until v0.2 binding work needs it.
 
 ### N2. Conditional table formatting has no skip-marked placeholder
 
@@ -275,5 +275,44 @@ alongside Phase 4 work.
 
 ## Resolved
 
-_None yet. Move entries here with their resolution date and the test
-file/line that now covers them._
+### 2026-05-19 — Phase 5
+
+- **Partial: N1** — `count_controls` (Phase 4), `assert_protected`
+  (Phase 5), `assert_field_dirty` (Phase 5) added to
+  `docx_plus/_testing/ooxml_asserts.py`. Five-of-seven SPEC §10 helpers
+  now present; entry above is rewritten with the remaining two.
+
+## Phase 4–5 coverage notes
+
+These don't belong in the BLOCKER/IMPORTANT/NICE-TO-HAVE buckets above
+— they're scoped to features that landed in Phases 4 and 5 — but they
+record what is and isn't tested for those modules.
+
+- **`controls/builder.py`** — 24 tests in `tests/test_controls_builder.py`
+  cover every control type's structure assertion + a save→reopen
+  round-trip, multi-builder ID-registry sharing, the
+  `MissingNamespaceError` path, and sdtPr child-order invariants per
+  control type.
+- **`controls/read.py`** — 26 tests in `tests/test_controls_read.py`
+  cover the four typed errors, every `set_control_value` type path,
+  the dropdown-by-value vs by-display matching, the combobox
+  freeform-passthrough, and the `existing_form` fixture (a doc built
+  without `FormBuilder` — schema-tolerance check).
+- **`fields/`** — 24 tests in `tests/test_fields.py`. Every field
+  variant's instruction text, the `xml:space="preserve"` invariant,
+  two-fields-in-one-paragraph composition, three save→reopen
+  round-trips (PAGE, DATE, mark-dirty+PAGE), and four
+  `mark_fields_dirty` cases (insert / idempotent / update-false /
+  schema-position / fallback-append).
+- **`protection/`** — 18 tests in `tests/test_protection.py`. Every
+  `ProtectionMode` literal (parametrised), the schema-position
+  invariant against `w:defaultTabStop`, idempotency + mode-replace,
+  unprotect+reprotect, the `is_protected` predicate, save→reopen
+  round-trip, plus negative tests on the `assert_protected` helper.
+- **Round-trip floor for new capabilities**: every modifying function
+  in `controls/`, `fields/`, `protection/` has at least one
+  save→reopen test. The Phase 3 gap on `modify_style` / `apply_style` /
+  `delete_style` (I1, I5 above) is the outlier, not the rule.
+
+_Move entries here with their resolution date and the test file/line
+that now covers them._

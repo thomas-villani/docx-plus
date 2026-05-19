@@ -13,10 +13,12 @@ yet on PyPI.
 - **Style cascade** — read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
   the Word-native way rather than scattering direct formatting.
-- **Content controls** *(Phase 4, not yet shipped)* — text / dropdown /
-  date / checkbox controls; read values back; form protection.
-- **Fields** *(Phase 5, not yet shipped)* — page numbers, dates,
-  generic fields; mark fields dirty so Word recalculates on next open.
+- **Content controls** — text / dropdown / date / checkbox controls
+  via `FormBuilder`; round-trip read/write of values; form protection.
+- **Fields** — PAGE / NUMPAGES / DATE / generic complex fields; mark
+  fields dirty so Word recalculates them on next open.
+- **Protection** — enforce form-fill, read-only, comments-only, or
+  tracked-changes mode at the document level.
 
 ## Where to start
 
@@ -75,6 +77,39 @@ ensure_style(doc, "BlockText")
 See [`ARCHITECTURE.md` §5](ARCHITECTURE.md#5-built-in-styles-table) for
 the full tiered table.
 
+### Forms
+
+```python
+from docx_plus.controls import FormBuilder
+
+fb = FormBuilder()
+p = fb.doc.add_paragraph("Name: ")
+fb.add_text_control(p, tag="name", placeholder="Type your name")
+p = fb.doc.add_paragraph("Dept: ")
+fb.add_dropdown(p, tag="dept", items=["Eng", "Design", "Ops"])
+fb.save("form.docx")
+```
+
+Read / update with `read_controls(doc)` and `set_control_value(doc,
+tag, value)`. See [`ARCHITECTURE.md` §6](ARCHITECTURE.md#6-content-controls).
+
+### Fields & protection
+
+```python
+from docx_plus.fields import add_page_number_field, mark_fields_dirty
+from docx_plus.protection import protect_document
+
+p = doc.add_paragraph("Page ")
+add_page_number_field(p)
+p.add_run(" of ")
+add_page_number_field(p, field="NUMPAGES")
+
+mark_fields_dirty(doc)               # Word recalculates on open
+protect_document(doc, mode="forms")  # only content controls editable
+```
+
+See [`ARCHITECTURE.md` §7](ARCHITECTURE.md#7-fields-and-protection).
+
 ## Roadmap
 
 | Phase | Capability | Status |
@@ -84,5 +119,5 @@ the full tiered table.
 | 3 | Style modification | ✓ complete |
 | 3.5 | Style remapping | ✓ complete |
 | 4 | Content controls | ✓ complete |
-| 5 | Fields + protection | not started |
+| 5 | Fields + protection | ✓ complete |
 | 6 | Polish (examples, smoke tests, CI doc build) | not started |

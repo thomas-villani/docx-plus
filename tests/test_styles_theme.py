@@ -34,9 +34,18 @@ def test_load_theme_populates_all_standard_scheme_keys() -> None:
     theme = load_theme(Document())
     assert theme is not None
     expected = {
-        "dk1", "lt1", "dk2", "lt2",
-        "accent1", "accent2", "accent3", "accent4", "accent5", "accent6",
-        "hlink", "folHlink",
+        "dk1",
+        "lt1",
+        "dk2",
+        "lt2",
+        "accent1",
+        "accent2",
+        "accent3",
+        "accent4",
+        "accent5",
+        "accent6",
+        "hlink",
+        "folHlink",
     }
     assert expected.issubset(theme.scheme.keys())
 
@@ -137,7 +146,7 @@ def test_apply_theme_tint_strips_leading_hash() -> None:
     assert apply_theme_tint("#4F81BD", "FF") == "4F81BD"
 
 
-def test_themed_fixture_round_trips(themed_docx_path: "object") -> None:
+def test_themed_fixture_round_trips(themed_docx_path: object) -> None:
     """The themed.docx fixture's accent1 color is the same as Document() default."""
     from pathlib import Path
 

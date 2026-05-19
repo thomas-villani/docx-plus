@@ -33,17 +33,17 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Surface at end of Phase 3.5
+## Public surface at end of Phase 5
 
-Phases 4 (`controls/`), 5 (`fields/`, `protection/`), and 6
-(`examples/`) are stubs. Their `__init__.py` files exist so imports
-resolve, but their `__all__` is empty.
+Phases 1 through 5 are complete. Phase 6 (`examples/`) is still a stub —
+`docx_plus/examples/__init__.py` exists so imports resolve, but `__all__`
+is empty pending the polish phase.
 
 ### `docx_plus` (top-level package)
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §7](ARCHITECTURE.md#7-error-hierarchy) |
+| `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §9](ARCHITECTURE.md#9-error-hierarchy) |
 | `__version__` | str | `"0.1.0"` |
 
 ### `docx_plus.core`
@@ -59,14 +59,16 @@ The foundation primitives. Every capability module imports from here only.
 | `IdRegistry.issued()` | method | Frozenset snapshot of all issued IDs |
 | `DuplicateIdError` | exception | Dual-bases: `DocxPlusError, ValueError` |
 | `qn(name)` | function | `"w:tag"` → Clark-notation `{namespace}tag` |
-| `NSMAP` | dict | The library's pre-bound namespace map (`w`, `w14`, `r`, `mc`, `a`) |
+| `NSMAP` | dict | The library's pre-bound namespace map (`w`, `w14`, `r`, `mc`, `a`, `xml`) |
+| `XML` | str | XML namespace URI (added Phase 5 to make `qn("xml:space")` work for `w:instrText`) |
 | `el(tag, **attrs)` | function | Create a namespaced element |
 | `sub(parent, tag, **attrs)` | function | Create + append a namespaced child |
 | `xpath(node, expr)` | function | XPath against `node` with `NSMAP` pre-bound. Use this — `BaseOxmlElement.xpath()` rejects `namespaces=` kwarg |
 | `remove(node)` | function | Detach from parent, no-op if already detached |
 
-`core/parts.py` is a Phase 1 stub (`__all__ = []`). Phase 4 will populate it
-with package-part / relationship helpers for custom XML parts.
+`core/parts.py` remains a Phase 1 stub (`__all__ = []`). v0.2 data
+binding (Custom XML Parts) will populate it. v0.1 controls and fields
+work inline in the document body so no relationship plumbing is needed.
 
 ### `docx_plus.styles` — inspection
 
@@ -130,6 +132,63 @@ Read-only theme color resolution. Theme writing is a v0.2 goal.
 | `apply_lum_off(hex_color, lum_off)` | function | Add to lightness by per-mille factor |
 | `ThemeError` | exception | Structurally invalid input to the transforms |
 
+### `docx_plus.controls` — build side
+
+Build content controls (SDTs) and attach them inline to paragraphs.
+Architecture walkthrough in [`ARCHITECTURE.md` §6](ARCHITECTURE.md#6-content-controls).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `FormBuilder(document_or_path=None, *, id_registry=None)` | class | Wrap a `Document`, open one from path, or start fresh. On construction: materialises `PlaceholderText` style, verifies `w14` namespace, seeds `IdRegistry` |
+| `FormBuilder.doc` | attribute | The underlying python-docx `Document` — use it for ordinary content (headings, paragraphs, tables) |
+| `FormBuilder.add_text_control(paragraph, *, tag, alias=None, placeholder=..., multiline=False)` | method | Single- or multi-line text SDT. Returns the `w:sdt` element |
+| `FormBuilder.add_dropdown(paragraph, *, tag, items, alias=None, placeholder=..., editable=False)` | method | Dropdown (or combobox if `editable=True`). `items` is `list[str]` or `list[tuple[display, value]]` |
+| `FormBuilder.add_date_picker(paragraph, *, tag, alias=None, placeholder=..., date_format="M/d/yyyy", lcid="en-US")` | method | Date picker SDT |
+| `FormBuilder.add_checkbox(paragraph, *, tag, alias=None, checked=False)` | method | Checkbox via `w14:checkbox` |
+| `FormBuilder.save(path)` | method | Save the wrapped document. Returns the path as `str` |
+| `DropdownItem` | type alias | `str | tuple[str, str]` — display-only or `(display, value)` |
+| `MissingNamespaceError` | exception | Document root doesn't declare `w14` — `add_checkbox` would emit unrenderable XML |
+
+### `docx_plus.controls` — read side
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `read_controls(doc, *, by="tag")` | function | Returns `dict[str, ControlValue]` keyed by tag (default) or alias |
+| `set_control_value(doc, tag, value)` | function | Update one control by tag. Type-dispatched on the control type |
+| `clear_control(doc, tag)` | function | Reset to the placeholder state |
+| `ControlValue` | dataclass (frozen) | `tag`, `alias`, `control_type`, `value`, `is_placeholder` |
+| `ControlType` | type alias | `Literal["text", "dropdown", "combobox", "date", "checkbox"]` |
+| `ControlNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. Tag missing |
+| `DuplicateTagError` | exception | Dual-bases: `DocxPlusError, ValueError`. Two SDTs share a tag (repeating-section binding is v0.2) |
+| `ValueNotInListError` | exception | Dual-bases: `DocxPlusError, ValueError`. Dropdown value matches neither `w:value` nor `w:displayText`. Combobox is exempt — it accepts freeform |
+| `ControlTypeError` | exception | Dual-bases: `DocxPlusError, TypeError`. `set_control_value` value type doesn't match the control type |
+
+### `docx_plus.fields`
+
+Complex field insertion (PAGE / DATE / generic) and the
+"recalculate on open" flag. Architecture walkthrough in
+[`ARCHITECTURE.md` §7](ARCHITECTURE.md#7-fields-and-protection).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `add_page_number_field(paragraph, *, field="PAGE", format=None)` | function | Append a `PAGE` / `NUMPAGES` / `SECTIONPAGES` field. `format` is a field-switch string like `r"\* ARABIC"`. Returns the begin `<w:r>` |
+| `add_date_field(paragraph, *, format="MMMM d, yyyy", auto_update=True)` | function | Append a `DATE` (auto-update) or `CREATEDATE` (frozen) field with a Word date-format string |
+| `add_field(paragraph, *, instruction, initial_text="")` | function | Generic complex field. Use for `TOC`, `REF`, `MERGEFIELD`, etc. Spaces are normalised around `instruction` |
+| `mark_fields_dirty(doc)` | function | Set `w:updateFields val="true"` in `settings.xml`. Idempotent |
+| `PageFieldName` | type alias | `Literal["PAGE", "NUMPAGES", "SECTIONPAGES"]` |
+
+### `docx_plus.protection`
+
+Document-level edit-mode enforcement. Unpassworded — v0.1 by design;
+password-protected forms are v0.2 (SPEC §1).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `protect_document(doc, *, mode="forms")` | function | Emit `w:documentProtection` with `w:edit=mode` + `w:enforcement="1"`. Idempotent — second call replaces mode |
+| `unprotect_document(doc)` | function | Remove protection. Idempotent |
+| `is_protected(doc)` | function | Presence predicate (does not introspect mode) |
+| `ProtectionMode` | type alias | `Literal["forms", "readOnly", "comments", "trackedChanges"]` |
+
 ---
 
 ## Internal modules (not part of the public API)
@@ -146,10 +205,13 @@ Shared test-suite assertion helpers. Internal — referenced from
 |---|---|
 | `assert_ids_unique(doc)` | Every `w:id` on `w:sdt` descendants is unique |
 | `assert_style_defined(doc, style_id)` | `w:style[@w:styleId=...]` exists in `word/styles.xml` |
+| `count_controls(doc, control_type=None)` | Count SDTs in the body; filter by `"text"`/`"dropdown"`/`"combobox"`/`"date"`/`"checkbox"` |
+| `assert_protected(doc, mode=None)` | `w:documentProtection` present with `w:enforcement="1"`; optionally validates `w:edit` |
+| `assert_field_dirty(doc)` | `w:updateFields val="true"` present in `settings.xml` |
 
-The full SPEC §10 list (`assert_style_not_defined`,
-`assert_no_orphan_relationships`, `assert_protected`, `assert_field_dirty`,
-`count_controls`) is built out lazily as Phase 4–5 work needs each helper.
+The SPEC §10 list is now mostly populated; `assert_style_not_defined`
+and `assert_no_orphan_relationships` remain unwritten (no caller
+needs them yet — see `TEST_GAPS.md` N1).
 
 ---
 

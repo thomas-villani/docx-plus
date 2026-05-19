@@ -84,4 +84,50 @@ def count_controls(
     return count
 
 
-__all__ = ["assert_ids_unique", "assert_style_defined", "count_controls"]
+def assert_protected(doc: Document, mode: str | None = None) -> None:
+    """Assert ``w:documentProtection`` is enforced in ``settings.xml``.
+
+    Args:
+        doc: python-docx Document to inspect.
+        mode: If given, also assert ``w:edit`` matches this value (one of
+            ``"forms"``, ``"readOnly"``, ``"comments"``, ``"trackedChanges"``).
+            ``None`` (default) only checks presence + enforcement.
+
+    Raises:
+        AssertionError: If protection is absent, enforcement is not ``"1"``,
+            or ``mode`` was supplied and does not match.
+    """
+    settings = doc.settings.element
+    element = settings.find(qn("w:documentProtection"))
+    assert element is not None, "w:documentProtection is not present in settings.xml"
+    enforcement = element.get(qn("w:enforcement"))
+    assert enforcement == "1", f"w:enforcement is {enforcement!r}, expected '1'"
+    if mode is not None:
+        actual = element.get(qn("w:edit"))
+        assert actual == mode, f"w:edit is {actual!r}, expected {mode!r}"
+
+
+def assert_field_dirty(doc: Document) -> None:
+    """Assert ``w:updateFields="true"`` is set in ``settings.xml``.
+
+    Args:
+        doc: python-docx Document to inspect.
+
+    Raises:
+        AssertionError: If the element is absent or its ``w:val`` is not
+            ``"true"``.
+    """
+    settings = doc.settings.element
+    element = settings.find(qn("w:updateFields"))
+    assert element is not None, "w:updateFields is not present in settings.xml"
+    value = element.get(qn("w:val"))
+    assert value == "true", f"w:updateFields/@w:val is {value!r}, expected 'true'"
+
+
+__all__ = [
+    "assert_field_dirty",
+    "assert_ids_unique",
+    "assert_protected",
+    "assert_style_defined",
+    "count_controls",
+]

@@ -6,19 +6,18 @@ combination, to verify the precedence and override rules of SPEC §4.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 from docx import Document
 
-from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
 from docx_plus.styles.inspect import (
     ResolvedFormatting,
     StyleCascadeError,
     resolve_effective_formatting,
 )
-
 
 # --------------------------------------------------------------------------
 # Layer 1: docDefaults
@@ -307,7 +306,7 @@ def test_resolved_formatting_is_frozen() -> None:
     p = doc.add_paragraph()
     resolved = resolve_effective_formatting(p)
     assert isinstance(resolved, ResolvedFormatting)
-    with pytest.raises(Exception):  # frozen dataclass raises FrozenInstanceError
+    with pytest.raises(dataclasses.FrozenInstanceError):
         resolved.font_size = 99.0  # type: ignore[misc]
 
 

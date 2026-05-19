@@ -18,9 +18,7 @@ from docx_plus.controls import (
     read_controls,
     set_control_value,
 )
-from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub, xpath
-
 
 # --------------------------------------------------------------------------
 # Helpers.
@@ -284,9 +282,7 @@ def test_read_external_form(existing_form_docx_path: Path) -> None:
     assert controls["subscribe"].value is True
 
 
-def test_set_external_form_value(
-    existing_form_docx_path: Path, tmp_path: Path
-) -> None:
+def test_set_external_form_value(existing_form_docx_path: Path, tmp_path: Path) -> None:
     doc = Document(existing_form_docx_path)
     set_control_value(doc, "region", "N")
     out = tmp_path / "modified.docx"

@@ -17,7 +17,6 @@ from docx_plus.styles.theme import (
     resolve_theme_color,
 )
 
-
 _THEME_RELTYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
 
 

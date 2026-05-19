@@ -73,9 +73,7 @@ def test_single_style_bold_is_bold() -> None:
 def test_bold_xor_through_basedon_chain() -> None:
     doc = Document()
     _add_paragraph_style(doc, "ABold", rpr_children=[("w:b", None)])
-    _add_paragraph_style(
-        doc, "BBoldChild", based_on="ABold", rpr_children=[("w:b", None)]
-    )
+    _add_paragraph_style(doc, "BBoldChild", based_on="ABold", rpr_children=[("w:b", None)])
     p = _styled_paragraph(doc, "BBoldChild")
 
     resolved = resolve_effective_formatting(p)
@@ -156,12 +154,8 @@ def test_three_level_xor_parity() -> None:
 def test_italic_xor_alongside_bold_independent() -> None:
     """Each toggle property tracks parity independently."""
     doc = Document()
-    _add_paragraph_style(
-        doc, "BoldOnce", rpr_children=[("w:b", None), ("w:i", None)]
-    )
-    _add_paragraph_style(
-        doc, "BoldTwice", based_on="BoldOnce", rpr_children=[("w:b", None)]
-    )
+    _add_paragraph_style(doc, "BoldOnce", rpr_children=[("w:b", None), ("w:i", None)])
+    _add_paragraph_style(doc, "BoldTwice", based_on="BoldOnce", rpr_children=[("w:b", None)])
     p = _styled_paragraph(doc, "BoldTwice")
 
     resolved = resolve_effective_formatting(p)
@@ -188,9 +182,7 @@ def test_value_zero_treated_as_explicit_false() -> None:
 def test_value_true_explicit_xor_flips() -> None:
     """`w:val="true"` is equivalent to no val for XOR purposes."""
     doc = Document()
-    _add_paragraph_style(
-        doc, "BoldTrue", rpr_children=[("w:b", {"w:val": "true"})]
-    )
+    _add_paragraph_style(doc, "BoldTrue", rpr_children=[("w:b", {"w:val": "true"})])
     p = _styled_paragraph(doc, "BoldTrue")
 
     resolved = resolve_effective_formatting(p)

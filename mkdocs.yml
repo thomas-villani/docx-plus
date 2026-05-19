@@ -38,6 +38,11 @@ nav:
       - docx_plus.styles.inspect: reference/styles-inspect.md
       - docx_plus.styles.modify: reference/styles-modify.md
       - docx_plus.styles.theme: reference/styles-theme.md
+      - docx_plus.controls.builder: reference/controls-builder.md
+      - docx_plus.controls.read: reference/controls-read.md
+      - docx_plus.fields.simple: reference/fields-simple.md
+      - docx_plus.fields.update: reference/fields-update.md
+      - docx_plus.protection.document: reference/protection-document.md
   - Test Gaps: TEST_GAPS.md
 
 plugins:

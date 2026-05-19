@@ -55,9 +55,7 @@ def test_provenance_only_for_populated_fields() -> None:
     assert resolved.provenance is not None
     for fname, source in resolved.provenance.items():
         value = getattr(resolved, fname)
-        assert value is not None, (
-            f"field {fname!r} is None but appears in provenance ({source!r})"
-        )
+        assert value is not None, f"field {fname!r} is None but appears in provenance ({source!r})"
 
 
 def test_doc_defaults_attributed_correctly() -> None:

@@ -37,7 +37,6 @@ from docx_plus.styles.modify import (
     remap_styles,
 )
 
-
 # --------------------------------------------------------------------------
 # create_style: happy path + property writes via cascade round-trip.
 # --------------------------------------------------------------------------
@@ -562,9 +561,7 @@ def test_ensure_style_materialises_heading1_when_absent() -> None:
     # python-docx ships Heading1 already materialised (Word 2007 defaults).
     # Strip it to exercise the genuine latent-materialisation path.
     styles_root = doc.styles.element
-    existing = styles_root.find(
-        f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']"
-    )
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Heading1']")
     if existing is not None:
         styles_root.remove(existing)
     proxy = ensure_style(doc, "Heading1")
@@ -597,9 +594,7 @@ def test_ensure_style_returns_existing_heading1_unchanged() -> None:
 def test_ensure_style_normal_when_absent_marks_default() -> None:
     doc = Document()
     styles_root = doc.styles.element
-    existing = styles_root.find(
-        f"./{qn('w:style')}[@{qn('w:styleId')}='Normal']"
-    )
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}='Normal']")
     if existing is not None:
         styles_root.remove(existing)
     proxy = ensure_style(doc, "Normal")

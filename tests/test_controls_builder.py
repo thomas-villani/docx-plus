@@ -13,7 +13,6 @@ from docx_plus.core.ids import IdRegistry
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
 
-
 # --------------------------------------------------------------------------
 # Construction.
 # --------------------------------------------------------------------------
@@ -220,10 +219,7 @@ def test_existing_id_seeded_from_doc(tmp_path: Path) -> None:
     p2 = fb2.doc.add_paragraph()
     fb2.add_text_control(p2, tag="new")
     doc = _build_and_reload(fb2, tmp_path)
-    ids = [
-        int(el.get(qn("w:val")))
-        for el in xpath(doc.element.body, ".//w:sdt/w:sdtPr/w:id")
-    ]
+    ids = [int(el.get(qn("w:val"))) for el in xpath(doc.element.body, ".//w:sdt/w:sdtPr/w:id")]
     assert 999 in ids
     assert len(ids) == 2
     assert len(set(ids)) == 2
@@ -322,7 +318,9 @@ def test_missing_w14_namespace_raises() -> None:
 
     class _FakeDoc:
         class _Element:
-            nsmap: dict[str | None, str] = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            nsmap: dict[str | None, str] = {
+                "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            }
 
         element = _Element()
         # Stub everything FormBuilder.__init__ touches before _verify.

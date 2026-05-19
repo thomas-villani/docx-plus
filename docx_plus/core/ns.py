@@ -11,6 +11,7 @@ W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+XML = "http://www.w3.org/XML/1998/namespace"
 
 NSMAP: dict[str, str] = {
     "w": W,
@@ -18,6 +19,7 @@ NSMAP: dict[str, str] = {
     "r": R,
     "mc": MC,
     "a": A,
+    "xml": XML,
 }
 
 
@@ -49,4 +51,4 @@ def qn(name: str) -> str:
     return f"{{{uri}}}{local}"
 
 
-__all__ = ["A", "MC", "NSMAP", "R", "W", "W14", "qn"]
+__all__ = ["A", "MC", "NSMAP", "R", "W", "W14", "XML", "qn"]
