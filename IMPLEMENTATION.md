@@ -509,6 +509,68 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-19 — v0.2: comments, layout, bookmarks, notes — complete
+
+Locked scope per `notes-v0_1-scope.md §6`: full four-module cycle, layout
+at the floor (cols + mid-doc breaks + evenOdd), no w15 threading, no
+deadline. Ordered comments → layout → bookmarks+xrefs → notes per §5.
+
+- **Phase 0 — `core/parts.py` foundation.** Added
+  `get_or_create_part(doc, spec)` plus three `PartSpec` constants
+  (`COMMENTS_SPEC`, `FOOTNOTES_SPEC`, `ENDNOTES_SPEC`). Registered
+  internal `_FootnotesPart` / `_EndnotesPart` `XmlPart` subclasses with
+  `PartFactory.part_type_for` so existing footnote / endnote parts
+  round-trip with parsed XML rather than raw blobs. python-docx already
+  registers `CommentsPart` itself, so the helper transparently picks up
+  the correct class for each content type.
+- **Refactored `core/ids.py`.** Extracted `_IdRegistryBase` so per-
+  namespace registries (`CommentIdRegistry`, `BookmarkIdRegistry`,
+  `FootnoteIdRegistry`, `EndnoteIdRegistry`) share `next/reserve/issued`
+  without duplicating mechanics. `IdRegistry` (SDT) unchanged behaviour.
+- **Hoisted to core.** `_build_complex_field` → `build_complex_field`
+  (used by cross-references); `_insert_before_first_anchor` →
+  `insert_before_first_anchor` (used by layout's evenOddHeaders flag).
+  Both moves remove cross-capability imports — SPEC §9.1 stays clean.
+- **Phase 1 — `comments/`.** `add_comment` writes all four OOXML
+  elements python-docx skips: ``w:commentRangeStart`` /
+  ``w:commentRangeEnd`` / ``CommentReference`` marker run / the
+  ``<w:comment>`` body in ``comments.xml``. Targets accepted: `Run`,
+  `Paragraph` (≥1 run required), `(Run, Run)` tuple. `read_comments`
+  pairs each part-side body with its body-side range and extracts the
+  anchored text. `delete_comment` is idempotent and removes all four
+  pieces.
+- **Phase 2 — `layout/`.** `set_columns` (``<w:cols>``,
+  equal/unequal widths, separator), `insert_section_break` (clones the
+  trailing ``sectPr``, sets ``w:type``, calls python-docx's
+  `CT_P.set_sectPr`), `enable_distinct_even_odd_headers` /
+  `disable_…` (toggles ``<w:evenAndOddHeaders/>`` in
+  ``settings.xml`` via the schema-strict anchor pattern).
+- **Phase 3 — `bookmarks/`.** `add_bookmark` / `delete_bookmark` /
+  `read_bookmarks` plus `add_cross_reference(kind="text"|"page",
+  hyperlink=True)`. Cross-refs reuse `core.build_complex_field` with
+  ``REF`` / ``PAGEREF`` instructions and the ``\h`` flag for hyperlink
+  behavior. Bookmark names validated against Word's rules
+  (`[A-Za-z_][A-Za-z0-9_]{0,39}`).
+- **Phase 4 — `notes/`.** `add_footnote` / `add_endnote` /
+  `read_footnotes` / `read_endnotes`. Two separate parts; ids -1 / 0
+  (separator, continuationSeparator) are unissuable. `read_*` filters
+  separator entries out of results.
+- **Examples.** Four new runnable scripts in
+  `docx_plus/examples/`: `add_comments`, `multi_column_layout`,
+  `bookmarks_and_xrefs`, `footnotes_and_endnotes`. Wired into
+  `test_examples_smoke.py` (smoke + reopen-validity).
+- **Release polish.** Version bumped 0.1.0 → 0.2.0 in `pyproject.toml`,
+  `docx_plus/__init__.py`, and `tests/test_smoke.py`. README capabilities
+  list + per-module usage blocks. CHANGELOG 0.2.0 section under
+  Unreleased.
+- **Gates green.** 431 tests pass (was 348 + 83 new); 92.64% coverage;
+  `mypy --strict` clean on 46 source files; `ruff check` clean.
+
+**Deferred to v0.3+**: w15 threaded comments; layout line numbering and
+page borders; in-place comment / note editing; cross-references to
+headings / numbered items / captions (`STYLEREF`, sequence fields);
+rest of SPEC §15 unchanged.
+
 ### 2026-05-19 — Phase 6: Polish — complete
 
 - **Pre-flight scope check.** Reviewed `notes-v0_1-scope.md` (an untracked

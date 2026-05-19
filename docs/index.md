@@ -5,9 +5,9 @@ the library every python-docx power user ends up writing badly: hardened
 helpers for OOXML operations that sit just past python-docx's
 abstraction boundary.
 
-Status: **v0.1 complete**. Pre-publication — not yet on PyPI.
+Status: **v0.2 complete**. Pre-publication — not yet on PyPI.
 
-## What's in v0.1
+## Capabilities
 
 - **Style cascade** — read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
@@ -18,6 +18,14 @@ Status: **v0.1 complete**. Pre-publication — not yet on PyPI.
   fields dirty so Word recalculates them on next open.
 - **Protection** — enforce form-fill, read-only, comments-only, or
   tracked-changes mode at the document level.
+- **Anchored comments** (v0.2) — the body-side range markers
+  python-docx skips, so "show in document" actually works.
+- **Layout** (v0.2) — multi-column sections, mid-document section
+  breaks, distinct even/odd headers.
+- **Bookmarks + cross-references** (v0.2) — paired body markers plus
+  `REF` / `PAGEREF` fields.
+- **Footnotes + endnotes** (v0.2) — insert-only API backed by the
+  separate `footnotes.xml` / `endnotes.xml` parts.
 
 ## Where to start
 
@@ -110,6 +118,67 @@ protect_document(doc, mode="forms")  # only content controls editable
 
 See [`ARCHITECTURE.md` §7](ARCHITECTURE.md#7-fields-and-protection).
 
+### Comments (v0.2)
+
+```python
+from docx import Document
+from docx_plus.comments import add_comment, read_comments
+
+doc = Document()
+p = doc.add_paragraph()
+p.add_run("Project Apollo ")
+target = p.add_run("ships next quarter")
+add_comment(target, "Optimistic — let's see QA.", author="Alice")
+
+for c in read_comments(doc):
+    print(c.author, c.text, "→", c.anchored_text)
+```
+
+Unlike python-docx's own `add_comment` (which only writes the part-side
+body), `docx_plus` writes the three body-side anchors — so Word's
+"show in document" jumps to the right place. See
+[`ARCHITECTURE.md` §7.6](ARCHITECTURE.md#76-anchored-comments).
+
+### Layout (v0.2)
+
+```python
+from docx_plus.layout import insert_section_break, set_columns
+
+split = doc.add_paragraph("Section break here ↓")
+new_section = insert_section_break(split, start_type="continuous")
+set_columns(new_section, 2, space=720, separator=True)
+```
+
+See [`ARCHITECTURE.md` §7.7](ARCHITECTURE.md#77-layout).
+
+### Bookmarks + cross-references (v0.2)
+
+```python
+from docx_plus.bookmarks import add_bookmark, add_cross_reference
+from docx_plus.fields import mark_fields_dirty
+
+heading = doc.add_heading("Introduction", level=1)
+add_bookmark(heading, "intro_section")
+
+p = doc.add_paragraph("See ")
+add_cross_reference(p, bookmark="intro_section", kind="text")
+mark_fields_dirty(doc)   # Word recalculates REF / PAGEREF on open
+```
+
+See [`ARCHITECTURE.md` §7.8](ARCHITECTURE.md#78-bookmarks-and-cross-references).
+
+### Footnotes + endnotes (v0.2)
+
+```python
+from docx_plus.notes import add_footnote, add_endnote
+
+p = doc.add_paragraph("This claim has a footnote")
+add_footnote(p, "Sourced from internal benchmarks, 2026-05-19.")
+add_endnote(p, "Re-validated against external dataset Q3 2026.")
+```
+
+See [`ARCHITECTURE.md` §7.9](ARCHITECTURE.md#79-footnotes-and-endnotes).
+
 ## Roadmap
 
 | Phase | Capability | Status |
@@ -121,3 +190,4 @@ See [`ARCHITECTURE.md` §7](ARCHITECTURE.md#7-fields-and-protection).
 | 4 | Content controls | ✓ complete |
 | 5 | Fields + protection | ✓ complete |
 | 6 | Polish (examples, smoke tests, CI doc build) | ✓ complete |
+| v0.2 | Comments, layout, bookmarks/cross-refs, notes, `core/parts` | ✓ complete |

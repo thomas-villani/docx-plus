@@ -1,5 +1,5 @@
 site_name: docx_plus
-site_description: OOXML-level extensions for python-docx — style cascade, content controls, fields.
+site_description: OOXML-level extensions for python-docx — style cascade, controls, fields, comments, layout, bookmarks, notes.
 site_author: Tom Villani, PhD
 
 docs_dir: docs
@@ -35,6 +35,7 @@ nav:
       - docx_plus.core.ns: reference/core-ns.md
       - docx_plus.core.oxml: reference/core-oxml.md
       - docx_plus.core.ids: reference/core-ids.md
+      - docx_plus.core.parts: reference/core-parts.md
       - docx_plus.styles.inspect: reference/styles-inspect.md
       - docx_plus.styles.modify: reference/styles-modify.md
       - docx_plus.styles.theme: reference/styles-theme.md
@@ -43,6 +44,19 @@ nav:
       - docx_plus.fields.simple: reference/fields-simple.md
       - docx_plus.fields.update: reference/fields-update.md
       - docx_plus.protection.document: reference/protection-document.md
+      - docx_plus.comments.anchor: reference/comments-anchor.md
+      - docx_plus.comments.read: reference/comments-read.md
+      - docx_plus.comments.registry: reference/comments-registry.md
+      - docx_plus.layout.columns: reference/layout-columns.md
+      - docx_plus.layout.breaks: reference/layout-breaks.md
+      - docx_plus.layout.settings: reference/layout-settings.md
+      - docx_plus.bookmarks.anchor: reference/bookmarks-anchor.md
+      - docx_plus.bookmarks.crossref: reference/bookmarks-crossref.md
+      - docx_plus.bookmarks.read: reference/bookmarks-read.md
+      - docx_plus.bookmarks.registry: reference/bookmarks-registry.md
+      - docx_plus.notes.write: reference/notes-write.md
+      - docx_plus.notes.read: reference/notes-read.md
+      - docx_plus.notes.registry: reference/notes-registry.md
   - Test Gaps: TEST_GAPS.md
 
 plugins:

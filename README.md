@@ -5,7 +5,7 @@ Composes with python-docx rather than replacing it: callers keep their
 `Document` object and use `docx_plus` for the operations python-docx
 can't reach.
 
-**v0.1 capabilities**:
+**Capabilities** (v0.1 + v0.2):
 
 - **Style cascade**: read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
@@ -17,8 +17,16 @@ can't reach.
   mark fields dirty so Word recalculates them on next open.
 - **Protection**: enforce form-fill, read-only, comments-only, or
   tracked-changes mode at the document level.
+- **Anchored comments** (v0.2): the body-side range markers
+  python-docx skips, so "show in document" actually works.
+- **Layout**: multi-column sections, mid-document section breaks,
+  distinct even/odd headers (v0.2).
+- **Bookmarks + cross-references**: paired body markers plus
+  `REF` / `PAGEREF` fields (v0.2).
+- **Footnotes + endnotes**: insert-only API backed by the separate
+  ``footnotes.xml`` / ``endnotes.xml`` parts (v0.2).
 
-> **Status:** v0.1 complete. Pre-publication — not yet on PyPI. Read
+> **Status:** v0.2 complete. Pre-publication — not yet on PyPI. Read
 > [`SPEC.md`](SPEC.md) for the API contract and
 > [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the build plan.
 
@@ -177,16 +185,103 @@ cover dates and any other complex field (TOC, REF, MERGEFIELD, …).
 `unprotect_document(doc)` removes any protection;
 `is_protected(doc)` is a one-liner predicate.
 
+### Comments: anchor reviewer feedback to specific runs
+
+```python
+from docx import Document
+from docx_plus.comments import add_comment, read_comments
+
+doc = Document()
+p = doc.add_paragraph()
+p.add_run("Project Apollo ")
+target = p.add_run("ships next quarter")
+p.add_run(".")
+
+add_comment(target, "Optimistic — let's see what QA says.", author="Alice")
+doc.save("review.docx")
+
+for c in read_comments(Document("review.docx")):
+    print(f"{c.author}: {c.text!r} on {c.anchored_text!r}")
+```
+
+`add_comment` accepts a `Run`, a `Paragraph` (wraps every run), or a
+`(start_run, end_run)` tuple for ranges. Unlike python-docx's
+`Comments.add_comment` (which only writes the part-side body),
+`docx_plus` writes the three body-side anchors — so "show in document"
+actually jumps to the right place.
+
+### Layout: columns and mid-document section breaks
+
+```python
+from docx import Document
+from docx_plus.layout import (
+    enable_distinct_even_odd_headers,
+    insert_section_break,
+    set_columns,
+)
+
+doc = Document()
+doc.add_heading("Intro (single-column)", level=1)
+split = doc.add_paragraph("Section break here ↓")
+
+new_section = insert_section_break(split, start_type="continuous")
+set_columns(new_section, 2, space=720, separator=True)
+
+doc.add_heading("Body (two-column)", level=1)
+for _ in range(10):
+    doc.add_paragraph("Lorem ipsum…")
+
+enable_distinct_even_odd_headers(doc)  # doc-level settings.xml flag
+doc.save("multicol.docx")
+```
+
+### Bookmarks + cross-references
+
+```python
+from docx import Document
+from docx_plus.bookmarks import add_bookmark, add_cross_reference
+from docx_plus.fields import mark_fields_dirty
+
+doc = Document()
+heading = doc.add_heading("Introduction", level=1)
+add_bookmark(heading, "intro_section")
+
+p = doc.add_paragraph("See ")
+add_cross_reference(p, bookmark="intro_section", kind="text")
+p.add_run(" on page ")
+add_cross_reference(p, bookmark="intro_section", kind="page")
+
+mark_fields_dirty(doc)               # Word recalculates REF / PAGEREF
+doc.save("xref.docx")
+```
+
+### Footnotes and endnotes
+
+```python
+from docx import Document
+from docx_plus.notes import add_footnote, add_endnote
+
+doc = Document()
+p = doc.add_paragraph("This claim has a footnote")
+add_footnote(p, "Sourced from internal benchmarks, 2026-05-19.")
+add_endnote(p, "Re-validated against external dataset Q3 2026.")
+doc.save("notes.docx")
+```
+
+The footnotes part (`word/footnotes.xml`) is created on first use and
+round-trips with parsed XML — re-opening the saved document and adding
+another footnote inherits the existing ids correctly.
+
 ## What's next
 
-v0.1 ships the four capabilities listed at the top of this README.
-The [`v0.2 deferred list`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/)
-(SPEC §15) tracks what comes after — anchored comments, footnotes /
-endnotes, bookmarks and cross-references, a `sections/` API for
-columns and mid-document section breaks, content-control data binding
-to Custom XML Parts, theme writing, and password-protected forms.
-Open an issue if your use case needs any of these and you'd like to
-help shape the design.
+v0.2 ships the four feature modules listed at the top of this README
+plus the `core/parts.py` plumbing for separate OOXML parts.
+The [`v0.3 deferred list`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/)
+(SPEC §15) tracks what comes after — w15 threaded comments, line
+numbering and page borders, comment / note editing, additional
+cross-reference kinds (STYLEREF, sequence fields), content-control
+data binding to Custom XML Parts, theme writing, and password-protected
+forms. Open an issue if your use case needs any of these.
 
 <details>
 <summary>Build phases (for contributors)</summary>
@@ -200,6 +295,7 @@ help shape the design.
 | 4 | Content controls (`controls/`) | ✓ complete |
 | 5 | Fields + document protection (`fields/`, `protection/`) | ✓ complete |
 | 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | ✓ complete |
+| v0.2.0 | `core/parts`, `comments/`, `layout/`, `bookmarks/`, `notes/` | ✓ complete |
 
 </details>
 

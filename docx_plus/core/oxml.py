@@ -103,4 +103,98 @@ def remove(node: etree._Element) -> None:
         parent.remove(node)
 
 
-__all__ = ["el", "remove", "sub", "xpath"]
+def build_complex_field(
+    p_element: etree._Element,
+    instruction: str,
+    initial_text: str,
+) -> etree._Element:
+    r"""Append the 5-run complex-field sequence to ``p_element``.
+
+    The sequence is::
+
+        <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+        <w:r><w:instrText xml:space="preserve">INSTRUCTION</w:instrText></w:r>
+        <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+        <w:r><w:t xml:space="preserve">INITIAL_TEXT</w:t></w:r>
+        <w:r><w:fldChar w:fldCharType="end"/></w:r>
+
+    ``xml:space="preserve"`` on the instruction and the result text
+    keeps leading / trailing whitespace from being normalised by Word's
+    XML reader.
+
+    Args:
+        p_element: The underlying ``w:p`` element to append to.
+        instruction: The field instruction text (e.g. ``" PAGE "``,
+            ``" REF bookmark1 \h "``). Surrounding spaces are part of
+            the standard syntax.
+        initial_text: The result text shown before Word recalculates the
+            field. Use ``""`` if Word will fill it on open.
+
+    Returns:
+        The begin ``w:r`` run element — the marker for the start of the
+        field.
+    """
+    begin_run = sub(p_element, "w:r")
+    sub(begin_run, "w:fldChar", **{"w:fldCharType": "begin"})
+
+    instr_run = sub(p_element, "w:r")
+    instr_t = sub(instr_run, "w:instrText", **{"xml:space": "preserve"})
+    instr_t.text = instruction
+
+    sep_run = sub(p_element, "w:r")
+    sub(sep_run, "w:fldChar", **{"w:fldCharType": "separate"})
+
+    text_run = sub(p_element, "w:r")
+    text_t = sub(text_run, "w:t", **{"xml:space": "preserve"})
+    text_t.text = initial_text
+
+    end_run = sub(p_element, "w:r")
+    sub(end_run, "w:fldChar", **{"w:fldCharType": "end"})
+
+    return begin_run
+
+
+def insert_before_first_anchor(
+    parent: etree._Element,
+    new_element: etree._Element,
+    anchor_tags: tuple[str, ...],
+) -> None:
+    """Insert ``new_element`` before the first ``anchor_tags`` match in ``parent``.
+
+    Falls back to appending at the end if none of the anchors exist. The
+    pattern keeps schema-strict child ordering even when ``parent`` has a
+    sparse / partial set of children — most real ``settings.xml`` files
+    do, so capability modules building optional ``settings.xml`` children
+    use this to land in the right schema position.
+
+    Args:
+        parent: The element to insert into.
+        new_element: The element to insert.
+        anchor_tags: Sequence of ``prefix:local`` tag names; the first
+            anchor found becomes the insertion point and ``new_element``
+            is placed immediately before it. Order in the tuple should
+            match schema order so the search picks the *first* later
+            sibling that actually exists.
+
+    Example:
+        >>> # See `fields/update.py` and `layout/settings.py` for live uses
+        >>> # against `settings.xml`.
+    """
+    from docx_plus.core.ns import qn as _qn
+
+    for tag in anchor_tags:
+        anchor = parent.find(_qn(tag))
+        if anchor is not None:
+            anchor.addprevious(new_element)
+            return
+    parent.append(new_element)
+
+
+__all__ = [
+    "build_complex_field",
+    "el",
+    "insert_before_first_anchor",
+    "remove",
+    "sub",
+    "xpath",
+]

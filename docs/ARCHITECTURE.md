@@ -1,11 +1,12 @@
 # docx_plus — Architecture
 
 Present-tense reference for how `docx_plus` is laid out and why. This
-document describes what currently exists at the end of v0.1 (Phase 6).
-The contract that constrains it is `SPEC.md`; the meta-guidance on how
-it was built and how to extend it is `IMPLEMENTATION.md`. Read this when
-you need to understand the library's shape; read those when you need to
-decide what to add or how.
+document describes what currently exists at the end of v0.2 (Phase 6
+plus the v0.2 cycle: comments, layout, bookmarks / cross-references,
+footnotes / endnotes). The contract that constrains it is `SPEC.md`;
+the meta-guidance on how it was built and how to extend it is
+`IMPLEMENTATION.md`. Read this when you need to understand the
+library's shape; read those when you need to decide what to add or how.
 
 Audience: a developer extending or debugging `docx_plus` itself, or a user
 who wants more than the README before reading source.
@@ -18,11 +19,12 @@ who wants more than the README before reading source.
 docx_plus/
 ├── __init__.py              # top-level re-exports (DocxPlusError, __version__)
 ├── core/                    # foundation primitives — every capability depends on these
-│   ├── __init__.py          # DocxPlusError (base of all typed errors)
+│   ├── __init__.py          # DocxPlusError (base of all typed errors) + re-exports
 │   ├── ns.py                # W, W14, R, MC, A, XML namespace constants + qn()
-│   ├── oxml.py              # el(), sub(), xpath(), remove()
-│   ├── ids.py               # IdRegistry, DuplicateIdError
-│   └── parts.py             # package part / relationship helpers (reserved; v0.2 binding work)
+│   ├── oxml.py              # el(), sub(), xpath(), remove(),
+│   │                        # build_complex_field, insert_before_first_anchor
+│   ├── ids.py               # IdRegistry, _IdRegistryBase, DuplicateIdError
+│   └── parts.py             # get_or_create_part, PartSpec, COMMENTS/FOOTNOTES/ENDNOTES_SPEC
 ├── styles/                  # inspect, modify, theme
 │   ├── __init__.py          # re-exports every public symbol from the submodules
 │   ├── inspect.py           # resolve_effective_formatting + ResolvedFormatting + FormattingSource
@@ -46,7 +48,31 @@ docx_plus/
 │   ├── __init__.py          # re-exports the public surface
 │   └── document.py          # protect_document, unprotect_document, is_protected,
 │                            # ProtectionMode Literal
-├── examples/                # inspect_document, restyle_existing, build_form, populate_form
+├── comments/                # anchored comments — v0.2
+│   ├── __init__.py          # re-exports the public surface
+│   ├── anchor.py            # add_comment, delete_comment, CommentRef, CommentTarget
+│   ├── read.py              # read_comments, AnchoredComment
+│   └── registry.py          # CommentIdRegistry
+├── layout/                  # page-layout extras — v0.2
+│   ├── __init__.py          # re-exports the public surface
+│   ├── columns.py           # set_columns
+│   ├── breaks.py            # insert_section_break, SectionStartType
+│   └── settings.py          # enable/disable_distinct_even_odd_headers
+├── bookmarks/               # bookmarks + REF/PAGEREF cross-references — v0.2
+│   ├── __init__.py          # re-exports the public surface
+│   ├── anchor.py            # add_bookmark, delete_bookmark, BookmarkRef, BookmarkTarget
+│   ├── crossref.py          # add_cross_reference, CrossReferenceKind
+│   ├── read.py              # read_bookmarks, BookmarkInfo
+│   └── registry.py          # BookmarkIdRegistry
+├── notes/                   # footnotes + endnotes — v0.2
+│   ├── __init__.py          # re-exports the public surface
+│   ├── write.py             # add_footnote, add_endnote, FootnoteRef, EndnoteRef
+│   ├── read.py              # read_footnotes, read_endnotes, NoteContent
+│   └── registry.py          # FootnoteIdRegistry, EndnoteIdRegistry
+├── examples/                # runnable demo scripts
+│   ├── inspect_document.py, restyle_existing.py, build_form.py, populate_form.py
+│   └── add_comments.py, multi_column_layout.py, bookmarks_and_xrefs.py,
+│       footnotes_and_endnotes.py     # v0.2 demos
 └── _testing/                # internal test helpers (not public API)
     └── ooxml_asserts.py     # assert_ids_unique, assert_style_defined,
                              # count_controls, assert_protected, assert_field_dirty
@@ -376,12 +402,14 @@ that bracket an instruction (`w:instrText`) and a cached result (`w:t`):
 <w:r><w:fldChar w:fldCharType="end"/></w:r>
 ```
 
-`fields/simple.py:_build_complex_field` is the single private helper
-that emits this sequence; the three public functions
-(`add_page_number_field`, `add_date_field`, `add_field`) all route
-through it. Both the instruction and the cached result carry
-`xml:space="preserve"` so Word's XML reader does not collapse the
-spaces that the field-instruction grammar requires.
+`core/oxml.py:build_complex_field` (hoisted from
+`fields/simple.py` in v0.2 so cross-references can reuse it without a
+cross-capability import) is the single helper that emits this sequence.
+`fields/simple.py`'s three public functions (`add_page_number_field`,
+`add_date_field`, `add_field`) all route through it, as does
+`bookmarks/crossref.py:add_cross_reference`. Both the instruction and
+the cached result carry `xml:space="preserve"` so Word's XML reader does
+not collapse the spaces that the field-instruction grammar requires.
 
 Each public helper returns the begin `<w:r>` element so callers can
 navigate or relocate the field. The `xml` namespace was added to
@@ -421,19 +449,195 @@ Password-protected forms (legacy hash algorithm) are deferred to v0.2.
 
 ### Schema-strict insertion in `settings.xml`
 
-`w:documentProtection` and `w:updateFields` both live deep in
-`CT_Settings`'s child sequence (ECMA-376 17.15.1.78). Inserting them
-at the wrong position produces a file Word will silently "repair" on
-open — sometimes correctly, sometimes not. Both modules apply the
-same `_insert_before_first_anchor(parent, new_element, anchor_tags)`
-pattern, walking a tuple of later-siblings (`w:defaultTabStop`,
-`w:compat`, `w:rsids`, etc.) and inserting before the first match.
-If no anchor is present, they fall back to appending — the
-no-anchor case is exercised by
-`test_mark_fields_dirty_appends_when_no_anchor`. The helper is
-duplicated in each module rather than shared via `core/` because
-SPEC §9.1 forbids capability-to-capability imports and pulling it into
-`core/oxml.py` for two callers is premature abstraction.
+`w:documentProtection`, `w:updateFields`, and (v0.2) `w:evenAndOddHeaders`
+all live deep in `CT_Settings`'s child sequence (ECMA-376 17.15.1.78).
+Inserting them at the wrong position produces a file Word will silently
+"repair" on open — sometimes correctly, sometimes not. Every callsite
+applies the same `core/oxml.py:insert_before_first_anchor(parent,
+new_element, anchor_tags)` pattern, walking a tuple of later-siblings
+(`w:defaultTabStop`, `w:compat`, `w:rsids`, etc.) and inserting before
+the first match. If no anchor is present, the helper falls back to
+appending — the no-anchor case is exercised by
+`test_mark_fields_dirty_appends_when_no_anchor`. The helper lives in
+`core/oxml.py` (hoisted in v0.2 when `layout/settings.py` became the
+third caller); the per-module anchor tuples stay co-located with their
+callsites so the schema position is reviewed alongside the new child.
+
+---
+
+## §7.5 Separate OOXML parts
+
+v0.1 capabilities (styles, fields, controls, protection) only mutated
+the main document part and `settings.xml`. v0.2 introduces three
+capabilities backed by **separate** parts that may not exist in a
+fresh document:
+
+- `/word/comments.xml` (relationship `RT.COMMENTS`)
+- `/word/footnotes.xml` (relationship `RT.FOOTNOTES`)
+- `/word/endnotes.xml` (relationship `RT.ENDNOTES`)
+
+`core/parts.py:get_or_create_part(doc, spec)` is the single entry
+point. Given a `PartSpec` describing the target, it tries
+`doc.part.part_related_by(spec.relationship_type)`; on `KeyError` it
+parses `spec.root_xml` for the empty default root element, looks up
+the correct part class from `PartFactory.part_type_for`, constructs the
+part, and wires the relationship. Returns `(part, root_element)`.
+
+python-docx already registers `CommentsPart` for `WML_COMMENTS` at
+package-import time. It does **not** register footnote or endnote
+content types, so `core/parts.py` does — installing internal
+`_FootnotesPart` / `_EndnotesPart` subclasses of `XmlPart` with
+`PartFactory.part_type_for.setdefault(...)`. Without that registration,
+an existing document with footnotes would deserialize the part as the
+default `Part` (blob-only), and `part.element` would not exist.
+
+Three pre-baked `PartSpec` constants cover every v0.2 need:
+`COMMENTS_SPEC`, `FOOTNOTES_SPEC`, `ENDNOTES_SPEC`. Custom callers can
+build their own.
+
+---
+
+## §7.6 Anchored comments
+
+`comments/anchor.py:add_comment(target, text, ...)` is the v0.2
+headline. Closes the largest python-docx gap: python-docx 1.x writes
+`<w:comment>` into `comments.xml` but skips the three body-side
+elements that anchor the comment to a text range, so its comments show
+in the review pane but have nothing to point at when the reader clicks
+"show in document".
+
+Each `add_comment` writes four elements:
+
+1. `<w:commentRangeStart w:id=N/>` — placed before `start_anchor` via
+   `addprevious`
+2. `<w:commentRangeEnd w:id=N/>` — placed after `end_anchor` via
+   `addnext`
+3. The reference run — `<w:r><w:rPr><w:rStyle val="CommentReference"/></w:rPr><w:commentReference w:id=N/></w:r>`
+   — placed after the range end
+4. The comment body — `<w:comment w:id=N w:author=... w:date=... [w:initials=...]>`
+   appended to the root of `comments.xml` (via `get_or_create_part`)
+
+Target shapes: a python-docx `Run` (brackets just that run), a
+`Paragraph` (brackets every run, must have ≥1 run), or a
+`(start_run, end_run)` tuple for a range. Range tuples may span
+paragraphs; OOXML permits this. Comment body uses
+`xml:space="preserve"` so leading/trailing whitespace survives Word's
+XML reader.
+
+`delete_comment(doc, comment_id)` is the inverse — removes all four
+elements and is idempotent (missing id is a no-op).
+
+`read_comments(doc)` walks `comments.xml` and pairs each `<w:comment>`
+with its body range, extracting `author`, `initials`, `timestamp`
+(parsed `xsd:dateTime`), the comment `text`, the `anchored_text`
+between the body markers, and the `paragraph_index` where the
+`commentRangeStart` sits. Orphaned comments (no matching body range)
+appear with `anchored_text=""` and `paragraph_index=-1`.
+
+`CommentIdRegistry` lives in its own namespace (separate from SDT,
+bookmark, note ids). It seeds from both the comments part AND any
+orphaned body-side anchors so a partially-deleted comment cannot
+trigger id reuse.
+
+Threaded comments (w15 `parentCommentEx` for replies) are deferred to
+v0.3 — basic anchored comments first.
+
+---
+
+## §7.7 Layout
+
+`layout/` ships three documented python-docx gaps. None of them
+duplicate functionality python-docx already exposes (orientation,
+margins, page size, per-section header / footer, `add_section`).
+
+**`set_columns(section, num, *, space, separator, widths)`** in
+`layout/columns.py` emits `<w:cols w:num=... w:space=... w:sep=...>`
+into the section's `sectPr`. Idempotent — replaces any existing
+`<w:cols>`. With `widths` supplied, it emits per-column `<w:col>`
+children with `w:equalWidth="0"` so Word reads widths from the children
+rather than the parent `w:space`.
+
+**`insert_section_break(paragraph, *, start_type)`** in
+`layout/breaks.py` handles the case `Document.add_section` does not —
+inserting a break mid-document. The algorithm clones the trailing
+body-level `<w:sectPr>` (the document's "sentinel"), sets `<w:type>`
+on the clone to the requested start kind, and calls python-docx's
+`CT_P.set_sectPr(clone)` to embed it in the chosen paragraph's `pPr`.
+The new section inherits all properties (page size, margins, header /
+footer references) from the sentinel; both sections render with the
+same headers and footers unless the caller mutates the returned
+`Section` proxy.
+
+**`enable_distinct_even_odd_headers(doc)`** in `layout/settings.py`
+writes `<w:evenAndOddHeaders/>` into `settings.xml` via the
+schema-strict insertion pattern (§3). This flag is constantly confused
+with two other things: the per-section `<w:titlePg>` (controls whether
+*first* page has a distinct header/footer, exposed by python-docx as
+`Section.different_first_page_header_footer`), and the per-section
+header/footer reference types (`w:headerReference w:type="even"`,
+which Word reads *because* the doc-level flag is set). All three are
+required for a real even-page-distinct workflow. `disable_…` removes
+the doc-level element; both functions are idempotent.
+
+---
+
+## §7.8 Bookmarks and cross-references
+
+`bookmarks/anchor.py:add_bookmark(target, name, ...)` writes a paired
+`<w:bookmarkStart w:id=N w:name=...>` / `<w:bookmarkEnd w:id=N/>`
+around the target. Target shapes mirror `add_comment`: `Run`,
+`Paragraph` (≥1 run), or `(Run, Run)` tuple. The name is validated
+against Word's bookmark rules: `[A-Za-z_][A-Za-z0-9_]{0,39}`. Words
+with spaces or punctuation are silently rejected by Word's UI but
+accepted in raw OOXML, which leads to confusing failures —
+`add_bookmark` raises eagerly instead.
+
+`delete_bookmark(doc, name)` removes every bookmark with the given
+name (by name, not id, because that's what cross-references key off).
+`read_bookmarks(doc)` returns a `BookmarkInfo` per bookmark with id,
+name, anchored text, and paragraph index. `BookmarkIdRegistry` is the
+fourth namespace (after SDT, comment, footnote / endnote each get
+their own).
+
+`bookmarks/crossref.py:add_cross_reference(paragraph, *, bookmark,
+kind, hyperlink)` builds a `REF` (`kind="text"`) or `PAGEREF`
+(`kind="page"`) complex field via `core.build_complex_field`. The
+`\h` flag is appended by default so Word renders the cross-reference
+as a clickable link. Pair calls with `mark_fields_dirty` so Word
+recalculates the cached results on first open.
+
+Cross-references to headings, numbered items, or captions
+(`STYLEREF`, sequence fields) are deferred to v0.3 — they require
+different field instructions but the same field-building plumbing.
+
+---
+
+## §7.9 Footnotes and endnotes
+
+`notes/write.py` exposes `add_footnote` and `add_endnote`, both with
+identical shape: append a reference marker run to the paragraph, then
+append a content entry in the corresponding separate part. The content
+entry uses Word's `FootnoteText` / `EndnoteText` paragraph style and
+`FootnoteReference` / `EndnoteReference` run style for the leading
+reference glyph. The body text run carries `xml:space="preserve"`.
+
+Insert-only is sufficient for v0.2; in-place edits of existing notes
+are deferred to v0.3.
+
+`read_footnotes(doc)` and `read_endnotes(doc)` walk the corresponding
+part and pair each note with the paragraph index of its body-side
+reference marker. Reserved entries (ids `-1` for separator, `0` for
+continuation separator, or any entry with `w:type` of `"separator"` /
+`"continuationSeparator"`) are filtered out before results are
+returned, so callers only ever see user-authored notes.
+
+`FootnoteIdRegistry` and `EndnoteIdRegistry` are two more disjoint
+namespaces. The shared `_NoteIdRegistryBase` (`notes/registry.py`)
+parameterises the relationship type and the note tag; the underlying
+`_IdRegistryBase.reserve(value)` rejects values outside `[1, 2**31 - 1]`
+on a range check, so ids `0` and `-1` are unissuable — the range check
+fires before any duplicate check, so no special pre-seeding is
+needed.
 
 ---
 
@@ -452,12 +656,17 @@ These are the architectural commitments. Each is enforced by a test.
    No string-formatted XML anywhere. The convention makes it possible to
    add validation/logging hooks later without rewriting every call site.
 
-3. **`IdRegistry` is the only source of new `w:id` values on SDT
-   elements.** Capability modules either receive a registry as a
-   parameter or create one scoped to their lifetime. Other ID
-   namespaces (`r:id`, `w:bookmarkStart/@w:id`,
-   `w:commentRangeStart/@w:id`) are distinct uniqueness domains and will
-   get their own registries in later phases.
+3. **Each ID namespace has its own registry.** `IdRegistry` mints SDT
+   `w:id` values; `CommentIdRegistry`, `BookmarkIdRegistry`,
+   `FootnoteIdRegistry`, `EndnoteIdRegistry` mint values in their own
+   uniqueness domains. All five subclass the internal
+   `_IdRegistryBase` in `core/ids.py` so the
+   `next` / `reserve` / `issued` mechanics live in one place;
+   subclasses override `_seed_from_document` to pick up the right
+   existing values. Capability modules either receive a registry as a
+   parameter or construct one scoped to the call. The `r:id`
+   relationship namespace is python-docx's domain and is not wrapped
+   by docx_plus.
 
 4. **No magic attributes on python-docx objects.** Library state lives
    in `docx_plus`-owned objects (`IdRegistry`, `StyleProxy`, and in
@@ -512,6 +721,13 @@ semantically-wrong attribute that Word surfaces in its UI. The
 alternative — runtime validation duplicating the type system — would
 add noise without catching real bugs.
 
+The v0.2 modules (`comments/`, `layout/`, `bookmarks/`, `notes/`)
+follow the same pattern. They surface only `ValueError` and `TypeError`
+for argument-shape problems (bad bookmark names, empty paragraph
+targets, wrong tuple shapes for run-range targets) and reuse
+`DuplicateIdError` / `IdRangeError` from `core/ids.py` through their
+namespace-specific registries.
+
 The dual-inheritance pattern (`DuplicateIdError`, `UnknownStylePropertyError`,
 the four Phase 4 `controls/read.py` errors) exists because SPEC sentences
 predating §9.7's typed-error invariant documented
@@ -526,10 +742,10 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **285 tests** at end of Phase 5
-  spanning `core/` (29), `styles/{theme,inspect,modify}` (188),
-  `controls/{builder,read}` (50), `fields/` (24), and `protection/`
-  (18), plus 12 import-invariant cases and 6 misc (smoke, integration).
+  I/O beyond reading fixtures. **431 tests** at end of v0.2: v0.1's
+  surface (319 tests) plus the v0.2 cycle — `core/parts` (13),
+  `comments/` (30), `layout/` (28), `bookmarks/` + cross-refs (26),
+  `notes/` (21), plus example smoke tests for the four new demos.
 - **Layer 2 — round-trip tests.** Build → save → reopen with
   `python-docx` → assert. The high-value class for OOXML
   correctness (`IMPLEMENTATION.md §8`). Phase 5 added round-trips for
@@ -560,16 +776,36 @@ For a frozen snapshot of where the suite has real holes, see
 
 ## §11 What's next
 
-Phase 6 (Polish: examples directory, LibreOffice headless smoke tests,
-CI documentation build, final SPEC §13 quality-gate sweep) is the only
-remaining v0.1 phase. The architectural shape it will fit into is
-fixed: examples land under `docx_plus/examples/`, smoke tests use the
-`requires_libreoffice` marker already declared in `pyproject.toml`, and
-the coverage gate flagged in `TEST_GAPS.md` B1 gets flipped on. See
-`IMPLEMENTATION.md §2` for the phase-by-phase plan and `SPEC.md §13`
-for the gate list.
+v0.1 (Phases 1–6) and the v0.2 cycle are complete. The pieces deferred
+to v0.3+ are:
 
-v0.2 capability work — sections/headers/footers as a first-class API,
-data binding to Custom XML Parts (repeating sections), comments and
-tracked changes, password-protected forms — is enumerated in
-`SPEC.md §15`. None of it ships in v0.1.
+- **Threaded comments** (w15 `parentCommentEx` for parent/child
+  replies). Basic anchored comments ship in v0.2; threading adds a
+  w15 namespace dependency and is bounded but distinct work.
+- **Layout extras beyond the v0.2 floor**: line numbering
+  (`<w:lnNumType>`) for legal/contract documents, and page borders
+  (`<w:pgBorders>`) for formal documents.
+- **Comment / note editing** — mutate the body of an existing
+  comment, footnote, or endnote in place. v0.2 ships insert + read +
+  delete; in-place edit is the missing verb.
+- **Cross-references to non-bookmark targets** — `STYLEREF` for
+  heading-text references, sequence fields for caption / figure
+  numbering. Reuses the same complex-field plumbing; the work is the
+  instruction grammar.
+- **Tracked changes** — read/write API for the OOXML revision marks
+  (`w:ins`, `w:del`, `w:moveFromRangeStart`, etc.). Significant scope.
+- **Custom XML Parts data binding** — wires repeating-section content
+  controls to a custom XML data source. The plumbing in
+  `core/parts.py` already supports separate parts; the binding adds
+  relationship types and `<w:dataBinding>` children on SDTs.
+- **Theme writing** — `styles/theme.py` reads themes today; writing
+  rounds out the surface.
+- **Password-protected forms** — legacy hash algorithm, paired with
+  `protect_document`.
+- **A high-level "restyle" planner** — inverse of the inspector, takes
+  a target `ResolvedFormatting` and computes the minimal cascade
+  modification to reach it.
+
+Everything in this list is enumerated in `SPEC.md §15`. The roadmap
+order is driven by `notes-*.md` discussion artifacts at the repo
+root, which capture user-flagged wants and inform priority.

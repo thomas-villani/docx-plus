@@ -22,10 +22,27 @@ class DocxPlusError(Exception):
 
 from docx_plus.core.ids import DuplicateIdError, IdRangeError, IdRegistry  # noqa: E402
 from docx_plus.core.ns import MC, NSMAP, W14, XML, A, InvalidNamespaceError, R, W, qn  # noqa: E402
-from docx_plus.core.oxml import el, remove, sub, xpath  # noqa: E402
+from docx_plus.core.oxml import (  # noqa: E402
+    build_complex_field,
+    el,
+    insert_before_first_anchor,
+    remove,
+    sub,
+    xpath,
+)
+from docx_plus.core.parts import (  # noqa: E402
+    COMMENTS_SPEC,
+    ENDNOTES_SPEC,
+    FOOTNOTES_SPEC,
+    PartSpec,
+    get_or_create_part,
+)
 
 __all__ = [
     "A",
+    "COMMENTS_SPEC",
+    "ENDNOTES_SPEC",
+    "FOOTNOTES_SPEC",
     "MC",
     "NSMAP",
     "R",
@@ -37,7 +54,11 @@ __all__ = [
     "IdRangeError",
     "IdRegistry",
     "InvalidNamespaceError",
+    "PartSpec",
+    "build_complex_field",
     "el",
+    "get_or_create_part",
+    "insert_before_first_anchor",
     "qn",
     "remove",
     "sub",

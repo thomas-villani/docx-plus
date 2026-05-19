@@ -25,28 +25,30 @@ is configured in `mkdocs.yml` at the repo root.
 uv run mkdocs build
 ```
 
-Output lands in `site/` (gitignored). Phase 6 will wire this into CI so
-the site builds on every push to main.
+Output lands in `site/` (gitignored). CI wires this on every push to
+main (Phase 6).
 
 To browse without serving — read source. Every public symbol has a
 Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Public surface at v0.1
+## Public surface at v0.2
 
-All six phases are complete. The four runnable example scripts in
-`docx_plus/examples/` — `inspect_document.py`, `restyle_existing.py`,
-`build_form.py`, `populate_form.py` — are end-to-end demonstrations of the
-surface below. Start there if you want to see the library in motion before
-reading the index.
+v0.1's six phases plus the v0.2 cycle (comments, layout, bookmarks /
+cross-references, footnotes / endnotes) are complete. Eight runnable
+example scripts in `docx_plus/examples/` demonstrate the surface:
+`inspect_document.py`, `restyle_existing.py`, `build_form.py`,
+`populate_form.py`, `add_comments.py`, `multi_column_layout.py`,
+`bookmarks_and_xrefs.py`, `footnotes_and_endnotes.py`. Start there if
+you want to see the library in motion before reading the index.
 
 ### `docx_plus` (top-level package)
 
 | Symbol | Kind | Notes |
 |---|---|---|
 | `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §9](ARCHITECTURE.md#9-error-hierarchy) |
-| `__version__` | str | `"0.1.0"` |
+| `__version__` | str | `"0.2.0"` |
 
 ### `docx_plus.core`
 
@@ -67,10 +69,13 @@ The foundation primitives. Every capability module imports from here only.
 | `sub(parent, tag, **attrs)` | function | Create + append a namespaced child |
 | `xpath(node, expr)` | function | XPath against `node` with `NSMAP` pre-bound. Use this — `BaseOxmlElement.xpath()` rejects `namespaces=` kwarg |
 | `remove(node)` | function | Detach from parent, no-op if already detached |
-
-`core/parts.py` remains a Phase 1 stub (`__all__ = []`). v0.2 data
-binding (Custom XML Parts) will populate it. v0.1 controls and fields
-work inline in the document body so no relationship plumbing is needed.
+| `build_complex_field(p_element, instruction, initial_text)` | function | Emit the 5-run complex-field sequence (begin / instrText / separate / result / end). Used by `fields/simple.py` and `bookmarks/crossref.py` |
+| `insert_before_first_anchor(parent, new_element, anchor_tags)` | function | Schema-strict insertion helper for `settings.xml` mutations. Used by `fields/update.py` and `layout/settings.py` |
+| `get_or_create_part(doc, spec)` | function | Return `(part, root_element)` for a separate OOXML part (creates and wires the relationship if absent). v0.2 |
+| `PartSpec` | dataclass (frozen) | Identification data for `get_or_create_part`. Use the pre-baked constants below or build your own |
+| `COMMENTS_SPEC` | `PartSpec` | `/word/comments.xml` |
+| `FOOTNOTES_SPEC` | `PartSpec` | `/word/footnotes.xml` |
+| `ENDNOTES_SPEC` | `PartSpec` | `/word/endnotes.xml` |
 
 ### `docx_plus.styles` — inspection
 
@@ -190,6 +195,72 @@ password-protected forms are v0.2 (SPEC §1).
 | `unprotect_document(doc)` | function | Remove protection. Idempotent |
 | `is_protected(doc)` | function | Presence predicate (does not introspect mode) |
 | `ProtectionMode` | type alias | `Literal["forms", "readOnly", "comments", "trackedChanges"]` |
+
+### `docx_plus.comments`
+
+Anchored comments — the body-side range markers python-docx skips, plus
+the comment body in `comments.xml`. Architecture walkthrough in
+[`ARCHITECTURE.md` §7.6](ARCHITECTURE.md#76-anchored-comments).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `add_comment(target, text, *, author="", initials=None, id_registry=None)` | function | Anchor a comment to a `Run`, `Paragraph` (≥1 run required), or `(Run, Run)` tuple. Writes `commentRangeStart` / `commentRangeEnd` / the `CommentReference` marker run, plus the `<w:comment>` body |
+| `delete_comment(doc, comment_id)` | function | Remove all four traces (range markers, reference run, body). Idempotent — missing id is a no-op |
+| `read_comments(doc)` | function | List every comment paired with the document text it anchors. Returns `list[AnchoredComment]` |
+| `CommentRef` | dataclass (frozen) | `comment_id`, `body_element` — handle returned by `add_comment` |
+| `AnchoredComment` | dataclass (frozen) | `comment_id`, `author`, `initials`, `timestamp`, `text`, `anchored_text`, `paragraph_index` |
+| `CommentIdRegistry(doc)` | class | Per-document comment-id allocator. Subclasses the internal `_IdRegistryBase` and seeds from the comments part + any orphaned body anchors |
+| `CommentTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` |
+
+### `docx_plus.layout`
+
+Page-layout extras — columns, mid-document section breaks, doc-level
+distinct even/odd headers. Architecture walkthrough in
+[`ARCHITECTURE.md` §7.7](ARCHITECTURE.md#77-layout).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `set_columns(section, num, *, space=720, separator=False, widths=None)` | function | Emit `<w:cols>` into the section's `sectPr`. Idempotent (replaces existing). `widths` for unequal columns |
+| `insert_section_break(paragraph, *, start_type="nextPage")` | function | Split sections at a chosen paragraph. Clones the trailing `sectPr`, sets `<w:type>`. Returns a `Section` proxy wrapping the new section |
+| `enable_distinct_even_odd_headers(doc)` | function | Write `<w:evenAndOddHeaders/>` into `settings.xml`. Idempotent. Distinct from per-section `titlePg` (which python-docx already exposes) |
+| `disable_distinct_even_odd_headers(doc)` | function | Remove the element. Idempotent |
+| `SectionStartType` | type alias | `Literal["nextPage", "continuous", "evenPage", "oddPage", "nextColumn"]` |
+
+### `docx_plus.bookmarks`
+
+Bookmarks and cross-references — paired body markers plus `REF` /
+`PAGEREF` complex fields. Architecture walkthrough in
+[`ARCHITECTURE.md` §7.8](ARCHITECTURE.md#78-bookmarks-and-cross-references).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `add_bookmark(target, name, *, id_registry=None)` | function | Wrap target with `<w:bookmarkStart>` / `<w:bookmarkEnd>`. Validates `name` against `[A-Za-z_][A-Za-z0-9_]{0,39}` |
+| `delete_bookmark(doc, name)` | function | Remove every bookmark with the given name. Idempotent |
+| `read_bookmarks(doc)` | function | List every bookmark paired with its anchored text. Returns `list[BookmarkInfo]` |
+| `add_cross_reference(paragraph, *, bookmark, kind="text", hyperlink=True)` | function | Append a `REF` (`kind="text"`) or `PAGEREF` (`kind="page"`) complex field. `\h` appended by default. Pair with `mark_fields_dirty` so Word recalculates on open |
+| `BookmarkRef` | dataclass (frozen) | `bookmark_id`, `name`, `start_element`, `end_element` |
+| `BookmarkInfo` | dataclass (frozen) | `bookmark_id`, `name`, `anchored_text`, `paragraph_index` |
+| `BookmarkIdRegistry(doc)` | class | Per-document bookmark-id allocator |
+| `BookmarkTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` |
+| `CrossReferenceKind` | type alias | `Literal["text", "page"]` |
+
+### `docx_plus.notes`
+
+Footnotes and endnotes — insert-only API for v0.2. Architecture
+walkthrough in
+[`ARCHITECTURE.md` §7.9](ARCHITECTURE.md#79-footnotes-and-endnotes).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `add_footnote(paragraph, text, *, id_registry=None)` | function | Append the body-side `FootnoteReference` marker run and the `<w:footnote>` body in `footnotes.xml`. Returns `FootnoteRef` |
+| `add_endnote(paragraph, text, *, id_registry=None)` | function | Same shape as `add_footnote` but for endnotes |
+| `read_footnotes(doc)` | function | List user-authored footnotes. Returns `list[NoteContent]`; separator entries (ids -1 / 0) are filtered out |
+| `read_endnotes(doc)` | function | Same shape as `read_footnotes` |
+| `FootnoteRef` | dataclass (frozen) | `note_id`, `body_element` |
+| `EndnoteRef` | dataclass (frozen) | `note_id`, `body_element` |
+| `NoteContent` | dataclass (frozen) | `note_id`, `text`, `paragraph_index` |
+| `FootnoteIdRegistry(doc)` | class | Per-document footnote-id allocator. Ids -1 / 0 are reserved by Word and refused at reserve time (range check) |
+| `EndnoteIdRegistry(doc)` | class | Per-document endnote-id allocator. Same reserved-id treatment |
 
 ---
 

@@ -19,61 +19,13 @@ from typing import TYPE_CHECKING, Literal
 
 from lxml import etree
 
-from docx_plus.core.oxml import sub
+from docx_plus.core.oxml import build_complex_field
 
 if TYPE_CHECKING:
     from docx.text.paragraph import Paragraph
 
 
 PageFieldName = Literal["PAGE", "NUMPAGES", "SECTIONPAGES"]
-
-
-def _build_complex_field(
-    p_element: etree._Element,
-    instruction: str,
-    initial_text: str,
-) -> etree._Element:
-    """Append the 5-run complex-field sequence to ``p_element``.
-
-    The sequence is::
-
-        <w:r><w:fldChar w:fldCharType="begin"/></w:r>
-        <w:r><w:instrText xml:space="preserve">INSTRUCTION</w:instrText></w:r>
-        <w:r><w:fldChar w:fldCharType="separate"/></w:r>
-        <w:r><w:t xml:space="preserve">INITIAL_TEXT</w:t></w:r>
-        <w:r><w:fldChar w:fldCharType="end"/></w:r>
-
-    ``xml:space="preserve"`` on the instruction and the result text keeps
-    leading/trailing whitespace from being normalised by Word's XML reader.
-
-    Args:
-        p_element: The underlying ``w:p`` element to append to.
-        instruction: The field instruction text (e.g. ``" PAGE "``). Spaces
-            around the keyword are part of the standard syntax.
-        initial_text: The result text shown before Word recalculates the
-            field. Use ``""`` if Word will fill it on open.
-
-    Returns:
-        The begin ``w:r`` run element — the marker for the start of the field.
-    """
-    begin_run = sub(p_element, "w:r")
-    sub(begin_run, "w:fldChar", **{"w:fldCharType": "begin"})
-
-    instr_run = sub(p_element, "w:r")
-    instr_t = sub(instr_run, "w:instrText", **{"xml:space": "preserve"})
-    instr_t.text = instruction
-
-    sep_run = sub(p_element, "w:r")
-    sub(sep_run, "w:fldChar", **{"w:fldCharType": "separate"})
-
-    text_run = sub(p_element, "w:r")
-    text_t = sub(text_run, "w:t", **{"xml:space": "preserve"})
-    text_t.text = initial_text
-
-    end_run = sub(p_element, "w:r")
-    sub(end_run, "w:fldChar", **{"w:fldCharType": "end"})
-
-    return begin_run
 
 
 def add_page_number_field(
@@ -108,7 +60,7 @@ def add_page_number_field(
         instruction = f" {field} "
     else:
         instruction = f" {field} {format} "
-    return _build_complex_field(paragraph._p, instruction, "1")
+    return build_complex_field(paragraph._p, instruction, "1")
 
 
 def add_date_field(
@@ -141,7 +93,7 @@ def add_date_field(
     """
     keyword = "DATE" if auto_update else "CREATEDATE"
     instruction = f' {keyword} \\@ "{format}" '
-    return _build_complex_field(paragraph._p, instruction, "")
+    return build_complex_field(paragraph._p, instruction, "")
 
 
 def add_field(
@@ -175,7 +127,7 @@ def add_field(
         >>> _ = add_field(p, instruction='TOC \\o "1-3" \\h', initial_text="(TOC)")
     """
     wrapped = f" {instruction.strip()} "
-    return _build_complex_field(paragraph._p, wrapped, initial_text)
+    return build_complex_field(paragraph._p, wrapped, initial_text)
 
 
 __all__ = [

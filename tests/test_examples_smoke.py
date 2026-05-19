@@ -21,6 +21,10 @@ EXAMPLES = [
     "docx_plus.examples.restyle_existing",
     "docx_plus.examples.build_form",
     "docx_plus.examples.populate_form",
+    "docx_plus.examples.add_comments",
+    "docx_plus.examples.multi_column_layout",
+    "docx_plus.examples.bookmarks_and_xrefs",
+    "docx_plus.examples.footnotes_and_endnotes",
 ]
 
 # Examples that write a .docx into cwd when run with no args. Tuple of
@@ -29,6 +33,10 @@ WRITES_DOCX = [
     ("docx_plus.examples.restyle_existing", "restyled.docx"),
     ("docx_plus.examples.build_form", "form.docx"),
     ("docx_plus.examples.populate_form", "filled.docx"),
+    ("docx_plus.examples.add_comments", "commented.docx"),
+    ("docx_plus.examples.multi_column_layout", "multicol.docx"),
+    ("docx_plus.examples.bookmarks_and_xrefs", "bookmarks.docx"),
+    ("docx_plus.examples.footnotes_and_endnotes", "notes.docx"),
 ]
 
 

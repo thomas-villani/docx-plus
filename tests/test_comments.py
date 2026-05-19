@@ -1,0 +1,437 @@
+"""Tests for ``docx_plus.comments`` — anchored-comment insertion, read,
+delete, and the comment-id registry."""
+
+from __future__ import annotations
+
+import datetime as dt
+from pathlib import Path
+
+import pytest
+from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+
+from docx_plus.comments import (
+    AnchoredComment,
+    CommentIdRegistry,
+    CommentRef,
+    add_comment,
+    delete_comment,
+    read_comments,
+)
+from docx_plus.core.ids import DuplicateIdError
+from docx_plus.core.ns import qn
+from docx_plus.core.oxml import xpath
+
+# --------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------
+
+
+def _body(doc):
+    return doc.element.body
+
+
+def _range_starts(doc, cid):
+    return xpath(_body(doc), ".//w:commentRangeStart[@w:id=$cid]", cid=str(cid))
+
+
+def _range_ends(doc, cid):
+    return xpath(_body(doc), ".//w:commentRangeEnd[@w:id=$cid]", cid=str(cid))
+
+
+def _reference_runs(doc, cid):
+    return xpath(_body(doc), ".//w:commentReference[@w:id=$cid]", cid=str(cid))
+
+
+def _comment_part_entries(doc, cid):
+    part = doc.part.part_related_by(RT.COMMENTS)
+    return xpath(part.element, "./w:comment[@w:id=$cid]", cid=str(cid))
+
+
+# --------------------------------------------------------------------------
+# add_comment — body-side anchoring on a single run.
+# --------------------------------------------------------------------------
+
+
+def test_add_comment_to_run_writes_all_three_body_markers() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("anchored text")
+    ref = add_comment(run, "comment body")
+    assert isinstance(ref, CommentRef)
+    cid = ref.comment_id
+    assert len(_range_starts(doc, cid)) == 1
+    assert len(_range_ends(doc, cid)) == 1
+    assert len(_reference_runs(doc, cid)) == 1
+
+
+def test_add_comment_to_run_brackets_the_run_element() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("hello")
+    ref = add_comment(run, "x")
+    cid = str(ref.comment_id)
+    siblings = list(p._p)
+    types = [child.tag.rpartition("}")[2] for child in siblings]
+    # Order: commentRangeStart, r, commentRangeEnd, r (reference run)
+    assert "commentRangeStart" in types
+    assert "commentRangeEnd" in types
+    rs_idx = types.index("commentRangeStart")
+    r_idx = types.index("r", rs_idx)
+    re_idx = types.index("commentRangeEnd", r_idx)
+    assert rs_idx < r_idx < re_idx
+    # commentRangeStart and commentRangeEnd both carry the right id
+    assert siblings[rs_idx].get(qn("w:id")) == cid
+    assert siblings[re_idx].get(qn("w:id")) == cid
+
+
+def test_add_comment_writes_comment_body_to_comments_part() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("hello")
+    ref = add_comment(run, "this is the comment", author="Alice", initials="A")
+
+    entries = _comment_part_entries(doc, ref.comment_id)
+    assert len(entries) == 1
+    body = entries[0]
+    assert body.get(qn("w:author")) == "Alice"
+    assert body.get(qn("w:initials")) == "A"
+    # Extract body text.
+    texts = [t.text for t in xpath(body, ".//w:t") if t.text]
+    assert "".join(texts) == "this is the comment"
+
+
+def test_add_comment_default_initials_from_author() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("x")
+    ref = add_comment(run, "y", author="Wendy")
+    body = _comment_part_entries(doc, ref.comment_id)[0]
+    assert body.get(qn("w:initials")) == "W"
+
+
+def test_add_comment_no_initials_with_empty_author() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("x")
+    ref = add_comment(run, "y")
+    body = _comment_part_entries(doc, ref.comment_id)[0]
+    assert body.get(qn("w:initials")) is None
+
+
+def test_add_comment_emits_iso_utc_timestamp() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("x")
+    ref = add_comment(run, "y")
+    body = _comment_part_entries(doc, ref.comment_id)[0]
+    date = body.get(qn("w:date"))
+    assert date is not None and date.endswith("Z")
+    # Round-trips through fromisoformat after stripping Z.
+    parsed = dt.datetime.fromisoformat(date.replace("Z", "+00:00"))
+    assert parsed.tzinfo is not None
+
+
+def test_add_comment_preserves_whitespace_in_text() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("x")
+    ref = add_comment(run, "  leading and trailing  ")
+    body = _comment_part_entries(doc, ref.comment_id)[0]
+    text_runs = xpath(body, ".//w:t")
+    # The user text is in the second w:t (first is the annotation-ref run's empty content)
+    user_t = next(t for t in text_runs if t.text and "leading" in t.text)
+    from docx_plus.core.ns import XML
+    assert user_t.get(f"{{{XML}}}space") == "preserve"
+
+
+def test_add_comment_returns_unique_ids() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    r1 = p.add_run("a")
+    r2 = p.add_run("b")
+    ref1 = add_comment(r1, "one")
+    ref2 = add_comment(r2, "two")
+    assert ref1.comment_id != ref2.comment_id
+
+
+# --------------------------------------------------------------------------
+# add_comment — Paragraph and run-range targets.
+# --------------------------------------------------------------------------
+
+
+def test_add_comment_to_paragraph_wraps_all_runs() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("one ")
+    p.add_run("two ")
+    p.add_run("three")
+    add_comment(p, "wrap me")
+
+    siblings = list(p._p)
+    types = [child.tag.rpartition("}")[2] for child in siblings]
+    rs_idx = types.index("commentRangeStart")
+    re_idx = types.index("commentRangeEnd")
+    runs_between = [t for t in types[rs_idx + 1 : re_idx] if t == "r"]
+    assert len(runs_between) == 3
+
+
+def test_add_comment_to_paragraph_with_no_runs_raises() -> None:
+    doc = Document()
+    p = doc.add_paragraph()  # no runs
+    with pytest.raises(ValueError, match="at least one run"):
+        add_comment(p, "x")
+
+
+def test_add_comment_to_run_range_wraps_inclusive() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    r1 = p.add_run("first ")
+    p.add_run("middle ")
+    r3 = p.add_run("last")
+    add_comment((r1, r3), "wrap range")
+
+    types = [c.tag.rpartition("}")[2] for c in p._p]
+    rs_idx = types.index("commentRangeStart")
+    re_idx = types.index("commentRangeEnd")
+    runs_between = [t for t in types[rs_idx + 1 : re_idx] if t == "r"]
+    assert len(runs_between) == 3
+
+
+def test_add_comment_with_bad_target_type_raises() -> None:
+    with pytest.raises(TypeError, match="Run, Paragraph"):
+        add_comment("not a run", "x")  # type: ignore[arg-type]
+
+
+def test_add_comment_with_bad_tuple_raises() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    r1 = p.add_run("hi")
+    with pytest.raises(TypeError, match="tuple of"):
+        add_comment((r1, "not a run"), "x")  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------
+# add_comment — comments part is created on first use, reused after.
+# --------------------------------------------------------------------------
+
+
+def test_first_add_comment_creates_comments_part() -> None:
+    doc = Document()
+    # No comments part exists yet.
+    with pytest.raises(KeyError):
+        doc.part.part_related_by(RT.COMMENTS)
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "first")
+    # Now it exists.
+    assert doc.part.part_related_by(RT.COMMENTS) is not None
+
+
+def test_second_add_comment_reuses_comments_part() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("a"), "one")
+    part_after_first = doc.part.part_related_by(RT.COMMENTS)
+    add_comment(p.add_run("b"), "two")
+    part_after_second = doc.part.part_related_by(RT.COMMENTS)
+    assert part_after_first is part_after_second
+    assert len(xpath(part_after_second.element, "./w:comment")) == 2
+
+
+# --------------------------------------------------------------------------
+# CommentIdRegistry — seeding, sharing.
+# --------------------------------------------------------------------------
+
+
+def test_registry_seeds_from_existing_comments_part() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("x"), "y")
+    reg = CommentIdRegistry(doc)
+    with pytest.raises(DuplicateIdError):
+        reg.reserve(ref.comment_id)
+
+
+def test_registry_seeds_from_orphaned_body_anchors() -> None:
+    """A `commentRangeStart` without a matching comment body still blocks reuse."""
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("hi")
+    add_comment(run, "real one")
+    # Manually inject an orphaned commentRangeStart with a known id.
+    from docx_plus.core.oxml import el
+    orphan_id = 999_111
+    orphan = el("w:commentRangeStart", **{"w:id": str(orphan_id)})
+    run._r.addprevious(orphan)
+
+    reg = CommentIdRegistry(doc)
+    with pytest.raises(DuplicateIdError):
+        reg.reserve(orphan_id)
+
+
+def test_shared_registry_produces_disjoint_ids() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    r1 = p.add_run("a")
+    r2 = p.add_run("b")
+    reg = CommentIdRegistry(doc)
+    a = add_comment(r1, "1", id_registry=reg)
+    b = add_comment(r2, "2", id_registry=reg)
+    assert a.comment_id != b.comment_id
+
+
+# --------------------------------------------------------------------------
+# read_comments — happy path, orphans, ordering.
+# --------------------------------------------------------------------------
+
+
+def test_read_comments_empty_when_no_comments_part() -> None:
+    assert read_comments(Document()) == []
+
+
+def test_read_comments_returns_anchored_text() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("before ")
+    target = p.add_run("ANCHORED")
+    p.add_run(" after")
+    add_comment(target, "this part", author="Alice")
+
+    comments = read_comments(doc)
+    assert len(comments) == 1
+    only = comments[0]
+    assert isinstance(only, AnchoredComment)
+    assert only.author == "Alice"
+    assert only.initials == "A"
+    assert only.text == "this part"
+    assert only.anchored_text == "ANCHORED"
+    assert only.paragraph_index == 0
+    assert only.timestamp is not None
+
+
+def test_read_comments_handles_paragraph_range() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("alpha ")
+    p.add_run("beta")
+    add_comment(p, "wrap whole paragraph")
+
+    comments = read_comments(doc)
+    assert comments[0].anchored_text == "alpha beta"
+
+
+def test_read_comments_handles_orphans() -> None:
+    """A comment with no matching range markers reads as anchored_text=''."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "y")
+    # Strip the body-side markers, leaving an orphan in comments.xml.
+    body = doc.element.body
+    from docx_plus.core.oxml import remove as remove_el
+    for tag in ("w:commentRangeStart", "w:commentRangeEnd"):
+        for el in xpath(body, f".//{tag}"):
+            remove_el(el)
+
+    comments = read_comments(doc)
+    assert comments[0].anchored_text == ""
+    assert comments[0].paragraph_index == -1
+
+
+def test_read_comments_paragraph_index_tracks_position() -> None:
+    doc = Document()
+    doc.add_paragraph("first paragraph")
+    doc.add_paragraph("second paragraph")
+    p3 = doc.add_paragraph()
+    p3.add_run("third")
+    add_comment(p3, "anchor here")
+
+    comments = read_comments(doc)
+    assert comments[0].paragraph_index == 2
+
+
+def test_read_comments_preserves_comments_xml_order() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    refs = [add_comment(p.add_run(f"r{i}"), f"comment {i}") for i in range(3)]
+    comments = read_comments(doc)
+    assert [c.comment_id for c in comments] == [r.comment_id for r in refs]
+
+
+# --------------------------------------------------------------------------
+# delete_comment — idempotency, full cleanup.
+# --------------------------------------------------------------------------
+
+
+def test_delete_comment_removes_all_body_anchors() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("x"), "y")
+    delete_comment(doc, ref.comment_id)
+    assert _range_starts(doc, ref.comment_id) == []
+    assert _range_ends(doc, ref.comment_id) == []
+    assert _reference_runs(doc, ref.comment_id) == []
+
+
+def test_delete_comment_removes_comments_part_entry() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("x"), "y")
+    delete_comment(doc, ref.comment_id)
+    assert _comment_part_entries(doc, ref.comment_id) == []
+
+
+def test_delete_comment_is_idempotent_for_missing_id() -> None:
+    doc = Document()
+    delete_comment(doc, 999)  # no comments part — no-op
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "y")
+    delete_comment(doc, 12345)  # comments part exists but id absent — no-op
+
+
+def test_delete_comment_leaves_other_comments_intact() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    keep = add_comment(p.add_run("a"), "keep me")
+    drop = add_comment(p.add_run("b"), "drop me")
+    delete_comment(doc, drop.comment_id)
+    assert _comment_part_entries(doc, keep.comment_id)
+    assert _range_starts(doc, keep.comment_id)
+
+
+# --------------------------------------------------------------------------
+# Round-trip — save / reopen / read.
+# --------------------------------------------------------------------------
+
+
+def test_comment_round_trip(tmp_path: Path) -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("prefix ")
+    p.add_run("ANCHORED")
+    p.add_run(" suffix")
+    target = [r for r in p.runs if r.text == "ANCHORED"][0]
+    add_comment(target, "review this", author="Bob", initials="B")
+    out = tmp_path / "round.docx"
+    doc.save(str(out))
+
+    reopened = Document(str(out))
+    comments = read_comments(reopened)
+    assert len(comments) == 1
+    assert comments[0].author == "Bob"
+    assert comments[0].text == "review this"
+    assert comments[0].anchored_text == "ANCHORED"
+
+
+def test_comment_delete_round_trip(tmp_path: Path) -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref_keep = add_comment(p.add_run("keep"), "keep")
+    ref_drop = add_comment(p.add_run("drop"), "drop")
+    delete_comment(doc, ref_drop.comment_id)
+    out = tmp_path / "del.docx"
+    doc.save(str(out))
+
+    reopened = Document(str(out))
+    comments = read_comments(reopened)
+    assert len(comments) == 1
+    assert comments[0].comment_id == ref_keep.comment_id

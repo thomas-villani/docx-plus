@@ -6,6 +6,68 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-MM-DD
+
+Second cycle. Four new capability modules — anchored comments, layout
+extras, bookmarks with cross-references, and footnotes / endnotes —
+plus a `core/parts.py` foundation for separate OOXML parts.
+
+### Added
+
+- **Anchored comments** (`docx_plus.comments`) — `add_comment`,
+  `read_comments`, `delete_comment`, `CommentRef`, `AnchoredComment`,
+  `CommentIdRegistry`. Closes the largest python-docx gap: python-docx
+  writes the `<w:comment>` body but skips the three body-side anchors
+  (`commentRangeStart` / `commentRangeEnd` / the `CommentReference`
+  marker run); `add_comment` writes all four, plus creates the comments
+  part on first use. Comment threading (w15) deferred to v0.3.
+- **Layout extras** (`docx_plus.layout`) — `set_columns` for `<w:cols>`,
+  `insert_section_break` for mid-document section breaks (copies the
+  trailing `sectPr`'s properties into the chosen paragraph), and
+  `enable_distinct_even_odd_headers` / `disable_…` for the doc-level
+  `<w:evenAndOddHeaders/>` flag in `settings.xml`.
+- **Bookmarks + cross-references** (`docx_plus.bookmarks`) —
+  `add_bookmark`, `read_bookmarks`, `delete_bookmark`, plus
+  `add_cross_reference` building `REF` / `PAGEREF` complex fields on
+  top of `core.build_complex_field`. `BookmarkIdRegistry` lives in its
+  own namespace (separate from SDT and comment ids).
+- **Footnotes + endnotes** (`docx_plus.notes`) — `add_footnote`,
+  `add_endnote`, `read_footnotes`, `read_endnotes`, paired
+  `FootnoteIdRegistry` / `EndnoteIdRegistry`. Reserved ids -1 / 0
+  (separator / continuationSeparator) are unissuable; `read_*` filters
+  separator entries out of results. Insert-only for v0.2; in-place
+  edits of existing notes deferred.
+- **`core/parts.py` foundation** — `get_or_create_part(doc, spec)` for
+  separate OOXML parts (`comments.xml`, `footnotes.xml`,
+  `endnotes.xml`). Registers `XmlPart` subclasses for footnote /
+  endnote content types with `PartFactory.part_type_for` so existing
+  documents round-trip with parsed XML rather than raw blobs.
+- **`core.build_complex_field`** — promoted from `fields/simple.py`'s
+  private `_build_complex_field` so cross-references and any future
+  field-using module can share it without cross-capability imports.
+- **`core.insert_before_first_anchor`** — schema-strict insertion
+  helper hoisted from `fields/update.py`. Now used by both
+  `fields.mark_fields_dirty` and `layout.enable_distinct_even_odd_headers`.
+- **Examples** — `add_comments`, `multi_column_layout`,
+  `bookmarks_and_xrefs`, `footnotes_and_endnotes`. Smoke-tested in CI.
+
+### Quality gates
+
+- `mypy --strict` clean on all v0.2 modules.
+- `ruff check` clean (Google-convention docstrings).
+- Coverage gate at ≥90% holds.
+- Examples smoke-tested via `tests/test_examples_smoke.py`.
+
+### Deferred to v0.3+
+
+- w15 threaded comments (parent/child replies).
+- Layout: line numbering (`w:lnNumType`), page borders (`w:pgBorders`).
+- Comment editing — mutate the body of an existing comment in place.
+- Footnote / endnote editing — same.
+- Cross-references to headings, numbered items, or captions
+  (`STYLEREF`, sequence fields).
+- Everything else from SPEC §15 unchanged.
+
 ## [0.1.0] — 2026-MM-DD
 
 First public release. The library composes with `python-docx` rather
@@ -93,5 +155,6 @@ first-class API, anchored comments, footnotes / endnotes, bookmarks
 and cross-references, table cell shading / borders, theme writing,
 password-protected forms, content-control binding to Custom XML Parts.
 
-[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/thomas-villani/docx-plus/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/thomas-villani/docx-plus/releases/tag/v0.1.0

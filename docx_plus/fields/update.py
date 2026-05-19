@@ -13,10 +13,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lxml import etree
-
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el
+from docx_plus.core.oxml import el, insert_before_first_anchor
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -40,26 +38,6 @@ _UPDATE_FIELDS_LATER_SIBLINGS: tuple[str, ...] = (
     "w:decimalSymbol",
     "w:listSeparator",
 )
-
-
-def _insert_before_first_anchor(
-    parent: etree._Element,
-    new_element: etree._Element,
-    anchor_tags: tuple[str, ...],
-) -> None:
-    """Insert ``new_element`` before the first ``anchor_tags`` match in ``parent``.
-
-    Falls back to appending at the end if none of the anchors exist. The
-    pattern keeps schema-strict child ordering even when ``parent`` has a
-    sparse / partial set of children (which most real-world ``settings.xml``
-    files do).
-    """
-    for tag in anchor_tags:
-        anchor = parent.find(qn(tag))
-        if anchor is not None:
-            anchor.addprevious(new_element)
-            return
-    parent.append(new_element)
 
 
 def mark_fields_dirty(doc: DocxDocument) -> None:
@@ -86,7 +64,7 @@ def mark_fields_dirty(doc: DocxDocument) -> None:
         existing.set(qn("w:val"), "true")
         return
     new = el("w:updateFields", **{"w:val": "true"})
-    _insert_before_first_anchor(settings, new, _UPDATE_FIELDS_LATER_SIBLINGS)
+    insert_before_first_anchor(settings, new, _UPDATE_FIELDS_LATER_SIBLINGS)
 
 
 __all__ = ["mark_fields_dirty"]
