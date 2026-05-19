@@ -229,6 +229,8 @@ class StyleProxy:
         raw = self.element.get(qn("w:type")) or "paragraph"
         if raw not in ("paragraph", "character", "table", "numbering"):
             raise StyleNotFoundError(f"unknown w:type {raw!r}")
+        # ``raw`` is narrowed to the StyleType literal by the check above, but
+        # mypy doesn't propagate the narrowing through a tuple membership test.
         return raw  # type: ignore[return-value]
 
     @property
@@ -1130,6 +1132,8 @@ def _style_info_from_element(style_el: etree._Element) -> StyleInfo | None:
     return StyleInfo(
         style_id=sid,
         name=name or sid,
+        # raw_type is validated upstream against the StyleType literal set;
+        # mypy can't see the narrowing through the caller's filter logic.
         style_type=raw_type,  # type: ignore[arg-type]
         based_on=based_id,
         is_default=is_default,

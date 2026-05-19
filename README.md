@@ -5,7 +5,7 @@ Composes with python-docx rather than replacing it: callers keep their
 `Document` object and use `docx_plus` for the operations python-docx
 can't reach.
 
-**v0.1 capabilities** (in progress — see roadmap below):
+**v0.1 capabilities**:
 
 - **Style cascade**: read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
@@ -18,8 +18,8 @@ can't reach.
 - **Protection**: enforce form-fill, read-only, comments-only, or
   tracked-changes mode at the document level.
 
-> **Status:** early development (v0.1 in progress). Pre-publication —
-> not yet on PyPI. Read [`SPEC.md`](SPEC.md) for the API contract and
+> **Status:** v0.1 complete. Pre-publication — not yet on PyPI. Read
+> [`SPEC.md`](SPEC.md) for the API contract and
 > [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the build plan.
 
 ## Install (development)
@@ -187,7 +187,7 @@ cover dates and any other complex field (TOC, REF, MERGEFIELD, …).
 | 3.5 | Style remapping (`find_matching_style`, `remap_styles`, `ensure_style(match_existing=)`) | ✓ complete |
 | 4 | Content controls (`controls/`) | ✓ complete |
 | 5 | Fields + document protection (`fields/`, `protection/`) | ✓ complete |
-| 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | not started |
+| 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | ✓ complete |
 
 ## Documentation
 

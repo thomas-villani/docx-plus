@@ -81,11 +81,17 @@ jobs:
       - name: Sync dependencies
         run: uv sync --python ${{ matrix.python-version }}
 
+      - name: Install LibreOffice (for Layer 3 smoke tests)
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice
+
       - name: Run pytest with coverage
-        # TEST_GAPS.md B1: coverage is reported but not enforced. The 90%
-        # gate from SPEC §13 gets wired in once styles/inspect.py (77%) is
-        # brought up — tracked as a Phase 6 item.
-        run: uv run --python ${{ matrix.python-version }} pytest --cov=docx_plus --cov-report=term --cov-report=xml
+        # SPEC §13 gate: ≥90% on core/, styles/, controls/. Enforced via
+        # `fail_under = 90` in pyproject.toml's [tool.coverage.report]; the
+        # `--cov-fail-under=90` here is redundant insurance.
+        run: uv run --python ${{ matrix.python-version }} pytest --cov=docx_plus --cov-report=term --cov-report=xml --cov-fail-under=90
 
       - name: Upload coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'

@@ -18,24 +18,7 @@ filled. Update this file when you fix one.
 
 ## BLOCKER
 
-Gaps that could let a quality-gate violation or silent document-corruption
-bug ship.
-
-### B1. Coverage threshold defined in SPEC but not enforced
-
-- **Where:** `pyproject.toml:92-104` defines `[tool.coverage.run]` and
-  `[tool.coverage.report]` but neither sets `fail_under`, and no CI step
-  passes `--cov-fail-under=90`.
-- **SPEC ref:** §13 mandates "Coverage ≥ 90% on `core/`, `styles/`,
-  `controls/`" as a hard quality gate.
-- **Risk:** As the surface grows in Phases 4–6, untested branches will
-  accumulate with no signal. The gate exists in writing only.
-- **Fix:**
-  1. Add `fail_under = 90` to `[tool.coverage.report]` in `pyproject.toml`
-  2. In `.github/workflows/ci.yml`, replace `pytest` with `pytest --cov=docx_plus --cov-fail-under=90` (or equivalent)
-  3. Run locally first to confirm the current suite clears the bar; if
-     not, the failing lines are themselves gaps to fill before flipping
-     the gate on
+_(none — see ## Resolved for B1.)_
 
 ---
 
@@ -274,6 +257,20 @@ alongside Phase 4 work.
 ---
 
 ## Resolved
+
+### 2026-05-19 — Phase 6
+
+- **B1 — Coverage gate flipped on.** `fail_under = 90` added to
+  `[tool.coverage.report]` in `pyproject.toml`; `ci.yml` now runs
+  `pytest ... --cov-fail-under=90`. Coverage at 91.76% aggregate
+  (styles 90.7%, core 91%, controls 93%). Bringing this from a stale
+  77% on `styles/inspect.py` required two new test files:
+  `tests/test_cascade_numbering.py` (7 tests covering layer 4 of the
+  cascade) and `tests/test_cascade_run_target.py` (5 tests covering Run
+  and `_Cell` target paths). The `numbered.docx` fixture in
+  `tests/fixtures/build_fixtures.py:build_numbered` materialises a
+  custom `abstractNum` / `num` pair inside python-docx's already-shipped
+  numbering part.
 
 ### 2026-05-19 — Phase 5
 

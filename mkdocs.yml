@@ -76,4 +76,4 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.details
 
-# strict: true  # enable in Phase 6 once nav and refs are stable
+strict: true

@@ -169,6 +169,43 @@ def build_existing_form(path: Path) -> Path:
     return path
 
 
+def build_numbered(path: Path) -> Path:
+    """Write a doc with one ordered-list paragraph that uses ``w:numPr``.
+
+    Exercises layer 4 of the cascade (numbering). python-docx's default
+    template already includes a populated ``numbering.xml`` and registered
+    relationship, so we just inject our own ``abstractNum`` (with indent on
+    ``pPr`` and bold on ``rPr`` at ``lvl[0]``) and ``num`` into the existing
+    part, then point the paragraph at the new ``numId``.
+    """
+    doc = Document()
+
+    numbering_root = doc.part.numbering_part.element
+    # Use IDs above python-docx's default range (the bundled template uses
+    # 0-8) to avoid colliding with built-in styles like ListBullet.
+    abstract = sub(numbering_root, "w:abstractNum", **{"w:abstractNumId": "100"})
+    lvl = sub(abstract, "w:lvl", **{"w:ilvl": "0"})
+    sub(lvl, "w:start", **{"w:val": "1"})
+    sub(lvl, "w:numFmt", **{"w:val": "decimal"})
+    sub(lvl, "w:lvlText", **{"w:val": "%1."})
+    lvl_ppr = sub(lvl, "w:pPr")
+    sub(lvl_ppr, "w:ind", **{"w:left": "720", "w:hanging": "360"})
+    lvl_rpr = sub(lvl, "w:rPr")
+    sub(lvl_rpr, "w:b")
+
+    num = sub(numbering_root, "w:num", **{"w:numId": "100"})
+    sub(num, "w:abstractNumId", **{"w:val": "100"})
+
+    para = doc.add_paragraph("Numbered item one.")
+    para_pr = para._p.get_or_add_pPr()
+    num_pr = sub(para_pr, "w:numPr")
+    sub(num_pr, "w:ilvl", **{"w:val": "0"})
+    sub(num_pr, "w:numId", **{"w:val": "100"})
+
+    doc.save(path)
+    return path
+
+
 def build_all(out_dir: Path = FIXTURES_DIR) -> dict[str, Path]:
     """Build every Phase 1 fixture into ``out_dir`` and return their paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -177,6 +214,7 @@ def build_all(out_dir: Path = FIXTURES_DIR) -> dict[str, Path]:
         "multistyle": build_multistyle(out_dir / "multistyle.docx"),
         "themed": build_themed(out_dir / "themed.docx"),
         "existing_form": build_existing_form(out_dir / "existing_form.docx"),
+        "numbered": build_numbered(out_dir / "numbered.docx"),
     }
 
 

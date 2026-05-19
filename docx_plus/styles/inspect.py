@@ -180,6 +180,9 @@ def resolve_effective_formatting(
     if theme is None:
         acc.partial = True
 
+    # target_kind narrows the union at runtime, but mypy can't track narrowing
+    # through a separately-bound string variable — so ._p / ._r / ._tc each
+    # need an ignore for the union-attr check that's already proven by hand.
     if target_kind == "paragraph":
         _apply_paragraph_cascade(acc, doc, styles_root, target._p)  # type: ignore[union-attr]
     elif target_kind == "run":

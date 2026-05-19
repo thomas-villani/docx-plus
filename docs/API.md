@@ -33,11 +33,13 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Public surface at end of Phase 5
+## Public surface at v0.1
 
-Phases 1 through 5 are complete. Phase 6 (`examples/`) is still a stub —
-`docx_plus/examples/__init__.py` exists so imports resolve, but `__all__`
-is empty pending the polish phase.
+All six phases are complete. The four runnable example scripts in
+`docx_plus/examples/` — `inspect_document.py`, `restyle_existing.py`,
+`build_form.py`, `populate_form.py` — are end-to-end demonstrations of the
+surface below. Start there if you want to see the library in motion before
+reading the index.
 
 ### `docx_plus` (top-level package)
 

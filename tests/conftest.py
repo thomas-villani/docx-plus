@@ -40,3 +40,9 @@ def themed_docx_path(fixtures: dict[str, Path]) -> Path:
 def existing_form_docx_path(fixtures: dict[str, Path]) -> Path:
     """Path to the freshly-built ``existing_form.docx`` fixture."""
     return fixtures["existing_form"]
+
+
+@pytest.fixture
+def numbered_docx_path(fixtures: dict[str, Path]) -> Path:
+    """Path to the freshly-built ``numbered.docx`` fixture."""
+    return fixtures["numbered"]

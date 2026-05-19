@@ -509,6 +509,105 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-19 — Phase 6: Polish — complete
+
+- **Pre-flight scope check.** Reviewed `notes-v0_1-scope.md` (an untracked
+  discussion artifact about pulling `layout/`, `comments/`, `bookmarks/`,
+  `notes/` forward from v0.2). Decision: ship 0.1.0 as specced; the
+  notes file's own recommendation. Phase 6 stayed narrowly scoped.
+- **Survey finding.** README + `docs/ARCHITECTURE.md` + `docs/API.md` +
+  `mkdocs.yml` already covered the Phase 4+5 surface (the Phase 3.6 doc
+  commit reached forward). The progress-log "Next session" callout
+  understated how much was already done — task #9 (docs update) and
+  task #10 (API.md re-index) reduced to small touch-ups.
+- **Four runnable examples** under `docx_plus/examples/` (in-package per
+  ARCHITECTURE.md §1; pyproject.toml already wires ruff/coverage exclusions):
+  - `inspect_document.py` — prints effective formatting + provenance for
+    every paragraph in SPEC §11 output shape. No-arg form builds a small
+    in-memory demo (Title / Heading1 / body) via `apply_style`.
+  - `restyle_existing.py` — modifies `Heading1` (color C00000, size 20,
+    bold, new spacing) and verifies via `resolve_effective_formatting`
+    that the first Heading1 paragraph picks up the change.
+  - `build_form.py` — onboarding form with all five control types (text /
+    multiline text / dropdown with (display,value) tuples / combobox /
+    date picker / checkbox), 7 controls, `protect_document(mode="forms")`.
+  - `populate_form.py` — builds the form via `build_onboarding_form`,
+    fills via `set_control_value`, clears one field with `clear_control`,
+    re-reads to show the mixed filled/placeholder state. The three
+    docx-writing examples write to `Path.cwd()` so the smoke test's
+    `subprocess.run(cwd=tmp_path)` keeps the source tree clean.
+- **`tests/test_examples_smoke.py`** (7 tests): every example exits 0 with
+  no args; each docx-writing example produces a file python-docx can
+  reopen with non-empty paragraphs.
+- **`tests/test_examples_libreoffice.py`** (3 tests, gated): converts each
+  example's output to PDF via `soffice --headless --convert-to pdf`,
+  asserts exit-0 and non-empty PDF. Both `pytest.mark.requires_libreoffice`
+  (declared in `pyproject.toml`) and a `shutil.which`-driven `skipif` are
+  applied via `pytestmark` so the suite is a no-op on dev boxes lacking
+  soffice. `.github/workflows/ci.yml` installs libreoffice on the
+  ubuntu/3.13 leg only — the four other matrix legs autoskip.
+- **Coverage gate flipped on (TEST_GAPS B1).** `fail_under = 90` added to
+  `[tool.coverage.report]` + `--cov-fail-under=90` in `ci.yml`. Closing
+  the previous 77% on `styles/inspect.py` required two new test files
+  before the gate could pass:
+  - `tests/test_cascade_numbering.py` (7 tests) — exercises cascade
+    layer 4 end-to-end via a new `build_numbered` fixture that injects a
+    custom `abstractNum` (indent + bold at `lvl[0]`) + `num` (id=100)
+    into python-docx's already-shipped numbering part. Provenance, the
+    happy path, two unparsable-attribute branches (numId garbage / ilvl
+    garbage), the unknown-numId branch, missing-w:val branch, and the
+    no-numPr negative-case.
+  - `tests/test_cascade_run_target.py` (5 tests) — exercises Run-target
+    branches (direct rPr, paragraph-style inheritance, `w:rStyle`
+    linked-char chain) and `_Cell` targets (`_apply_cell_cascade` +
+    table-style walk).
+  - Plus `if TYPE_CHECKING:` and `@overload` added to
+    `exclude_lines` in `pyproject.toml` — standard exclusions previously
+    missing. Final numbers: 91.76% aggregate, styles 90.7%, core 91%,
+    controls 93%.
+- **API.md / mkdocs strict.** `docs/API.md` "Phase 6 stub" paragraph
+  rewritten to point at the four examples; the `../docx_plus/examples`
+  link replaced with prose because mkdocs --strict treats outside-docs/
+  links as broken. `mkdocs.yml`'s `strict: true` is now enabled (was
+  commented out with a "Phase 6" todo); `mkdocs build --strict` is
+  clean. The `docs.yml` workflow already used `--strict` per c970733.
+- **README.md.** Status banner switched from "early development (v0.1
+  in progress)" → "v0.1 complete"; capability list "in progress —
+  see roadmap below" → present-tense; roadmap row 6 marked complete.
+- **SPEC §13 type-ignore audit.** The six existing `# type: ignore`
+  annotations in `styles/inspect.py` (4) and `styles/modify.py` (2)
+  had mypy error categories but no human-readable justification; added
+  one-line explanations per the SPEC §13 last bullet ("No # type: ignore
+  without an accompanying comment explaining why").
+- **TEST_GAPS.md.** B1 entry moved to the `## Resolved` section with
+  date and resolution notes citing the two new test files and the
+  fixture. BLOCKER section now empty.
+- **Wheel + sdist build green.** `uv build` produces
+  `dist/docx_plus-0.1.0.tar.gz` and `docx_plus-0.1.0-py3-none-any.whl`;
+  `import docx_plus` and `docx_plus.__version__ == "0.1.0"` both confirmed
+  via a fresh subprocess.
+- **SPEC §13 final sweep — all 9 bullets green**:
+  1. ✓ All tests pass — 304 passed, 3 skipped (LibreOffice; CI ubuntu/3.13 leg installs soffice)
+  2. ✓ `mypy --strict docx_plus/` — 25 source files, no issues
+  3. ✓ `ruff check docx_plus/` (+ tests/) — all checks passed
+  4. ✓ Coverage ≥ 90% — 91.76% aggregate, all three packages ≥90%
+  5. ✓ All four examples run without error
+  6. ✓ Layer 3 smoke wired (autoskip when soffice absent)
+  7. ✓ ARCHITECTURE.md, API.md, README.md exist and are current
+  8. ✓ Import-invariant test passes — 12 cases
+  9. ✓ No `# type: ignore` lacks justification
+
+**v0.1 is feature-complete.** Outstanding before tagging 0.1.0: (a) push
+two commits to origin/main (currently 2 ahead per `git status`), (b)
+answer the two questions in `notes.md` (build/fixtures setup + the v0.2
+comments/refs/endnotes interface discussion — the latter is what
+`notes-v0_1-scope.md` already explores). v0.2 backlog is enumerated in
+SPEC §15.
+
+**Next session — tag 0.1.0** (post-resolution of notes.md questions) or
+start v0.2 work per the recommended order in `notes-v0_1-scope.md` §5:
+`comments/` → `layout/` → `bookmarks/` + cross-refs → `notes/`.
+
 ### 2026-05-19 — Phase 5: Fields and protection — complete
 
 - **Lint debt cleared** (from Phase 3.6 / Phase 4 carry-over): `uv run ruff
