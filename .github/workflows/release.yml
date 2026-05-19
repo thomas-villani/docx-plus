@@ -1,0 +1,75 @@
+name: Release
+
+# Fires on a tag push matching v0.1.0, v1.2.3, etc. The tag is the
+# release trigger — the version in pyproject.toml should already match
+# before tagging.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+# `id-token: write` is required for PyPI trusted publishing.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    name: Build distribution artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Verify tag matches pyproject version
+        # Belt-and-braces: stop early if someone tags v0.2.0 while
+        # pyproject still says version = "0.1.0".
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PROJECT_VERSION=$(grep -E '^version = ' pyproject.toml | sed -E 's/^version = "(.+)"$/\1/')
+          if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
+            echo "::error::Tag v$TAG_VERSION does not match pyproject.toml version $PROJECT_VERSION"
+            exit 1
+          fi
+          echo "Tag and pyproject.toml agree on version $TAG_VERSION"
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      # The 'pypi' GitHub environment scopes the trusted-publishing claim.
+      # Configure under Repo Settings → Environments before the first run.
+      name: pypi
+      url: https://pypi.org/p/docx_plus
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        # Trusted publishing: configure the repo as a publisher at
+        # https://pypi.org/manage/account/publishing/ — no API token in
+        # secrets. Falls back to UV_PUBLISH_TOKEN if you prefer the
+        # token-based path; comment out the action below and add
+        #   run: uv publish --token "${{ secrets.PYPI_API_TOKEN }}"
+        uses: pypa/gh-action-pypi-publish@release/v1

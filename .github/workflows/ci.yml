@@ -2,26 +2,73 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
-    branches: ["**"]
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Tests on Python ${{ matrix.python-version }}
+  lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --python 3.13
+
+      - name: ruff check
+        run: uv run ruff check docx_plus/ tests/
+
+      - name: ruff format --check
+        run: uv run ruff format --check docx_plus/ tests/
+
+  typecheck:
+    name: Type check (mypy --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --python 3.13
+
+      - name: mypy --strict
+        run: uv run mypy --strict docx_plus/
+
+  test:
+    name: Test ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-
+        include:
+          # Windows job — the primary dev box runs Windows, so this catches
+          # path-handling and lxml CRLF behaviour that Linux-only CI misses.
+          - os: windows-latest
+            python-version: "3.13"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -34,14 +81,40 @@ jobs:
       - name: Sync dependencies
         run: uv sync --python ${{ matrix.python-version }}
 
-      - name: Run pytest
-        run: uv run --python ${{ matrix.python-version }} pytest -v
+      - name: Run pytest with coverage
+        # TEST_GAPS.md B1: coverage is reported but not enforced. The 90%
+        # gate from SPEC §13 gets wired in once styles/inspect.py (77%) is
+        # brought up — tracked as a Phase 6 item.
+        run: uv run --python ${{ matrix.python-version }} pytest --cov=docx_plus --cov-report=term --cov-report=xml
 
-      - name: mypy --strict
-        run: uv run --python ${{ matrix.python-version }} mypy --strict docx_plus/
+      - name: Upload coverage report
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
 
-      - name: ruff check
-        run: uv run --python ${{ matrix.python-version }} ruff check docx_plus/
+  build:
+    name: Build wheel + sdist (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: ruff format check
-        run: uv run --python ${{ matrix.python-version }} ruff format --check docx_plus/
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
