@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from docx import Document
 
 from docx_plus.core.oxml import sub
@@ -187,3 +188,65 @@ def test_value_true_explicit_xor_flips() -> None:
 
     resolved = resolve_effective_formatting(p)
     assert resolved.bold is True
+
+
+# --------------------------------------------------------------------------
+# Expanded toggle coverage: the six complex-script / decorative toggles
+# (bCs, iCs, emboss, imprint, outline, shadow). Each must XOR through the
+# cascade with the same semantics as bold/italic.
+# --------------------------------------------------------------------------
+
+
+_NEW_TOGGLES = [
+    ("w:bCs", "cs_bold"),
+    ("w:iCs", "cs_italic"),
+    ("w:emboss", "emboss"),
+    ("w:imprint", "imprint"),
+    ("w:outline", "outline"),
+    ("w:shadow", "shadow"),
+]
+
+
+@pytest.mark.parametrize(("tag", "field_name"), _NEW_TOGGLES)
+def test_new_toggle_direct_application(tag: str, field_name: str) -> None:
+    """Single style declares the toggle -> field resolves True."""
+    doc = Document()
+    style_id = f"OnceOnly_{field_name}"
+    _add_paragraph_style(doc, style_id, rpr_children=[(tag, None)])
+    p = _styled_paragraph(doc, style_id)
+
+    resolved = resolve_effective_formatting(p)
+    assert getattr(resolved, field_name) is True
+
+
+@pytest.mark.parametrize(("tag", "field_name"), _NEW_TOGGLES)
+def test_new_toggle_xor_through_chain(tag: str, field_name: str) -> None:
+    """Two layers each declare the toggle -> XOR resolves False."""
+    doc = Document()
+    parent_id = f"Parent_{field_name}"
+    child_id = f"Child_{field_name}"
+    _add_paragraph_style(doc, parent_id, rpr_children=[(tag, None)])
+    _add_paragraph_style(doc, child_id, based_on=parent_id, rpr_children=[(tag, None)])
+    p = _styled_paragraph(doc, child_id)
+
+    resolved = resolve_effective_formatting(p)
+    assert getattr(resolved, field_name) is False
+
+
+@pytest.mark.parametrize(("tag", "field_name"), _NEW_TOGGLES)
+def test_new_toggle_explicit_false_resets(tag: str, field_name: str) -> None:
+    """`w:val="false"` on the child resets parity to False regardless of parent."""
+    doc = Document()
+    parent_id = f"ResetParent_{field_name}"
+    child_id = f"ResetChild_{field_name}"
+    _add_paragraph_style(doc, parent_id, rpr_children=[(tag, None)])
+    _add_paragraph_style(
+        doc,
+        child_id,
+        based_on=parent_id,
+        rpr_children=[(tag, {"w:val": "false"})],
+    )
+    p = _styled_paragraph(doc, child_id)
+
+    resolved = resolve_effective_formatting(p)
+    assert getattr(resolved, field_name) is False

@@ -32,19 +32,80 @@ if TYPE_CHECKING:
 
 _MAX_STYLE_CHAIN_DEPTH = 11
 
+
+@dataclass(frozen=True)
+class TableContext:
+    """A cell's position within its table — for conditional table-style formatting.
+
+    ECMA-376 17.7.6.5 lets a ``<w:style w:type="table">`` carry
+    conditional formatting branches (``<w:tblStylePr w:type="firstRow"/>``,
+    ``"lastRow"``, ``"firstCol"``, ``"lastCol"``, ``"band1Horz"``,
+    ``"band1Vert"``, ``"nwCell"`` / ``"neCell"`` / ``"swCell"`` /
+    ``"seCell"``). To pick the right branches the cascade resolver needs
+    to know where in the table the target lives.
+
+    Construct manually for an out-of-band query, or pass a ``_Cell`` to
+    :func:`resolve_effective_formatting` to derive the context
+    automatically from the cell's parent row / table.
+
+    Attributes:
+        is_first_row: Cell is in the first ``<w:tr>`` of its table.
+        is_last_row: Cell is in the last ``<w:tr>``.
+        is_first_col: Cell is the first ``<w:tc>`` of its row.
+        is_last_col: Cell is the last ``<w:tc>`` of its row.
+        is_band_row: Cell is on a band1 row (every other row starting
+            from the second). The v0.2 surface exposes ``band1Horz``;
+            ``band2Horz`` (the complementary parity) is not yet wired
+            because real-world table styles overwhelmingly use only
+            band1 for shaded headers and zebra stripes.
+        is_band_col: Cell is on a band1 column.
+    """
+
+    is_first_row: bool = False
+    is_last_row: bool = False
+    is_first_col: bool = False
+    is_last_col: bool = False
+    is_band_row: bool = False
+    is_band_col: bool = False
+
+
+# ``<w:tblStylePr w:type=...>`` values in ECMA-376 17.7.6.5 application
+# order: later entries override earlier ones. ``wholeTable`` always
+# applies; the rest depend on the resolver's :class:`TableContext`.
+_TBL_STYLE_PR_ORDER: tuple[str, ...] = (
+    "wholeTable",
+    "band1Vert",
+    "band2Vert",
+    "band1Horz",
+    "band2Horz",
+    "firstCol",
+    "lastCol",
+    "firstRow",
+    "lastRow",
+    "nwCell",
+    "neCell",
+    "swCell",
+    "seCell",
+)
+
 # Toggle properties XOR through the cascade per ECMA-376 17.7.3.
 # Mapped from rPr child name to ResolvedFormatting field name.
 _TOGGLE_RPR: dict[str, str] = {
     "b": "bold",
     "i": "italic",
+    "bCs": "cs_bold",
+    "iCs": "cs_italic",
     "caps": "caps",
     "smallCaps": "small_caps",
     "strike": "strike",
     "vanish": "vanish",
+    "emboss": "emboss",
+    "imprint": "imprint",
+    "outline": "outline",
+    "shadow": "shadow",
 }
-# Other toggles per the spec (bCs, iCs, emboss, imprint, outline, shadow,
-# dstrike notably NOT a toggle) are accepted but not yet surfaced on the
-# ResolvedFormatting dataclass; v0.2 may expand it.
+# dstrike is intentionally excluded — per ECMA-376 it overrides rather than
+# XORing, unlike the twelve true toggles above.
 
 
 Layer = Literal[
@@ -91,14 +152,12 @@ class ResolvedFormatting:
     Every field is ``None`` until some layer of the cascade sets it. Toggle
     properties carry their XOR-resolved boolean. SPEC §4 specifies the fields.
 
-    The six toggle properties currently surfaced (``bold``, ``italic``,
-    ``caps``, ``small_caps``, ``strike``, ``vanish``) are the ones with a
-    direct counterpart on this dataclass. SPEC §4 lists six others
-    (``bCs``, ``iCs``, ``emboss``, ``imprint``, ``outline``, ``shadow``)
-    that are spec-toggles but not yet exposed here — they are recognised
-    by the cascade walker but their XOR result is discarded. Documents
-    using those properties will not see them in the resolved output;
-    extending coverage is v0.2 work.
+    All twelve ECMA-376 17.7.3 toggle properties are surfaced: the six
+    base toggles (``bold``, ``italic``, ``caps``, ``small_caps``,
+    ``strike``, ``vanish``) and the six complex-script / decorative
+    variants (``cs_bold``, ``cs_italic``, ``emboss``, ``imprint``,
+    ``outline``, ``shadow``). All XOR through the cascade with the same
+    semantics; an explicit ``w:val="false"`` resets parity to false.
     """
 
     # Identity
@@ -124,6 +183,8 @@ class ResolvedFormatting:
     font_size: float | None = None
     bold: bool | None = None
     italic: bool | None = None
+    cs_bold: bool | None = None
+    cs_italic: bool | None = None
     underline: str | None = None
     strike: bool | None = None
     color_rgb: str | None = None
@@ -131,6 +192,10 @@ class ResolvedFormatting:
     caps: bool | None = None
     small_caps: bool | None = None
     vanish: bool | None = None
+    emboss: bool | None = None
+    imprint: bool | None = None
+    outline: bool | None = None
+    shadow: bool | None = None
     vert_align: str | None = None
 
     # Numbering
@@ -146,6 +211,7 @@ def resolve_effective_formatting(
     target: Paragraph | Run | _Cell,
     *,
     include_provenance: bool = False,
+    table_context: TableContext | None = None,
 ) -> ResolvedFormatting:
     """Resolve the effective formatting for ``target``.
 
@@ -156,11 +222,23 @@ def resolve_effective_formatting(
     ``partial`` flag is set and unresolved theme names are returned in place
     of hex values.
 
+    When ``target`` is in a table cell, table-style **conditional
+    formatting** (``<w:tblStylePr>`` branches: ``firstRow``, ``lastRow``,
+    ``firstCol``, ``lastCol``, ``band1Horz``, ``band1Vert``, the four
+    corners, and ``wholeTable``) is applied on top of the base table
+    style in ECMA-376 17.7.6.5 precedence order.
+
     Args:
         target: A python-docx :class:`~docx.text.paragraph.Paragraph`,
             :class:`~docx.text.run.Run`, or :class:`~docx.table._Cell`.
         include_provenance: If True, populate ``.provenance`` with the cascade
             layer that set each field. Default False.
+        table_context: Optional override for the cell's position within
+            its table. When ``None`` (default), the resolver derives it
+            from the target's parent ``<w:tr>`` / ``<w:tbl>`` chain;
+            pass an explicit :class:`TableContext` to query a hypothetical
+            position (e.g. "what would the formatting be if this cell
+            were in the first row?").
 
     Returns:
         A :class:`ResolvedFormatting` snapshot.
@@ -193,18 +271,25 @@ def resolve_effective_formatting(
     # through a separately-bound string variable — so ._p / ._r / ._tc each
     # need an ignore for the union-attr check that's already proven by hand.
     if target_kind == "paragraph":
-        _apply_paragraph_cascade(acc, doc, styles_root, target._p)  # type: ignore[union-attr]
+        p_el = target._p  # type: ignore[union-attr]
+        ctx = table_context or _derive_table_context_from_element(p_el)
+        _apply_paragraph_cascade(acc, doc, styles_root, p_el, table_context=ctx)
     elif target_kind == "run":
-        paragraph_element = _enclosing_paragraph(target._r)  # type: ignore[union-attr]
+        r_el = target._r  # type: ignore[union-attr]
+        paragraph_element = _enclosing_paragraph(r_el)
+        ctx = table_context or _derive_table_context_from_element(paragraph_element)
         _apply_paragraph_cascade(
             acc,
             doc,
             styles_root,
             paragraph_element,
-            run_element=target._r,  # type: ignore[union-attr]
+            run_element=r_el,
+            table_context=ctx,
         )
     else:  # cell
-        _apply_cell_cascade(acc, doc, styles_root, target._tc)  # type: ignore[union-attr]
+        tc_el = target._tc  # type: ignore[union-attr]
+        ctx = table_context or _derive_table_context_from_element(tc_el)
+        _apply_cell_cascade(acc, doc, styles_root, tc_el, table_context=ctx)
 
     return acc.freeze()
 
@@ -268,6 +353,7 @@ def _apply_paragraph_cascade(
     styles_root: etree._Element,
     p_element: etree._Element,
     run_element: etree._Element | None = None,
+    table_context: TableContext | None = None,
 ) -> None:
     """Walk layers 1, 3, 4, 5 (and 6 if run_element) for a paragraph target."""
     # Layer 1: docDefaults
@@ -278,7 +364,7 @@ def _apply_paragraph_cascade(
     if enclosing_tc is not None:
         table_element = _enclosing_table(enclosing_tc)
         if table_element is not None:
-            _apply_table_style_chain(acc, styles_root, table_element)
+            _apply_table_style_chain(acc, styles_root, table_element, table_context=table_context)
 
     # Layer 3: paragraph style chain
     p_style_id = _paragraph_style_id(p_element)
@@ -333,12 +419,13 @@ def _apply_cell_cascade(
     doc: Document,  # noqa: ARG001
     styles_root: etree._Element,
     tc_element: etree._Element,
+    table_context: TableContext | None = None,
 ) -> None:
     """Resolve formatting for a table cell — table style chain only, for now."""
     _apply_doc_defaults(acc, styles_root)
     table_element = _enclosing_table(tc_element)
     if table_element is not None:
-        _apply_table_style_chain(acc, styles_root, table_element)
+        _apply_table_style_chain(acc, styles_root, table_element, table_context=table_context)
 
 
 # --------------------------------------------------------------------------
@@ -415,12 +502,18 @@ def _apply_table_style_chain(
     acc: _Accumulator,
     styles_root: etree._Element,
     tbl_element: etree._Element,
+    table_context: TableContext | None = None,
 ) -> None:
-    """Apply the table's style chain — base only; conditional formatting deferred.
+    """Apply the table's style chain plus any matching conditional branches.
 
-    Only the base pPr/rPr from each style in the basedOn chain is applied.
-    Conditional formatting via ``w:tblStylePr`` (firstRow, lastRow, firstCol,
-    etc.) is recognised in the spec but deferred — see SPEC §4 step 2.
+    First applies the base ``pPr`` / ``rPr`` from each style in the
+    basedOn chain (ancestors first, leaf last). Then — when a
+    :class:`TableContext` is provided — walks the same chain again,
+    applying every ``<w:tblStylePr w:type="...">`` branch whose type
+    matches the cell's position. Conditional types are applied in
+    ECMA-376 17.7.6.5 precedence order (``wholeTable`` → bands →
+    first/last col → first/last row → corners), so the most specific
+    branch wins.
     """
     tbl_pr = tbl_element.find(qn("w:tblPr"))
     if tbl_pr is None:
@@ -432,6 +525,119 @@ def _apply_table_style_chain(
     if style_id is None:
         return
     _apply_style_chain(acc, styles_root, style_id, "tableStyle")
+    if table_context is not None:
+        _apply_conditional_table_formatting(acc, styles_root, style_id, table_context)
+
+
+def _apply_conditional_table_formatting(
+    acc: _Accumulator,
+    styles_root: etree._Element,
+    leaf_style_id: str,
+    ctx: TableContext,
+) -> None:
+    """Apply ``<w:tblStylePr>`` branches matching ``ctx`` across the chain.
+
+    Walks the basedOn chain ancestors-first so leaf-style branches
+    override; within each style, applies conditional types in
+    ECMA-376 17.7.6.5 precedence order.
+    """
+    matching = _matching_conditional_types(ctx)
+    if not matching:
+        return
+    chain = _collect_style_chain(styles_root, leaf_style_id)
+    for depth, (style_id, style_el) in enumerate(reversed(chain)):
+        chain_depth = len(chain) - 1 - depth
+        source = FormattingSource(layer="tableStyle", style_id=style_id, chain_depth=chain_depth)
+        # Build a map type -> tblStylePr element for this style to avoid
+        # a quadratic scan when many conditional types are active.
+        branches: dict[str, etree._Element] = {}
+        for branch in style_el.findall(qn("w:tblStylePr")):
+            type_attr = branch.get(qn("w:type"))
+            if type_attr is not None:
+                branches[type_attr] = branch
+        for cond_type in _TBL_STYLE_PR_ORDER:
+            if cond_type not in matching or cond_type not in branches:
+                continue
+            branch = branches[cond_type]
+            ppr = branch.find(qn("w:pPr"))
+            if ppr is not None:
+                _apply_ppr(acc, ppr, source)
+            rpr = branch.find(qn("w:rPr"))
+            if rpr is not None:
+                _apply_rpr(acc, rpr, source)
+
+
+def _matching_conditional_types(ctx: TableContext) -> set[str]:
+    """Return the set of ``<w:tblStylePr w:type=...>`` values that apply.
+
+    ``wholeTable`` always matches. Each positional flag activates its
+    corresponding type, and corner types match only when both axes
+    align.
+    """
+    types: set[str] = {"wholeTable"}
+    if ctx.is_band_col:
+        types.add("band1Vert")
+    if ctx.is_band_row:
+        types.add("band1Horz")
+    if ctx.is_first_col:
+        types.add("firstCol")
+    if ctx.is_last_col:
+        types.add("lastCol")
+    if ctx.is_first_row:
+        types.add("firstRow")
+    if ctx.is_last_row:
+        types.add("lastRow")
+    if ctx.is_first_row and ctx.is_first_col:
+        types.add("nwCell")
+    if ctx.is_first_row and ctx.is_last_col:
+        types.add("neCell")
+    if ctx.is_last_row and ctx.is_first_col:
+        types.add("swCell")
+    if ctx.is_last_row and ctx.is_last_col:
+        types.add("seCell")
+    return types
+
+
+def _derive_table_context_from_element(node: etree._Element) -> TableContext:
+    """Derive a :class:`TableContext` from a body element's table position.
+
+    Walks up from ``node`` to find the enclosing ``<w:tc>``, then derives
+    row / column indices and band parity. Returns an empty (all-False)
+    :class:`TableContext` when ``node`` is not inside a table.
+
+    Band parity follows the 0-indexed convention where row/col index 1,
+    3, 5, ... is "band1". This matches Word's default rendering of
+    `band1Horz`/`band1Vert` as the "first banded" stripe colour.
+    """
+    if isinstance(node.tag, str) and etree.QName(node.tag).localname == "tc":
+        tc: etree._Element | None = node
+    else:
+        tc = _enclosing_cell(node)
+    if tc is None:
+        return TableContext()
+    tr = tc.getparent()
+    if tr is None or tr.tag != qn("w:tr"):
+        return TableContext()
+    tbl = tr.getparent()
+    if tbl is None or tbl.tag != qn("w:tbl"):
+        return TableContext()
+
+    rows = [child for child in tbl if child.tag == qn("w:tr")]
+    cells = [child for child in tr if child.tag == qn("w:tc")]
+    try:
+        row_idx = rows.index(tr)
+        col_idx = cells.index(tc)
+    except ValueError:
+        return TableContext()
+
+    return TableContext(
+        is_first_row=row_idx == 0,
+        is_last_row=row_idx == len(rows) - 1,
+        is_first_col=col_idx == 0,
+        is_last_col=col_idx == len(cells) - 1,
+        is_band_row=(row_idx % 2 == 1),
+        is_band_col=(col_idx % 2 == 1),
+    )
 
 
 def _apply_numbering(acc: _Accumulator, doc: Document, num_pr: etree._Element) -> None:
@@ -785,5 +991,6 @@ __all__ = [
     "MissingPartError",
     "ResolvedFormatting",
     "StyleCascadeError",
+    "TableContext",
     "resolve_effective_formatting",
 ]

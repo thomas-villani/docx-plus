@@ -25,6 +25,7 @@ EXAMPLES = [
     "docx_plus.examples.multi_column_layout",
     "docx_plus.examples.bookmarks_and_xrefs",
     "docx_plus.examples.footnotes_and_endnotes",
+    "docx_plus.examples.publishing_layout",
 ]
 
 # Examples that write a .docx into cwd when run with no args. Tuple of
@@ -37,6 +38,7 @@ WRITES_DOCX = [
     ("docx_plus.examples.multi_column_layout", "multicol.docx"),
     ("docx_plus.examples.bookmarks_and_xrefs", "bookmarks.docx"),
     ("docx_plus.examples.footnotes_and_endnotes", "notes.docx"),
+    ("docx_plus.examples.publishing_layout", "publishing.docx"),
 ]
 
 

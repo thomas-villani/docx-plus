@@ -5,6 +5,7 @@ from docx_plus.styles.inspect import (
     MissingPartError,
     ResolvedFormatting,
     StyleCascadeError,
+    TableContext,
     resolve_effective_formatting,
 )
 from docx_plus.styles.modify import (
@@ -36,6 +37,7 @@ __all__ = [
     "StyleInfo",
     "StyleNotFoundError",
     "StyleProxy",
+    "TableContext",
     "UnknownStylePropertyError",
     "apply_style",
     "create_style",

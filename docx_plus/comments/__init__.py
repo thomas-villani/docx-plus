@@ -26,10 +26,13 @@ context.
 from __future__ import annotations
 
 from docx_plus.comments.anchor import (
+    CommentNotFoundError,
     CommentRef,
     CommentTarget,
     add_comment,
+    clear_all_comments,
     delete_comment,
+    edit_comment,
 )
 from docx_plus.comments.read import AnchoredComment, read_comments
 from docx_plus.comments.registry import CommentIdRegistry
@@ -37,9 +40,12 @@ from docx_plus.comments.registry import CommentIdRegistry
 __all__ = [
     "AnchoredComment",
     "CommentIdRegistry",
+    "CommentNotFoundError",
     "CommentRef",
     "CommentTarget",
     "add_comment",
+    "clear_all_comments",
     "delete_comment",
+    "edit_comment",
     "read_comments",
 ]

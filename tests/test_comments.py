@@ -13,9 +13,12 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx_plus.comments import (
     AnchoredComment,
     CommentIdRegistry,
+    CommentNotFoundError,
     CommentRef,
     add_comment,
+    clear_all_comments,
     delete_comment,
+    edit_comment,
     read_comments,
 )
 from docx_plus.core.ids import DuplicateIdError
@@ -142,6 +145,7 @@ def test_add_comment_preserves_whitespace_in_text() -> None:
     # The user text is in the second w:t (first is the annotation-ref run's empty content)
     user_t = next(t for t in text_runs if t.text and "leading" in t.text)
     from docx_plus.core.ns import XML
+
     assert user_t.get(f"{{{XML}}}space") == "preserve"
 
 
@@ -260,6 +264,7 @@ def test_registry_seeds_from_orphaned_body_anchors() -> None:
     add_comment(run, "real one")
     # Manually inject an orphaned commentRangeStart with a known id.
     from docx_plus.core.oxml import el
+
     orphan_id = 999_111
     orphan = el("w:commentRangeStart", **{"w:id": str(orphan_id)})
     run._r.addprevious(orphan)
@@ -328,6 +333,7 @@ def test_read_comments_handles_orphans() -> None:
     # Strip the body-side markers, leaving an orphan in comments.xml.
     body = doc.element.body
     from docx_plus.core.oxml import remove as remove_el
+
     for tag in ("w:commentRangeStart", "w:commentRangeEnd"):
         for el in xpath(body, f".//{tag}"):
             remove_el(el)
@@ -435,3 +441,169 @@ def test_comment_delete_round_trip(tmp_path: Path) -> None:
     comments = read_comments(reopened)
     assert len(comments) == 1
     assert comments[0].comment_id == ref_keep.comment_id
+
+
+# --------------------------------------------------------------------------
+# clear_all_comments — bulk removal of every comment in the document.
+# --------------------------------------------------------------------------
+
+
+def test_clear_all_comments_on_empty_doc_is_noop() -> None:
+    doc = Document()
+    clear_all_comments(doc)  # no comments part exists yet — must not raise
+    assert read_comments(doc) == []
+
+
+def test_clear_all_comments_removes_every_anchor_and_body() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    refs = [add_comment(p.add_run(f"chunk-{i}"), f"note {i}", author=f"A{i}") for i in range(3)]
+    clear_all_comments(doc)
+
+    for ref in refs:
+        assert _range_starts(doc, ref.comment_id) == []
+        assert _range_ends(doc, ref.comment_id) == []
+        assert _reference_runs(doc, ref.comment_id) == []
+        assert _comment_part_entries(doc, ref.comment_id) == []
+    assert read_comments(doc) == []
+
+
+def test_clear_all_comments_preserves_unrelated_content() -> None:
+    doc = Document()
+    doc.add_paragraph("untouched paragraph 1")
+    p = doc.add_paragraph()
+    p.add_run("prefix ")
+    p.add_run("anchored")
+    p.add_run(" suffix")
+    add_comment(p.runs[1], "review")
+    doc.add_paragraph("untouched paragraph 2")
+
+    clear_all_comments(doc)
+
+    texts = [para.text for para in doc.paragraphs]
+    assert "untouched paragraph 1" in texts
+    assert "untouched paragraph 2" in texts
+    # The anchored paragraph keeps its three runs' text intact.
+    anchored_paragraph_text = "".join(r.text for r in p.runs)
+    assert anchored_paragraph_text == "prefix anchored suffix"
+
+
+def test_clear_all_comments_is_idempotent_after_clearing() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "y")
+    clear_all_comments(doc)
+    clear_all_comments(doc)  # second call must be a clean no-op
+    assert read_comments(doc) == []
+
+
+def test_clear_all_comments_round_trip(tmp_path: Path) -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("a"), "first")
+    add_comment(p.add_run("b"), "second")
+    clear_all_comments(doc)
+    out = tmp_path / "cleared.docx"
+    doc.save(str(out))
+
+    reopened = Document(str(out))
+    assert read_comments(reopened) == []
+
+
+# --------------------------------------------------------------------------
+# edit_comment — in-place body replacement preserving metadata.
+# --------------------------------------------------------------------------
+
+
+def test_edit_comment_replaces_text() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("x"), "draft", author="Bob")
+
+    edit_comment(doc, ref.comment_id, "final")
+
+    comments = read_comments(doc)
+    assert [c.text for c in comments] == ["final"]
+
+
+def test_edit_comment_preserves_author_date_initials() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("x"), "draft", author="Alice", initials="A")
+    comment_el = _comment_part_entries(doc, ref.comment_id)[0]
+    original_author = comment_el.get(qn("w:author"))
+    original_date = comment_el.get(qn("w:date"))
+    original_initials = comment_el.get(qn("w:initials"))
+
+    edit_comment(doc, ref.comment_id, "final")
+
+    assert comment_el.get(qn("w:author")) == original_author
+    assert comment_el.get(qn("w:date")) == original_date
+    assert comment_el.get(qn("w:initials")) == original_initials
+
+
+def test_edit_comment_preserves_body_side_anchors() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("anchored"), "draft")
+
+    edit_comment(doc, ref.comment_id, "final")
+
+    # The three body-side anchors must remain.
+    assert _range_starts(doc, ref.comment_id)
+    assert _range_ends(doc, ref.comment_id)
+    assert _reference_runs(doc, ref.comment_id)
+
+
+def test_edit_comment_leaves_other_comments_intact() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    keep = add_comment(p.add_run("a"), "keep me")
+    target = add_comment(p.add_run("b"), "before")
+
+    edit_comment(doc, target.comment_id, "after")
+
+    comments = {c.comment_id: c.text for c in read_comments(doc)}
+    assert comments[keep.comment_id] == "keep me"
+    assert comments[target.comment_id] == "after"
+
+
+def test_edit_comment_missing_id_raises() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "exists")  # forces the comments part to exist
+
+    with pytest.raises(CommentNotFoundError):
+        edit_comment(doc, 9999, "no such comment")
+
+
+def test_edit_comment_with_no_part_raises() -> None:
+    doc = Document()  # no comments part has been created
+    with pytest.raises(CommentNotFoundError):
+        edit_comment(doc, 1, "nope")
+
+
+def test_comment_not_found_is_a_key_error() -> None:
+    """``CommentNotFoundError`` subclasses ``KeyError`` per SPEC §16."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "exists")
+
+    with pytest.raises(KeyError):
+        edit_comment(doc, 9999, "no")
+
+
+def test_edit_comment_round_trip(tmp_path: Path) -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("x"), "draft", author="Bob", initials="B")
+    edit_comment(doc, ref.comment_id, "final review")
+
+    out = tmp_path / "edited.docx"
+    doc.save(str(out))
+
+    reopened = Document(str(out))
+    comments = read_comments(reopened)
+    assert len(comments) == 1
+    assert comments[0].text == "final review"
+    assert comments[0].author == "Bob"

@@ -205,18 +205,10 @@ Defensive completeness — worth adding but not blocking Phase 4.
 - **Fix:** Add `assert_style_not_defined`. Defer the relationship
   helper until v0.2 binding work needs it.
 
-### N2. Conditional table formatting has no skip-marked placeholder
+### N2. ~~Conditional table formatting has no skip-marked placeholder~~ — **resolved** (v0.2 expansion)
 
-- **Where:** `styles/inspect.py:402-422` (`_apply_table_style_chain`)
-  documents the deferral inline, but no test file records the intent.
-- **Risk:** A future contributor might assume conditional formatting works
-  and write a test against it that passes for the wrong reason (base style
-  matches the conditional style coincidentally).
-- **Fix:** Add `tests/test_cascade_table.py` with a single
-  `@pytest.mark.xfail(reason="conditional w:tblStylePr deferred per SPEC §4 step 2", strict=True)`
-  test that constructs a `w:tblStylePr` and asserts it influences the
-  cascade. xfail-strict means the test will start failing the moment
-  someone fixes the underlying behavior, which is the desired signal.
+See ## Resolved below — `tests/test_styles_table_conditional.py`
+exercises the live implementation rather than carrying an xfail.
 
 ---
 
@@ -249,6 +241,20 @@ alongside Phase 4 work.
 ---
 
 ## Resolved
+
+### 2026-05-19 — v0.2 in-place expansion
+
+- **N2 — Conditional table formatting now lands real cascade coverage.**
+  The cascade resolver applies `<w:tblStylePr>` branches
+  (`firstRow`, `lastRow`, `firstCol`, `lastCol`, `band1Horz`,
+  `band1Vert`, the four corners, `wholeTable`) in ECMA-376 17.7.6.5
+  precedence order. 13 tests in `tests/test_styles_table_conditional.py`
+  verify auto-derivation from `_Cell` position, manual `TableContext`
+  override, precedence (`firstRow` over `band1Horz`, `nwCell` over
+  `firstRow`), `wholeTable` always-applies, and that paragraphs / runs
+  inside cells inherit the conditional formatting. The xfail
+  placeholder the original entry recommended was never needed — the
+  feature shipped instead.
 
 ### 2026-05-19 — Phase 6
 

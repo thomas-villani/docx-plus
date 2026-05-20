@@ -35,13 +35,16 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ## Public surface at v0.2
 
-v0.1's six phases plus the v0.2 cycle (comments, layout, bookmarks /
-cross-references, footnotes / endnotes) are complete. Eight runnable
-example scripts in `docx_plus/examples/` demonstrate the surface:
-`inspect_document.py`, `restyle_existing.py`, `build_form.py`,
-`populate_form.py`, `add_comments.py`, `multi_column_layout.py`,
-`bookmarks_and_xrefs.py`, `footnotes_and_endnotes.py`. Start there if
-you want to see the library in motion before reading the index.
+v0.1's six phases, the initial v0.2 cycle (comments, layout, bookmarks
+/ cross-references, footnotes / endnotes), and the v0.2 in-place
+expansion (toggle props, in-place comment / note edits, line numbering,
+page borders, conditional table-style formatting, publishing module)
+are all complete. Nine runnable example scripts in
+`docx_plus/examples/` demonstrate the surface: `inspect_document.py`,
+`restyle_existing.py`, `build_form.py`, `populate_form.py`,
+`add_comments.py`, `multi_column_layout.py`, `bookmarks_and_xrefs.py`,
+`footnotes_and_endnotes.py`, `publishing_layout.py`. Start there if you
+want to see the library in motion before reading the index.
 
 ### `docx_plus` (top-level package)
 
@@ -84,9 +87,10 @@ for the algorithm walkthrough.
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `resolve_effective_formatting(target, *, include_provenance=False)` | function | The headline API — walks six cascade layers, returns `ResolvedFormatting` |
-| `ResolvedFormatting` | dataclass (frozen) | 28 formatting fields + `partial` + optional `provenance`. SPEC §4 |
+| `resolve_effective_formatting(target, *, include_provenance=False, table_context=None)` | function | The headline API — walks six cascade layers, returns `ResolvedFormatting`. `table_context` overrides the auto-derived cell position for conditional table-style branches |
+| `ResolvedFormatting` | dataclass (frozen) | 34 formatting fields + `partial` + optional `provenance`. SPEC §4. All twelve ECMA-376 17.7.3 toggles are surfaced (`bold`, `italic`, `cs_bold`, `cs_italic`, `caps`, `small_caps`, `strike`, `vanish`, `emboss`, `imprint`, `outline`, `shadow`) |
 | `FormattingSource` | dataclass (frozen) | `layer`, `style_id`, `chain_depth`, `is_toggle_resolved` |
+| `TableContext` | dataclass (frozen) | Cell position within a table — `is_first_row`, `is_last_row`, `is_first_col`, `is_last_col`, `is_band_row`, `is_band_col`. Drives `<w:tblStylePr>` branch selection (`firstRow`, `lastRow`, `band1Horz`, …) per ECMA-376 17.7.6.5 |
 | `StyleCascadeError` | exception | `basedOn` cycles or depth > 11 |
 | `MissingPartError` | exception | Referenced part absent (reserved — currently no caller raises it) |
 
@@ -122,6 +126,10 @@ the modifier without translation. Paragraph-level: `alignment`,
 `keep_lines`, `page_break_before`, `outline_level`. Run-level:
 `font_name`, `font_size`, `bold`, `italic`, `underline`, `strike`,
 `color_rgb`, `highlight`, `caps`, `small_caps`, `vanish`, `vert_align`.
+(`ResolvedFormatting` additionally exposes the complex-script /
+decorative toggles `cs_bold`, `cs_italic`, `emboss`, `imprint`,
+`outline`, `shadow` on the read side; `create_style` / `modify_style`
+do not yet take them as kwargs — they are read-only.)
 
 ### `docx_plus.styles.theme`
 
@@ -205,11 +213,14 @@ the comment body in `comments.xml`. Architecture walkthrough in
 | Symbol | Kind | Notes |
 |---|---|---|
 | `add_comment(target, text, *, author="", initials=None, id_registry=None)` | function | Anchor a comment to a `Run`, `Paragraph` (≥1 run required), or `(Run, Run)` tuple. Writes `commentRangeStart` / `commentRangeEnd` / the `CommentReference` marker run, plus the `<w:comment>` body |
+| `edit_comment(doc, comment_id, text)` | function | Replace the body text of an existing comment in place. Preserves `w:author` / `w:date` / `w:initials` and the body-side anchors. Raises `CommentNotFoundError` if id missing |
 | `delete_comment(doc, comment_id)` | function | Remove all four traces (range markers, reference run, body). Idempotent — missing id is a no-op |
+| `clear_all_comments(doc)` | function | Bulk delete every comment by routing each id through `delete_comment`. Idempotent on an empty document |
 | `read_comments(doc)` | function | List every comment paired with the document text it anchors. Returns `list[AnchoredComment]` |
 | `CommentRef` | dataclass (frozen) | `comment_id`, `body_element` — handle returned by `add_comment` |
 | `AnchoredComment` | dataclass (frozen) | `comment_id`, `author`, `initials`, `timestamp`, `text`, `anchored_text`, `paragraph_index` |
 | `CommentIdRegistry(doc)` | class | Per-document comment-id allocator. Subclasses the internal `_IdRegistryBase` and seeds from the comments part + any orphaned body anchors |
+| `CommentNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `edit_comment` on a missing id |
 | `CommentTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` |
 
 ### `docx_plus.layout`
@@ -224,7 +235,11 @@ distinct even/odd headers. Architecture walkthrough in
 | `insert_section_break(paragraph, *, start_type="nextPage")` | function | Split sections at a chosen paragraph. Clones the trailing `sectPr`, sets `<w:type>`. Returns a `Section` proxy wrapping the new section |
 | `enable_distinct_even_odd_headers(doc)` | function | Write `<w:evenAndOddHeaders/>` into `settings.xml`. Idempotent. Distinct from per-section `titlePg` (which python-docx already exposes) |
 | `disable_distinct_even_odd_headers(doc)` | function | Remove the element. Idempotent |
+| `set_line_numbering(section, *, count_by=1, restart="newPage", start=1, distance=None)` | function | Emit `<w:lnNumType>` for marginal line numbers. Idempotent, schema-strict (lands in its ECMA-376 17.6.17 slot) |
+| `set_page_borders(section, *, top=None, bottom=None, left=None, right=None)` | function | Emit `<w:pgBorders>` from one `Border` per side. All-None removes the element. Idempotent, schema-strict |
+| `Border` | dataclass (frozen) | One side of a page border: `style`, `size` (eighths of a point), `color` (RGB hex or `"auto"`), `space` (twips from text) |
 | `SectionStartType` | type alias | `Literal["nextPage", "continuous", "evenPage", "oddPage", "nextColumn"]` |
+| `LineNumberRestart` | type alias | `Literal["newPage", "newSection", "continuous"]` |
 
 ### `docx_plus.bookmarks`
 
@@ -254,6 +269,8 @@ walkthrough in
 |---|---|---|
 | `add_footnote(paragraph, text, *, id_registry=None)` | function | Append the body-side `FootnoteReference` marker run and the `<w:footnote>` body in `footnotes.xml`. Returns `FootnoteRef` |
 | `add_endnote(paragraph, text, *, id_registry=None)` | function | Same shape as `add_footnote` but for endnotes |
+| `edit_footnote(doc, note_id, text)` | function | Replace the body text of an existing footnote in place. Reserved ids (`-1`, `0`) raise `ValueError`; missing ids raise `NoteNotFoundError` |
+| `edit_endnote(doc, note_id, text)` | function | Same shape as `edit_footnote` but for endnotes |
 | `read_footnotes(doc)` | function | List user-authored footnotes. Returns `list[NoteContent]`; separator entries (ids -1 / 0) are filtered out |
 | `read_endnotes(doc)` | function | Same shape as `read_footnotes` |
 | `FootnoteRef` | dataclass (frozen) | `note_id`, `body_element` |
@@ -261,6 +278,21 @@ walkthrough in
 | `NoteContent` | dataclass (frozen) | `note_id`, `text`, `paragraph_index` |
 | `FootnoteIdRegistry(doc)` | class | Per-document footnote-id allocator. Ids -1 / 0 are reserved by Word and refused at reserve time (range check) |
 | `EndnoteIdRegistry(doc)` | class | Per-document endnote-id allocator. Same reserved-id treatment |
+| `NoteNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `edit_footnote` / `edit_endnote` on a missing id |
+
+### `docx_plus.publishing`
+
+Long-document publishing primitives — Table of Contents, captions,
+Table of Figures. Each helper emits a complex field; pair with
+`docx_plus.fields.mark_fields_dirty` so Word populates the result on
+next open. Architecture walkthrough in
+[`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `add_toc(paragraph, *, levels=(1, 3), hyperlink=True, page_numbers=True)` | function | Append a `TOC` complex field. Instruction string matches Word's default ("Insert → Table of Contents") with `\o`, `\h`, `\z`, `\u`, optional `\n` switches |
+| `add_caption(paragraph, label, *, caption_type="Figure", numbering="ARABIC")` | function | Label text run + `SEQ <caption_type> \* <numbering>` complex field. `caption_type` must match the `\c` switch on a downstream Table of Figures |
+| `add_table_of_figures(paragraph, *, caption_type="Figure", hyperlink=True)` | function | Append a `TOC \c "<caption_type>"` complex field that collects matching captions |
 
 ---
 

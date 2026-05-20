@@ -50,14 +50,17 @@ docx_plus/
 │                            # ProtectionMode Literal
 ├── comments/                # anchored comments — v0.2
 │   ├── __init__.py          # re-exports the public surface
-│   ├── anchor.py            # add_comment, delete_comment, CommentRef, CommentTarget
+│   ├── anchor.py            # add_comment, edit_comment, delete_comment, clear_all_comments,
+│   │                        # CommentRef, CommentTarget, CommentNotFoundError
 │   ├── read.py              # read_comments, AnchoredComment
 │   └── registry.py          # CommentIdRegistry
 ├── layout/                  # page-layout extras — v0.2
 │   ├── __init__.py          # re-exports the public surface
 │   ├── columns.py           # set_columns
 │   ├── breaks.py            # insert_section_break, SectionStartType
-│   └── settings.py          # enable/disable_distinct_even_odd_headers
+│   ├── settings.py          # enable/disable_distinct_even_odd_headers
+│   ├── line_numbering.py    # set_line_numbering, LineNumberRestart
+│   └── borders.py           # set_page_borders, Border
 ├── bookmarks/               # bookmarks + REF/PAGEREF cross-references — v0.2
 │   ├── __init__.py          # re-exports the public surface
 │   ├── anchor.py            # add_bookmark, delete_bookmark, BookmarkRef, BookmarkTarget
@@ -66,13 +69,20 @@ docx_plus/
 │   └── registry.py          # BookmarkIdRegistry
 ├── notes/                   # footnotes + endnotes — v0.2
 │   ├── __init__.py          # re-exports the public surface
-│   ├── write.py             # add_footnote, add_endnote, FootnoteRef, EndnoteRef
+│   ├── write.py             # add_footnote, add_endnote, edit_footnote, edit_endnote,
+│   │                        # FootnoteRef, EndnoteRef, NoteNotFoundError
 │   ├── read.py              # read_footnotes, read_endnotes, NoteContent
 │   └── registry.py          # FootnoteIdRegistry, EndnoteIdRegistry
+├── publishing/              # long-document publishing — v0.2
+│   ├── __init__.py          # re-exports the public surface
+│   ├── toc.py               # add_toc
+│   ├── captions.py          # add_caption
+│   └── figures.py           # add_table_of_figures
 ├── examples/                # runnable demo scripts
 │   ├── inspect_document.py, restyle_existing.py, build_form.py, populate_form.py
-│   └── add_comments.py, multi_column_layout.py, bookmarks_and_xrefs.py,
-│       footnotes_and_endnotes.py     # v0.2 demos
+│   ├── add_comments.py, multi_column_layout.py, bookmarks_and_xrefs.py,
+│   │   footnotes_and_endnotes.py     # v0.2 demos
+│   └── publishing_layout.py            # v0.2 expansion demo
 └── _testing/                # internal test helpers (not public API)
     └── ooxml_asserts.py     # assert_ids_unique, assert_style_defined,
                              # count_controls, assert_protected, assert_field_dirty
@@ -546,7 +556,7 @@ v0.3 — basic anchored comments first.
 
 ## §7.7 Layout
 
-`layout/` ships three documented python-docx gaps. None of them
+`layout/` ships five documented python-docx gaps. None of them
 duplicate functionality python-docx already exposes (orientation,
 margins, page size, per-section header / footer, `add_section`).
 
@@ -578,6 +588,23 @@ header/footer reference types (`w:headerReference w:type="even"`,
 which Word reads *because* the doc-level flag is set). All three are
 required for a real even-page-distinct workflow. `disable_…` removes
 the doc-level element; both functions are idempotent.
+
+**`set_line_numbering(section, *, count_by, restart, start, distance)`**
+in `layout/line_numbering.py` emits `<w:lnNumType>` into the section's
+`sectPr` — Word's mechanism for the marginal line numbers that legal
+and contract documents require. Schema-strict via
+`core.insert_before_first_anchor`; the element lands in its
+ECMA-376 17.6.17 slot regardless of which other `sectPr` children
+exist. `restart` is the only argument that validates eagerly (one of
+`"newPage"` / `"newSection"` / `"continuous"`); `count_by` and `start`
+must be ≥ 1. Idempotent.
+
+**`set_page_borders(section, *, top, bottom, left, right)`** in
+`layout/borders.py` emits `<w:pgBorders>` from a `Border` dataclass
+per side (`style`, `size` in eighths of a point, `color`, `space` in
+twips). Sides set to `None` are omitted from the emitted XML; passing
+all four as `None` removes the element rather than emitting an empty
+container. Schema-strict, idempotent.
 
 ---
 
@@ -621,8 +648,14 @@ entry uses Word's `FootnoteText` / `EndnoteText` paragraph style and
 `FootnoteReference` / `EndnoteReference` run style for the leading
 reference glyph. The body text run carries `xml:space="preserve"`.
 
-Insert-only is sufficient for v0.2; in-place edits of existing notes
-are deferred to v0.3.
+`edit_footnote(doc, id, text)` and `edit_endnote(doc, id, text)` mutate
+the body of an existing note in place. They strip every `<w:p>` child
+of the matching `<w:footnote>` / `<w:endnote>` element and append a
+fresh paragraph built by the shared `_build_note_paragraph` helper
+(used by both add and edit paths). The body-side reference marker in
+the main document body is untouched, so the in-text superscript stays
+put. Reserved separator ids (`-1`, `0`) raise `ValueError`; missing
+ids raise `NoteNotFoundError`.
 
 `read_footnotes(doc)` and `read_endnotes(doc)` walk the corresponding
 part and pair each note with the paragraph index of its body-side
@@ -638,6 +671,40 @@ parameterises the relationship type and the note tag; the underlying
 on a range check, so ids `0` and `-1` are unissuable — the range check
 fires before any duplicate check, so no special pre-seeding is
 needed.
+
+---
+
+## §7.10 Publishing
+
+`publishing/` composes the existing fields plumbing into the
+long-document primitives that make Word a viable publishing target.
+Three helpers, each emitting a single complex field on top of
+`core.build_complex_field`:
+
+- `add_toc(paragraph, *, levels=(1, 3), hyperlink=True, page_numbers=True)`
+  emits a `TOC` field. The instruction string is assembled from
+  kwargs: `\o "lo-hi"` for outline-level range, `\h` for hyperlinked
+  entries, the always-present `\z` and `\u` (Word emits both by
+  default), and the optional `\n` to suppress page numbers.
+- `add_caption(paragraph, label, *, caption_type="Figure", numbering="ARABIC")`
+  emits a label text run (`"Figure "`) followed by a `SEQ` complex
+  field. Items sharing the same `caption_type` auto-number together;
+  the name is the same vocabulary a Table of Figures uses via its
+  `\c` switch.
+- `add_table_of_figures(paragraph, *, caption_type="Figure", hyperlink=True)`
+  emits `TOC \c "<caption_type>"`, structurally a TOC keyed off the
+  matching SEQ captions instead of paragraph outline levels.
+
+None of the three auto-calls `mark_fields_dirty`. The publishing
+module respects the §8 invariant of importing only from `core/`, and
+forwarding to `fields/` would violate it. Users pair their
+publishing inserts with one explicit `mark_fields_dirty(doc)` call
+before save — the docstrings document the contract.
+
+Bibliography (sources stored in a Custom XML Part, `<w:sdt>`
+citations referencing them, a `BIBLIOGRAPHY` field rendering the
+list) is deferred to v0.3 because it depends on the CXML
+data-binding subsystem (also v0.3).
 
 ---
 
@@ -721,12 +788,21 @@ semantically-wrong attribute that Word surfaces in its UI. The
 alternative — runtime validation duplicating the type system — would
 add noise without catching real bugs.
 
-The v0.2 modules (`comments/`, `layout/`, `bookmarks/`, `notes/`)
-follow the same pattern. They surface only `ValueError` and `TypeError`
-for argument-shape problems (bad bookmark names, empty paragraph
-targets, wrong tuple shapes for run-range targets) and reuse
+The v0.2 modules (`comments/`, `layout/`, `bookmarks/`, `notes/`,
+`publishing/`) follow the same pattern. They surface only `ValueError`
+and `TypeError` for argument-shape problems (bad bookmark names,
+empty paragraph targets, wrong tuple shapes for run-range targets,
+out-of-range `set_line_numbering` arguments) and reuse
 `DuplicateIdError` / `IdRangeError` from `core/ids.py` through their
 namespace-specific registries.
+
+The v0.2 in-place expansion added two missing-lookup errors for the
+new edit verbs:
+
+| Exception | Bases | Raised from | Meaning |
+|---|---|---|---|
+| `CommentNotFoundError` | `DocxPlusError`, `KeyError` | `comments/anchor.py` | `edit_comment` against an id that doesn't exist in `comments.xml` (or when the comments part itself is absent) |
+| `NoteNotFoundError` | `DocxPlusError`, `KeyError` | `notes/write.py` | `edit_footnote` / `edit_endnote` against an id that doesn't exist in the corresponding part |
 
 The dual-inheritance pattern (`DuplicateIdError`, `UnknownStylePropertyError`,
 the four Phase 4 `controls/read.py` errors) exists because SPEC sentences
@@ -742,10 +818,11 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **431 tests** at end of v0.2: v0.1's
-  surface (319 tests) plus the v0.2 cycle — `core/parts` (13),
-  `comments/` (30), `layout/` (28), `bookmarks/` + cross-refs (26),
-  `notes/` (21), plus example smoke tests for the four new demos.
+  I/O beyond reading fixtures. **532 tests** at end of the v0.2
+  in-place expansion: v0.1's surface (319 tests) plus the v0.2 cycle
+  — `core/parts` (13), `comments/` (35), `layout/` (47), `bookmarks/`
+  + cross-refs (26), `notes/` (34), `styles/` table conditional (13),
+  `publishing/` (23) — plus example smoke tests for the new demos.
 - **Layer 2 — round-trip tests.** Build → save → reopen with
   `python-docx` → assert. The high-value class for OOXML
   correctness (`IMPLEMENTATION.md §8`). Phase 5 added round-trips for
@@ -776,35 +853,42 @@ For a frozen snapshot of where the suite has real holes, see
 
 ## §11 What's next
 
-v0.1 (Phases 1–6) and the v0.2 cycle are complete. The pieces deferred
-to v0.3+ are:
+v0.1 (Phases 1–6), the v0.2 cycle, and the v0.2 in-place expansion
+(see `notes-v0_2-expansion-scope.md` at repo root) are complete. The
+pieces deferred to v0.3+ are:
 
 - **Threaded comments** (w15 `parentCommentEx` for parent/child
-  replies). Basic anchored comments ship in v0.2; threading adds a
-  w15 namespace dependency and is bounded but distinct work.
-- **Layout extras beyond the v0.2 floor**: line numbering
-  (`<w:lnNumType>`) for legal/contract documents, and page borders
-  (`<w:pgBorders>`) for formal documents.
-- **Comment / note editing** — mutate the body of an existing
-  comment, footnote, or endnote in place. v0.2 ships insert + read +
-  delete; in-place edit is the missing verb.
+  replies) and the **respond / resolve / reopen** ops that depend on
+  them. Adds a `w15` namespace dependency and a separate
+  `commentsExtended.xml` part.
 - **Cross-references to non-bookmark targets** — `STYLEREF` for
   heading-text references, sequence fields for caption / figure
   numbering. Reuses the same complex-field plumbing; the work is the
   instruction grammar.
-- **Tracked changes** — read/write API for the OOXML revision marks
-  (`w:ins`, `w:del`, `w:moveFromRangeStart`, etc.). Significant scope.
+- **CLI** — `docx-plus restyle` for style remapping plus `inspect`
+  (dump effective formatting) and `controls` (list / set values)
+  subcommands.
 - **Custom XML Parts data binding** — wires repeating-section content
   controls to a custom XML data source. The plumbing in
   `core/parts.py` already supports separate parts; the binding adds
   relationship types and `<w:dataBinding>` children on SDTs.
-- **Theme writing** — `styles/theme.py` reads themes today; writing
-  rounds out the surface.
+- **Bibliography** — sources stored in a Custom XML Part, `<w:sdt>`
+  citations referencing them, a `BIBLIOGRAPHY` field rendering the
+  list. Rides on the CXML data-binding subsystem above.
+- **Tracked changes** — read/write API for the OOXML revision marks
+  (`w:ins`, `w:del`, `w:moveFromRangeStart`, etc.). Significant scope.
+- **Glossary placeholder text** — the "formal" placeholder mechanism
+  for SDTs (vs. the inline `w:placeholder` text the controls module
+  already supports).
 - **Password-protected forms** — legacy hash algorithm, paired with
   `protect_document`.
+- **Theme writing** — `styles/theme.py` reads themes today; writing
+  rounds out the surface.
 - **A high-level "restyle" planner** — inverse of the inspector, takes
   a target `ResolvedFormatting` and computes the minimal cascade
   modification to reach it.
+- **Sections / headers / footers first-class API** — wraps the
+  python-docx primitives behind a docx_plus-native surface.
 
 Everything in this list is enumerated in `SPEC.md §15`. The roadmap
 order is driven by `notes-*.md` discussion artifacts at the repo

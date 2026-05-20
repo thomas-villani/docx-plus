@@ -30,6 +30,7 @@ from docx.text.run import Run
 from lxml import etree
 
 from docx_plus.comments.registry import CommentIdRegistry
+from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import el, remove, sub, xpath
 from docx_plus.core.parts import COMMENTS_SPEC, get_or_create_part
@@ -39,6 +40,14 @@ if TYPE_CHECKING:
 
 
 CommentTarget = Run | Paragraph | tuple[Run, Run]
+
+
+class CommentNotFoundError(DocxPlusError, KeyError):
+    """Raised when no ``<w:comment>`` with the requested id exists.
+
+    Subclasses :class:`KeyError` so existing ``except KeyError:`` clauses
+    still catch it; also :class:`DocxPlusError` per SPEC §9.7.
+    """
 
 
 @dataclass(frozen=True)
@@ -133,6 +142,71 @@ def add_comment(
     return CommentRef(comment_id=comment_id, body_element=body)
 
 
+def edit_comment(doc: Document, comment_id: int, text: str) -> None:
+    """Replace the body text of an existing comment in place.
+
+    Removes all child paragraphs of the matching ``<w:comment>`` element
+    and appends a fresh paragraph with ``text`` as its run. The
+    ``<w:comment>`` element's attributes (``w:author``, ``w:date``,
+    ``w:initials``) are preserved — only the body content changes. The
+    body-side range markers and reference run are also untouched, so the
+    comment stays anchored to the same text range.
+
+    Args:
+        doc: The python-docx :class:`~docx.document.Document` to mutate.
+        comment_id: The ``w:id`` of the comment to edit.
+        text: New comment body text. Whitespace is preserved
+            (``xml:space="preserve"``).
+
+    Raises:
+        CommentNotFoundError: If no comment with ``comment_id`` exists,
+            including the case where the comments part itself is absent.
+    """
+    cid = str(comment_id)
+    try:
+        comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))
+    except KeyError as exc:
+        raise CommentNotFoundError(comment_id) from exc
+
+    matches = xpath(comments_part.element, "./w:comment[@w:id=$cid]", cid=cid)
+    if not matches:
+        raise CommentNotFoundError(comment_id)
+
+    comment_el = matches[0]
+    for child in list(comment_el):
+        if isinstance(child.tag, str) and etree.QName(child.tag).localname == "p":
+            remove(child)
+    comment_el.append(_build_comment_paragraph(text))
+
+
+def clear_all_comments(doc: Document) -> None:
+    """Remove every comment in the document.
+
+    Iterates the ``comments.xml`` part for ``w:id`` values and routes
+    each through :func:`delete_comment`. The comments part itself is
+    left in place (empty) so subsequent calls to :func:`add_comment`
+    reuse it without re-creating the relationship. Idempotent: a
+    document with no comments is a no-op.
+
+    Args:
+        doc: The python-docx :class:`~docx.document.Document` to scrub.
+    """
+    try:
+        comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))
+    except KeyError:
+        return
+    comments_root = comments_part.element
+    for comment_el in list(comments_root.findall(qn("w:comment"))):
+        raw_id = comment_el.get(qn("w:id"))
+        if raw_id is None:
+            continue
+        try:
+            comment_id = int(raw_id)
+        except ValueError:
+            continue
+        delete_comment(doc, comment_id)
+
+
 def delete_comment(doc: Document, comment_id: int) -> None:
     """Remove all traces of a comment from the document.
 
@@ -206,8 +280,7 @@ def _normalize_target(
         return first._r, second._r, _doc_for(first)
 
     raise TypeError(
-        f"add_comment target must be Run, Paragraph, or (Run, Run); "
-        f"got {type(target).__name__}"
+        f"add_comment target must be Run, Paragraph, or (Run, Run); got {type(target).__name__}"
     )
 
 
@@ -255,8 +328,19 @@ def _build_comment_body(
         attrs["w:initials"] = resolved_initials
 
     comment = el("w:comment", **attrs)
+    comment.append(_build_comment_paragraph(text))
+    return comment
 
-    p = sub(comment, "w:p")
+
+def _build_comment_paragraph(text: str) -> etree._Element:
+    """Build a comment-body ``<w:p>`` containing ``text`` as a run.
+
+    Shared by :func:`add_comment` (initial insertion) and
+    :func:`edit_comment` (in-place replacement). The annotation-ref run
+    is included so Word renders the speech-bubble glyph in the comment
+    pane.
+    """
+    p = el("w:p")
     p_pr = sub(p, "w:pPr")
     sub(p_pr, "w:pStyle", **{"w:val": "CommentText"})
 
@@ -269,7 +353,7 @@ def _build_comment_body(
     text_t = sub(text_run, "w:t", **{"xml:space": "preserve"})
     text_t.text = text
 
-    return comment
+    return p
 
 
 def _now_iso() -> str:
@@ -278,8 +362,11 @@ def _now_iso() -> str:
 
 
 __all__ = [
+    "CommentNotFoundError",
     "CommentRef",
     "CommentTarget",
     "add_comment",
+    "clear_all_comments",
     "delete_comment",
+    "edit_comment",
 ]

@@ -10,9 +10,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Second cycle. Four new capability modules — anchored comments, layout
 extras, bookmarks with cross-references, and footnotes / endnotes —
-plus a `core/parts.py` foundation for separate OOXML parts.
+plus a `core/parts.py` foundation for separate OOXML parts. The
+release was extended in-place to also close every published
+"Deferred" bullet and add a publishing module (TOC, captions, Table
+of Figures); see `notes-v0_2-expansion-scope.md` at repo root.
 
-### Added
+### Added — initial cycle
 
 - **Anchored comments** (`docx_plus.comments`) — `add_comment`,
   `read_comments`, `delete_comment`, `CommentRef`, `AnchoredComment`,
@@ -35,8 +38,7 @@ plus a `core/parts.py` foundation for separate OOXML parts.
   `add_endnote`, `read_footnotes`, `read_endnotes`, paired
   `FootnoteIdRegistry` / `EndnoteIdRegistry`. Reserved ids -1 / 0
   (separator / continuationSeparator) are unissuable; `read_*` filters
-  separator entries out of results. Insert-only for v0.2; in-place
-  edits of existing notes deferred.
+  separator entries out of results.
 - **`core/parts.py` foundation** — `get_or_create_part(doc, spec)` for
   separate OOXML parts (`comments.xml`, `footnotes.xml`,
   `endnotes.xml`). Registers `XmlPart` subclasses for footnote /
@@ -51,22 +53,64 @@ plus a `core/parts.py` foundation for separate OOXML parts.
 - **Examples** — `add_comments`, `multi_column_layout`,
   `bookmarks_and_xrefs`, `footnotes_and_endnotes`. Smoke-tested in CI.
 
+### Added — in-place expansion
+
+- **Toggle property completion** — `ResolvedFormatting` now surfaces
+  all twelve ECMA-376 17.7.3 toggle properties: the original six
+  (`bold`, `italic`, `caps`, `small_caps`, `strike`, `vanish`) plus
+  the six complex-script / decorative variants (`cs_bold`,
+  `cs_italic`, `emboss`, `imprint`, `outline`, `shadow`). Closes the
+  v0.1 "Known limitations" bullet.
+- **Comment editing** — `edit_comment(doc, id, text)` and
+  `clear_all_comments(doc)`. `CommentNotFoundError` (subclasses
+  `DocxPlusError, KeyError`) for missing ids. Body-side anchors and
+  `<w:comment>` element attributes (`w:author`, `w:date`,
+  `w:initials`) are preserved across edits.
+- **Note editing** — `edit_footnote(doc, id, text)` and
+  `edit_endnote(doc, id, text)`. `NoteNotFoundError` for missing ids.
+  Reserved separator ids (`-1`, `0`) raise `ValueError`.
+- **Layout: line numbering** (`docx_plus.layout.set_line_numbering`) —
+  emits `<w:lnNumType>` with `count_by` / `restart` / `start` /
+  `distance`. Idempotent and schema-strict (sectPr child ordering
+  per ECMA-376 17.6.17).
+- **Layout: page borders** (`docx_plus.layout.set_page_borders` +
+  `Border` dataclass) — emits `<w:pgBorders>` with per-side
+  `Border(style, size, color, space)`. All-None removes the element.
+- **Conditional table-style formatting** — the cascade resolver
+  applies `<w:tblStylePr>` branches (`firstRow`, `lastRow`,
+  `firstCol`, `lastCol`, `band1Horz`, `band1Vert`, the four corners,
+  `wholeTable`) in ECMA-376 17.7.6.5 precedence order. New
+  `TableContext` dataclass; auto-derived from a `_Cell`'s position,
+  or pass explicitly to query hypothetical positions.
+- **`docx_plus.publishing` module** — `add_toc` (Table of Contents),
+  `add_caption` (figure / table captions via `SEQ` complex field),
+  `add_table_of_figures` (`TOC \c "Figure"`). Composes existing
+  `core.build_complex_field`; users call
+  `docx_plus.fields.mark_fields_dirty` before save so Word populates
+  results on open.
+- **Example** — `publishing_layout` demonstrates TOC + captioned
+  figures + ToF. Smoke-tested in CI.
+
 ### Quality gates
 
 - `mypy --strict` clean on all v0.2 modules.
 - `ruff check` clean (Google-convention docstrings).
-- Coverage gate at ≥90% holds.
+- Coverage gate at ≥90% holds (project at ~93%).
 - Examples smoke-tested via `tests/test_examples_smoke.py`.
 
 ### Deferred to v0.3+
 
-- w15 threaded comments (parent/child replies).
-- Layout: line numbering (`w:lnNumType`), page borders (`w:pgBorders`).
-- Comment editing — mutate the body of an existing comment in place.
-- Footnote / endnote editing — same.
-- Cross-references to headings, numbered items, or captions
-  (`STYLEREF`, sequence fields).
-- Everything else from SPEC §15 unchanged.
+- w15 threaded comments (parent / child replies, resolve / reopen).
+- `STYLEREF` / sequence-field cross-references to headings, captions,
+  numbered items.
+- CLI (`restyle` + `inspect` + `controls` subcommands).
+- Custom XML Parts data binding for content controls.
+- Bibliography (sources, citations, `BIBLIOGRAPHY` field) — rides on
+  CXML data binding.
+- Tracked changes read / write API.
+- Glossary placeholder text for SDTs.
+- Password-protected forms (legacy hash algorithm).
+- See SPEC §15 for the remaining held-beyond items.
 
 ## [0.1.0] — 2026-05-19
 

@@ -24,8 +24,15 @@ Status: **v0.2 complete**. Pre-publication — not yet on PyPI.
   breaks, distinct even/odd headers.
 - **Bookmarks + cross-references** (v0.2) — paired body markers plus
   `REF` / `PAGEREF` fields.
-- **Footnotes + endnotes** (v0.2) — insert-only API backed by the
-  separate `footnotes.xml` / `endnotes.xml` parts.
+- **Footnotes + endnotes** (v0.2) — separate `footnotes.xml` /
+  `endnotes.xml` parts; insert + edit in-place.
+- **Layout: line numbers + page borders** (v0.2) — marginal line
+  numbering and decorative page borders.
+- **Conditional table-style formatting** (v0.2) — the cascade
+  applies `<w:tblStylePr>` branches (first row, banded rows, corners)
+  in ECMA-376 17.7.6.5 precedence order.
+- **Publishing** (v0.2) — Table of Contents, figure / table captions
+  via `SEQ`, and a downstream Table of Figures.
 
 ## Where to start
 
@@ -170,14 +177,54 @@ See [`ARCHITECTURE.md` §7.8](ARCHITECTURE.md#78-bookmarks-and-cross-references)
 ### Footnotes + endnotes (v0.2)
 
 ```python
-from docx_plus.notes import add_footnote, add_endnote
+from docx_plus.notes import add_footnote, add_endnote, edit_footnote
 
 p = doc.add_paragraph("This claim has a footnote")
-add_footnote(p, "Sourced from internal benchmarks, 2026-05-19.")
+ref = add_footnote(p, "Sourced from internal benchmarks, 2026-05-19.")
 add_endnote(p, "Re-validated against external dataset Q3 2026.")
+
+# Need to update the footnote body later?
+edit_footnote(doc, ref.note_id, "Re-sourced from external benchmarks.")
 ```
 
 See [`ARCHITECTURE.md` §7.9](ARCHITECTURE.md#79-footnotes-and-endnotes).
+
+### Layout: line numbers + page borders (v0.2)
+
+```python
+from docx_plus.layout import Border, set_line_numbering, set_page_borders
+
+set_line_numbering(doc.sections[0], count_by=5, restart="newPage")
+
+rule = Border(style="single", size=8, color="2F5496")
+set_page_borders(
+    doc.sections[0], top=rule, bottom=rule, left=rule, right=rule,
+)
+```
+
+See [`ARCHITECTURE.md` §7.7](ARCHITECTURE.md#77-layout).
+
+### Publishing (v0.2)
+
+```python
+from docx_plus.fields import mark_fields_dirty
+from docx_plus.publishing import add_caption, add_table_of_figures, add_toc
+
+doc.add_heading("Contents", level=1)
+add_toc(doc.add_paragraph(), levels=(1, 2))
+
+doc.add_heading("Body", level=1)
+cap = doc.add_paragraph()
+add_caption(cap, "Figure ", caption_type="Figure")
+cap.add_run(": System overview.")
+
+doc.add_heading("List of Figures", level=1)
+add_table_of_figures(doc.add_paragraph())
+
+mark_fields_dirty(doc)   # Word populates TOC / SEQ / ToF on open
+```
+
+See [`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
 
 ## Roadmap
 
@@ -191,3 +238,4 @@ See [`ARCHITECTURE.md` §7.9](ARCHITECTURE.md#79-footnotes-and-endnotes).
 | 5 | Fields + protection | ✓ complete |
 | 6 | Polish (examples, smoke tests, CI doc build) | ✓ complete |
 | v0.2 | Comments, layout, bookmarks/cross-refs, notes, `core/parts` | ✓ complete |
+| v0.2 expansion | Toggle props, in-place edits, line numbering, page borders, conditional table styles, `publishing/` | ✓ complete |

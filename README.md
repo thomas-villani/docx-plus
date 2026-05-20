@@ -5,7 +5,7 @@ Composes with python-docx rather than replacing it: callers keep their
 `Document` object and use `docx_plus` for the operations python-docx
 can't reach.
 
-**Capabilities** (v0.1 + v0.2):
+**Capabilities** (v0.1, v0.2, and v0.2 in-place expansion):
 
 - **Style cascade**: read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
@@ -24,7 +24,16 @@ can't reach.
 - **Bookmarks + cross-references**: paired body markers plus
   `REF` / `PAGEREF` fields (v0.2).
 - **Footnotes + endnotes**: insert-only API backed by the separate
-  ``footnotes.xml`` / ``endnotes.xml`` parts (v0.2).
+  ``footnotes.xml`` / ``endnotes.xml`` parts; in-place edits via
+  `edit_footnote` / `edit_endnote` (v0.2).
+- **Layout extras** (continued): line numbering (`set_line_numbering`)
+  and page borders (`set_page_borders` + `Border` dataclass) (v0.2).
+- **Conditional table-style formatting**: the cascade resolver applies
+  `<w:tblStylePr>` branches (`firstRow`, `lastRow`, banded fills,
+  corners) in ECMA-376 17.7.6.5 precedence order (v0.2).
+- **Publishing primitives**: Table of Contents (`add_toc`), figure /
+  table captions (`add_caption`), Table of Figures
+  (`add_table_of_figures`) (v0.2).
 
 > **Status:** v0.2 complete. Pre-publication — not yet on PyPI. Read
 > [`SPEC.md`](SPEC.md) for the API contract and
@@ -270,18 +279,64 @@ doc.save("notes.docx")
 
 The footnotes part (`word/footnotes.xml`) is created on first use and
 round-trips with parsed XML — re-opening the saved document and adding
-another footnote inherits the existing ids correctly.
+another footnote inherits the existing ids correctly. Edit existing
+notes in place via `edit_footnote(doc, id, text)` /
+`edit_endnote(doc, id, text)`; the reference marker stays put.
+
+### Line numbering and page borders
+
+```python
+from docx import Document
+from docx_plus.layout import Border, set_line_numbering, set_page_borders
+
+doc = Document()
+set_line_numbering(doc.sections[0], count_by=5, restart="newPage")
+
+rule = Border(style="single", size=8, color="2F5496", space=24)
+set_page_borders(
+    doc.sections[0], top=rule, bottom=rule, left=rule, right=rule,
+)
+doc.save("formal.docx")
+```
+
+### Publishing: TOC, captions, Table of Figures
+
+```python
+from docx import Document
+from docx_plus.fields import mark_fields_dirty
+from docx_plus.publishing import add_caption, add_table_of_figures, add_toc
+
+doc = Document()
+doc.add_heading("Contents", level=1)
+add_toc(doc.add_paragraph(), levels=(1, 2))
+
+doc.add_heading("Architecture", level=1)
+doc.add_paragraph("High-level diagram below.")
+cap = doc.add_paragraph()
+add_caption(cap, "Figure ", caption_type="Figure")
+cap.add_run(": System overview.")
+
+doc.add_heading("List of Figures", level=1)
+add_table_of_figures(doc.add_paragraph(), caption_type="Figure")
+
+mark_fields_dirty(doc)  # Word populates TOC / SEQ / ToF on open
+doc.save("paper.docx")
+```
 
 ## What's next
 
-v0.2 ships the four feature modules listed at the top of this README
-plus the `core/parts.py` plumbing for separate OOXML parts.
+v0.2 ships the feature modules listed at the top of this README, plus
+the in-place expansion (line numbering, page borders, conditional
+table-style formatting, comment / note editing, and the publishing
+module).
 The [`v0.3 deferred list`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/)
-(SPEC §15) tracks what comes after — w15 threaded comments, line
-numbering and page borders, comment / note editing, additional
-cross-reference kinds (STYLEREF, sequence fields), content-control
-data binding to Custom XML Parts, theme writing, and password-protected
-forms. Open an issue if your use case needs any of these.
+(SPEC §15) tracks what comes after — w15 threaded comments
+(respond / resolve / reopen), `STYLEREF` / sequence-field
+cross-references, a CLI (`restyle` / `inspect` / `controls`),
+content-control data binding to Custom XML Parts, bibliography
+(citations + `BIBLIOGRAPHY` field), tracked changes, glossary
+placeholder text, and password-protected forms. Open an issue if
+your use case needs any of these.
 
 <details>
 <summary>Build phases (for contributors)</summary>
@@ -296,6 +351,7 @@ forms. Open an issue if your use case needs any of these.
 | 5 | Fields + document protection (`fields/`, `protection/`) | ✓ complete |
 | 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | ✓ complete |
 | v0.2.0 | `core/parts`, `comments/`, `layout/`, `bookmarks/`, `notes/` | ✓ complete |
+| v0.2 expansion | Toggle props, in-place edits, line numbering, page borders, conditional table styles, `publishing/` | ✓ complete |
 
 </details>
 

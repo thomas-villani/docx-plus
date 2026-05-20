@@ -16,8 +16,11 @@ from docx_plus.notes import (
     FootnoteIdRegistry,
     FootnoteRef,
     NoteContent,
+    NoteNotFoundError,
     add_endnote,
     add_footnote,
+    edit_endnote,
+    edit_footnote,
     read_endnotes,
     read_footnotes,
 )
@@ -213,6 +216,7 @@ def test_read_footnotes_skips_reserved_separators() -> None:
     add_footnote(p, "real")
     # Manually inject a separator entry to verify filtering.
     from docx_plus.core.oxml import el as make_el
+
     part = _footnote_part(doc)
     sep = make_el("w:footnote", **{"w:id": "-1", "w:type": "separator"})
     part.element.insert(0, sep)
@@ -288,3 +292,125 @@ def test_mixed_footnotes_and_endnotes_round_trip(tmp_path: Path) -> None:
     ens = read_endnotes(reopened)
     assert sorted(n.text for n in fns) == ["fn1", "fn2"]
     assert [n.text for n in ens] == ["en1"]
+
+
+# --------------------------------------------------------------------------
+# edit_footnote / edit_endnote — in-place body replacement.
+# --------------------------------------------------------------------------
+
+
+def test_edit_footnote_replaces_text() -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    ref = add_footnote(p, "original")
+
+    edit_footnote(doc, ref.note_id, "rewritten")
+
+    notes = read_footnotes(doc)
+    assert [n.text for n in notes] == ["rewritten"]
+
+
+def test_edit_endnote_replaces_text() -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    ref = add_endnote(p, "v1")
+
+    edit_endnote(doc, ref.note_id, "v2")
+
+    notes = read_endnotes(doc)
+    assert [n.text for n in notes] == ["v2"]
+
+
+def test_edit_footnote_leaves_other_notes_intact() -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    keep_ref = add_footnote(p, "keep")
+    edit_ref = add_footnote(p, "before")
+    add_footnote(p, "trailing")
+
+    edit_footnote(doc, edit_ref.note_id, "after")
+
+    notes = {n.note_id: n.text for n in read_footnotes(doc)}
+    assert notes[keep_ref.note_id] == "keep"
+    assert notes[edit_ref.note_id] == "after"
+
+
+def test_edit_footnote_preserves_reference_marker_in_body() -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    ref = add_footnote(p, "original")
+
+    edit_footnote(doc, ref.note_id, "rewritten")
+
+    # The body-side reference run is untouched (still a child of p._p).
+    refs_in_body = xpath(
+        doc.element.body, ".//w:footnoteReference[@w:id=$nid]", nid=str(ref.note_id)
+    )
+    assert len(refs_in_body) == 1
+
+
+def test_edit_footnote_missing_id_raises() -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    add_footnote(p, "real")  # ensures the part exists
+
+    with pytest.raises(NoteNotFoundError):
+        edit_footnote(doc, 9999, "won't land")
+
+
+def test_edit_footnote_with_no_part_raises() -> None:
+    doc = Document()  # no footnotes part has been created
+    with pytest.raises(NoteNotFoundError):
+        edit_footnote(doc, 1, "nope")
+
+
+def test_edit_endnote_missing_id_raises() -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    add_endnote(p, "real")
+
+    with pytest.raises(NoteNotFoundError):
+        edit_endnote(doc, 9999, "won't land")
+
+
+@pytest.mark.parametrize("reserved_id", [-1, 0])
+def test_edit_footnote_rejects_reserved_ids(reserved_id: int) -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    add_footnote(p, "real")
+
+    with pytest.raises(ValueError):
+        edit_footnote(doc, reserved_id, "no separator edits")
+
+
+@pytest.mark.parametrize("reserved_id", [-1, 0])
+def test_edit_endnote_rejects_reserved_ids(reserved_id: int) -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    add_endnote(p, "real")
+
+    with pytest.raises(ValueError):
+        edit_endnote(doc, reserved_id, "no separator edits")
+
+
+def test_note_not_found_is_a_key_error() -> None:
+    """``NoteNotFoundError`` subclasses ``KeyError`` per SPEC §16."""
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    add_footnote(p, "real")
+
+    with pytest.raises(KeyError):
+        edit_footnote(doc, 9999, "no")
+
+
+def test_edit_footnote_round_trip(tmp_path: Path) -> None:
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    ref = add_footnote(p, "draft")
+    edit_footnote(doc, ref.note_id, "final")
+
+    out = tmp_path / "edited.docx"
+    doc.save(str(out))
+
+    reopened = Document(str(out))
+    assert [n.text for n in read_footnotes(reopened)] == ["final"]

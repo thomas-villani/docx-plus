@@ -509,6 +509,76 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-19 — v0.2 in-place expansion — complete
+
+Locked scope per `notes-v0_2-expansion-scope.md` at repo root: extend
+`0.2.0` in-place rather than bumping to `0.3.0`. Two groups of work:
+Tier A "unfinished business" (closes published `CHANGELOG` and v0.1
+"Known limitations" bullets) plus a new `publishing/` module.
+
+- **Phase 0 — Toggle property completion.** Extended `_TOGGLE_RPR`
+  and `ResolvedFormatting` in `docx_plus/styles/inspect.py` with the
+  six previously-deferred toggles (`cs_bold`, `cs_italic`, `emboss`,
+  `imprint`, `outline`, `shadow`). All twelve ECMA-376 17.7.3 toggles
+  are now surfaced; the docstring caveat about "spec-recognised but
+  not yet exposed" is gone. 18 new tests (3 parametrised × 6
+  toggles).
+- **Phase 1 — Bulk comment delete.** `clear_all_comments(doc)` in
+  `docx_plus/comments/anchor.py` routes each id through
+  `delete_comment`. 5 new tests (empty doc, full clear, content
+  preservation, idempotency, round-trip).
+- **Phase 2 — In-place edit verbs.** `edit_comment(doc, id, text)` in
+  `comments/anchor.py`; `edit_footnote` / `edit_endnote` in
+  `notes/write.py`. Shared paragraph-builder helpers extracted from
+  both add and edit paths. `CommentNotFoundError` and
+  `NoteNotFoundError` (both `DocxPlusError, KeyError`). 18 new tests
+  total (8 comment edits + 10 note edits + reserved-id parameterised
+  cases).
+- **Phase 3 — Layout completion.** New `docx_plus/layout/line_numbering.py`
+  with `set_line_numbering(section, *, count_by, restart, start,
+  distance)` and `docx_plus/layout/borders.py` with `Border` dataclass
+  + `set_page_borders(section, *, top, bottom, left, right)`. Both
+  schema-strict via `core.insert_before_first_anchor`. 19 new tests
+  (9 line numbering + 10 borders) covering emission, validation,
+  idempotency, schema-position, and round-trip.
+- **Phase 4 — Conditional table-style branches.** Extended the
+  cascade resolver in `docx_plus/styles/inspect.py` to apply
+  `<w:tblStylePr>` branches in ECMA-376 17.7.6.5 precedence order.
+  New `TableContext` dataclass; auto-derives from `_Cell` position or
+  takes an explicit override. Closes `docs/TEST_GAPS.md` N2.
+  13 new tests in `tests/test_styles_table_conditional.py`.
+- **Phase 5 — `publishing/` module.** Three helpers — `add_toc`,
+  `add_caption`, `add_table_of_figures` — composing
+  `core.build_complex_field`. None auto-call `mark_fields_dirty`
+  (would violate the no-cross-capability-imports invariant); the
+  user calls it once before save. New example
+  `publishing_layout.py`. 23 new tests across three test files +
+  smoke test wiring. Bibliography intentionally deferred to v0.3
+  (depends on CXML data binding, also v0.3).
+- **Phase 6 — Release polish.** README capability bullets + two new
+  usage blocks (layout extras, publishing); `CHANGELOG.md`
+  `[0.2.0]` extended with "Added — in-place expansion" subsection
+  and rewritten "Deferred to v0.3+" list; `mkdocs.yml` nav extended
+  with five new reference pages; `docs/index.md` capability bullets
+  + four new quickstart blocks; `docs/API.md` `publishing/` section
+  + updated module rows; `docs/ARCHITECTURE.md` §1 layout tree,
+  §7.7 (layout) extended, new §7.10 (publishing), §9 error table
+  (two new errors), §10 test count (532), §11 v0.3 deferred list
+  rewritten; `docs/TEST_GAPS.md` N2 closed; this entry;
+  `tests/test_import_invariant.py` `CAPABILITIES` set extended to
+  cover all nine capability subpackages.
+- **Gates green.** 532 tests pass (was 431 + 101 new); 93.10%
+  coverage; `mypy --strict` clean on 48 source files; `ruff check`
+  clean. Every new file (`layout/line_numbering.py`,
+  `layout/borders.py`, all three `publishing/` modules) at 100%
+  line coverage.
+
+**Held for v0.3+**: w15 threaded comments (respond / resolve /
+reopen); `STYLEREF` / sequence-field cross-references; CLI;
+Custom XML Parts data binding; bibliography; tracked changes;
+glossary placeholder text; password-protected forms; theme writing;
+restyle planner; sections / headers / footers first-class API.
+
 ### 2026-05-19 — v0.2: comments, layout, bookmarks, notes — complete
 
 Locked scope per `notes-v0_1-scope.md §6`: full four-module cycle, layout

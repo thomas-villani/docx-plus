@@ -22,4 +22,6 @@ Modules:
   PAGEREF cross-references (v0.2).
 - :mod:`docx_plus.examples.footnotes_and_endnotes` — footnotes and
   endnotes (v0.2).
+- :mod:`docx_plus.examples.publishing_layout` — TOC + captions + Table
+  of Figures (v0.2 expansion).
 """

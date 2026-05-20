@@ -1,5 +1,5 @@
 site_name: docx_plus
-site_description: OOXML-level extensions for python-docx — style cascade, controls, fields, comments, layout, bookmarks, notes.
+site_description: OOXML-level extensions for python-docx — style cascade, controls, fields, comments, layout, bookmarks, notes, publishing.
 site_author: Tom Villani, PhD
 
 docs_dir: docs
@@ -50,6 +50,8 @@ nav:
       - docx_plus.layout.columns: reference/layout-columns.md
       - docx_plus.layout.breaks: reference/layout-breaks.md
       - docx_plus.layout.settings: reference/layout-settings.md
+      - docx_plus.layout.line_numbering: reference/layout-line-numbering.md
+      - docx_plus.layout.borders: reference/layout-borders.md
       - docx_plus.bookmarks.anchor: reference/bookmarks-anchor.md
       - docx_plus.bookmarks.crossref: reference/bookmarks-crossref.md
       - docx_plus.bookmarks.read: reference/bookmarks-read.md
@@ -57,6 +59,9 @@ nav:
       - docx_plus.notes.write: reference/notes-write.md
       - docx_plus.notes.read: reference/notes-read.md
       - docx_plus.notes.registry: reference/notes-registry.md
+      - docx_plus.publishing.toc: reference/publishing-toc.md
+      - docx_plus.publishing.captions: reference/publishing-captions.md
+      - docx_plus.publishing.figures: reference/publishing-figures.md
   - Test Gaps: TEST_GAPS.md
 
 plugins:

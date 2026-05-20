@@ -15,7 +15,17 @@ import pytest
 
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "docx_plus"
 
-CAPABILITIES = {"styles", "controls", "fields", "protection"}
+CAPABILITIES = {
+    "styles",
+    "controls",
+    "fields",
+    "protection",
+    "comments",
+    "layout",
+    "bookmarks",
+    "notes",
+    "publishing",
+}
 
 
 def _module_files() -> list[tuple[str, Path]]:

@@ -25,8 +25,11 @@ from docx_plus.notes.registry import EndnoteIdRegistry, FootnoteIdRegistry
 from docx_plus.notes.write import (
     EndnoteRef,
     FootnoteRef,
+    NoteNotFoundError,
     add_endnote,
     add_footnote,
+    edit_endnote,
+    edit_footnote,
 )
 
 __all__ = [
@@ -35,8 +38,11 @@ __all__ = [
     "FootnoteIdRegistry",
     "FootnoteRef",
     "NoteContent",
+    "NoteNotFoundError",
     "add_endnote",
     "add_footnote",
+    "edit_endnote",
+    "edit_footnote",
     "read_endnotes",
     "read_footnotes",
 ]
