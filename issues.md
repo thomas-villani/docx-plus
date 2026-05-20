@@ -14,8 +14,11 @@ commit messages and PR titles so we can cross-reference here.
   resolved (11 new tests; mypy strict + ruff clean). H3 closed as
   **wontfix** — see annotation under the finding.
 - **Session B — schema / part wiring — DONE.** C1, C3, H6, H7, H8
-  resolved (5 new tests, 572 total pass; mypy strict + ruff clean).
-- Sessions C–F pending.
+  resolved (5 new tests; mypy strict + ruff clean).
+- **Session C — error taxonomy + interleaving — DONE.** C4, H9, H10,
+  M1, M2 resolved (7 new tests; 579 total pass; mypy strict + ruff
+  clean).
+- Sessions D–F pending.
 
 ## Stats
 
@@ -82,6 +85,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Change the loop tuple to `(("w:top", top), ("w:left", left), ("w:bottom", bottom), ("w:right", right))`. Add a test that walks `list(pg)` and asserts the child tag order matches schema order, not just set membership.
 
 ### C4: SPEC §9.7 / §16 contradicted by v0.2 raw `ValueError` raises (governance)
+- **Status:** ✅ RESOLVED (Session C, doc-only) — SPEC §9.7 rewritten as "typed for domain conditions" with explicit permission for raw `ValueError`/`TypeError` at argument-shape boundaries. SPEC §16 gained a "Raw-exception carve-out (v0.2+)" subsection enumerating the concrete sites and articulating the "does catching by class help?" dividing line. `CommentNotFoundError` and `NoteNotFoundError` added to the §16 table. Now agrees with ARCHITECTURE §9.
 - **Subsystem:** core / governance
 - **Location:** `SPEC.md:917-948` vs `docs/ARCHITECTURE.md:791-797` and many capability sites:
   `docx_plus/notes/write.py:215,286`, `docx_plus/bookmarks/anchor.py:101,189`, `docx_plus/comments/anchor.py:298`, `docx_plus/layout/breaks.py:80,86`, `docx_plus/layout/columns.py:67,69`, `docx_plus/layout/line_numbering.py:91,93,95`
@@ -158,12 +162,14 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Walk the body once, removing every `w:commentRangeStart`, `w:commentRangeEnd`, and `w:commentReference` (with enclosing run) in a single pass; then walk `comments.xml` once removing every `<w:comment>`. No need to match by id when clearing all.
 
 ### H9: `_apply_table_style_chain` walks the basedOn chain twice with wrong interleaving
+- **Status:** ✅ RESOLVED (Session C) — rewritten as a single ancestors-first walk that, per style level, applies base pPr/rPr then matching `<w:tblStylePr>` branches in `_TBL_STYLE_PR_ORDER`. `_apply_conditional_table_formatting` folded into the main helper. New regression test pins child-base-overrides-parent-conditional behaviour.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:501-529`
 - **Description:** Line 527 calls `_apply_style_chain` (walks chain applying base pPr/rPr). Then if `table_context` is provided, line 529 calls `_apply_conditional_table_formatting` which re-collects the chain (line 547) and walks it again. Beyond the double-work, the *order* doesn't match ECMA-376 17.7.6.5: spec says for each style level (root→leaf), apply base pPr/rPr → matching conditional branches in precedence order. Current code does all base pPr/rPr for the whole chain root-to-leaf, then all conditional branches. A leaf style's base properties override an ancestor's conditional branches — reversed from spec.
 - **Suggestion:** Refactor to a single walk that, per style in the chain (ancestors first), applies that style's base pPr/rPr then its matching conditional `tblStylePr` branches in `_TBL_STYLE_PR_ORDER`.
 
 ### H10: Duplicated `_insert_before_first_anchor` in `protection/document.py`
+- **Status:** ✅ RESOLVED (Session C) — local copy deleted; module now imports `insert_before_first_anchor` from `core.oxml`. Removed dead `lxml.etree` import. All 18 protection tests pass.
 - **Subsystem:** core / protection
 - **Location:** `docx_plus/protection/document.py:51-65`
 - **Description:** Byte-for-byte copy of `docx_plus.core.oxml.insert_before_first_anchor` (right down to the docstring sentence). Predates the shared helper, but is exactly the "reinvented equivalent" v0.2 was supposed to consolidate. Every other settings-touching module (`fields/update.py`, `layout/settings.py`, `layout/borders.py`, `layout/line_numbering.py`) uses the shared one. Drift risk: if the shared helper's semantics change, protection is silently left on the old behaviour.
@@ -219,12 +225,14 @@ items. Everything else can ship in v0.2.1 if needed.
 ## Medium
 
 ### M1: `add_field(p, instruction="")` and `instruction="   "` silently emit a structurally-invalid field
+- **Status:** ✅ RESOLVED (Session C) — `add_field` raises `ValueError` on empty / whitespace-only input. Parametrized regression test (`""`, `"   "`, `"\t"`, `"\n"`).
 - **Subsystem:** core / fields
 - **Location:** `docx_plus/fields/simple.py:129-130`
 - **Description:** `wrapped = f" {instruction.strip()} "` collapses `""` or whitespace-only input to `"  "`, and `build_complex_field` happily writes `<w:instrText xml:space="preserve">  </w:instrText>`. Word renders the field as an empty result and never throws; the bug surfaces only when the user notices a blank.
 - **Suggestion:** Add `if not instruction.strip(): raise ValueError("add_field requires a non-empty instruction")`. Add a regression test.
 
 ### M2: `add_page_number_field(format="")` emits a double space, not just `" PAGE "`
+- **Status:** ✅ RESOLVED (Session C) — empty / whitespace-only `format` is treated as `None` (emits `" PAGE "`). Non-empty format is stripped on the way in so leading/trailing whitespace doesn't produce double spaces. Two new tests.
 - **Subsystem:** core / fields
 - **Location:** `docx_plus/fields/simple.py:59-62`
 - **Description:** Guard is `if format is None:` not `if not format:`, so `format=""` yields `instruction = f" {field}  "` — two trailing spaces inside the field. Diverges from the documented `" PAGE "` contract.

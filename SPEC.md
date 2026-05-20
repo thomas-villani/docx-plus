@@ -712,9 +712,16 @@ These are non-negotiable for v0.1 implementation. Tests should enforce them.
 6. **All public functions have docstrings.** Google-style; summary line,
    args, returns, raises. At least one example for non-trivial functions.
 
-7. **Errors are typed.** Library raises subclasses of `DocxPlusError`
-   (defined in `core/__init__.py`). No raw `ValueError`/`RuntimeError` for
-   library-level conditions.
+7. **Errors are typed for domain conditions.** Library raises subclasses
+   of `DocxPlusError` (defined in `core/__init__.py`) whenever the
+   condition models a meaningful domain failure — collisions, missing
+   styles, malformed structure, lookup failure, cascade limits, etc.
+   Raw `ValueError`/`TypeError` are permitted for **argument-shape
+   validation at the public surface** (range / non-empty / wrong-type
+   checks the type system already telegraphs at the boundary), which
+   would only earn a typed error if catching by exception class added
+   real value to callers. See §16 for the full taxonomy and the v0.2
+   carve-out, and `docs/ARCHITECTURE.md` §9 for the rationale.
 
 8. **No unrequested side effects on the input document.** Functions that
    modify state document what they modify in the docstring. `resolve_*`
@@ -942,14 +949,35 @@ for boundary-layer code.
 | `DuplicateTagError` | `controls.read` | `DocxPlusError, ValueError` | Two SDTs share a tag |
 | `ValueNotInListError` | `controls.read` | `DocxPlusError, ValueError` | Dropdown value matches neither `w:value` nor `w:displayText` |
 | `ControlTypeError` | `controls.read` | `DocxPlusError, TypeError` | `set_control_value` type mismatch |
+| `CommentNotFoundError` | `comments.anchor` | `DocxPlusError, KeyError` | `edit_comment` / `delete_comment` against an id absent from `comments.xml` |
+| `NoteNotFoundError` | `notes.write` | `DocxPlusError, KeyError` | `edit_footnote` / `edit_endnote` against an id absent from the relevant part |
 
-Library code never raises raw `ValueError`/`RuntimeError`/`TypeError`
-for caller-facing conditions. The two carve-outs are
-`IdRegistry.next()` raising `RuntimeError` on 31-bit exhaustion (cannot
-happen in practice) and a small set of `TypeError` raises at the public
-boundary when the caller passes something that is not `Paragraph` /
-`Run` / `_Cell` — those *are* programmer errors and `TypeError` is the
-right semantic.
+### Raw-exception carve-out (v0.2+)
+
+Domain failures earn a typed `DocxPlusError` subclass per §9.7.
+**Argument-shape validation at the public surface** is permitted to
+raise raw `ValueError` / `TypeError` directly when the condition does
+not model a meaningful domain failure — i.e. the only thing a caller
+could do with a typed class is restate the input invariant.
+
+Concrete examples currently shipped:
+
+- `IdRegistry.next()` raising `RuntimeError` on 31-bit exhaustion
+  (cannot happen in practice).
+- `TypeError` at the `Paragraph` / `Run` / `_Cell` boundary when a
+  caller passes something else — these are programmer errors.
+- `ValueError` for `set_line_numbering` / `set_columns` /
+  `add_field("")` argument ranges; for invalid bookmark names; for
+  "this helper only supports the main document body" guards; for
+  reserved note-id checks (`<= 0`).
+- `TypeError` for tuple-shape mismatches at run-range targets.
+
+The dividing line is "does catching by class help?" — `KeyError` on a
+missing comment id is a domain miss callers want to handle specifically
+(→ `CommentNotFoundError`); a bookmark name that violates the W3C name
+rule is an input mistake the caller would just propagate
+(→ raw `ValueError`). See `docs/ARCHITECTURE.md` §9 for per-module
+detail.
 
 ---
 

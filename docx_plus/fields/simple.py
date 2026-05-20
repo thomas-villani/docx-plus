@@ -56,10 +56,10 @@ def add_page_number_field(
         >>> p = doc.add_paragraph("Page ")
         >>> _ = add_page_number_field(p)
     """
-    if format is None:
+    if format is None or not format.strip():
         instruction = f" {field} "
     else:
-        instruction = f" {field} {format} "
+        instruction = f" {field} {format.strip()} "
     return build_complex_field(paragraph._p, instruction, "1")
 
 
@@ -119,6 +119,11 @@ def add_field(
     Returns:
         The begin ``w:r`` run that marks the start of the field.
 
+    Raises:
+        ValueError: If ``instruction`` is empty or whitespace-only —
+            Word renders the field as a silent blank, which is almost
+            never intended (see issues.md M1).
+
     Example:
         >>> from docx import Document
         >>> from docx_plus.fields import add_field
@@ -126,7 +131,13 @@ def add_field(
         >>> p = doc.add_paragraph()
         >>> _ = add_field(p, instruction='TOC \\o "1-3" \\h', initial_text="(TOC)")
     """
-    wrapped = f" {instruction.strip()} "
+    stripped = instruction.strip()
+    if not stripped:
+        raise ValueError(
+            "add_field requires a non-empty instruction; got "
+            f"{instruction!r}"
+        )
+    wrapped = f" {stripped} "
     return build_complex_field(paragraph._p, wrapped, initial_text)
 
 

@@ -17,10 +17,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from lxml import etree
-
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el
+from docx_plus.core.oxml import el, insert_before_first_anchor
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -46,23 +44,6 @@ _DOC_PROTECTION_LATER_SIBLINGS: tuple[str, ...] = (
     "w:rsids",
     "w:themeFontLang",
 )
-
-
-def _insert_before_first_anchor(
-    parent: etree._Element,
-    new_element: etree._Element,
-    anchor_tags: tuple[str, ...],
-) -> None:
-    """Insert ``new_element`` before the first ``anchor_tags`` match in ``parent``.
-
-    Falls back to appending at the end if none of the anchors exist.
-    """
-    for tag in anchor_tags:
-        anchor = parent.find(qn(tag))
-        if anchor is not None:
-            anchor.addprevious(new_element)
-            return
-    parent.append(new_element)
 
 
 def protect_document(
@@ -101,7 +82,7 @@ def protect_document(
         existing.set(qn("w:enforcement"), "1")
         return
     new = el("w:documentProtection", **{"w:edit": mode, "w:enforcement": "1"})
-    _insert_before_first_anchor(settings, new, _DOC_PROTECTION_LATER_SIBLINGS)
+    insert_before_first_anchor(settings, new, _DOC_PROTECTION_LATER_SIBLINGS)
 
 
 def unprotect_document(doc: DocxDocument) -> None:

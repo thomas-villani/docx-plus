@@ -524,16 +524,17 @@ def _apply_table_style_chain(
     tbl_element: etree._Element,
     table_context: TableContext | None = None,
 ) -> None:
-    """Apply the table's style chain plus any matching conditional branches.
+    """Apply the table's style chain in spec-correct interleaved order.
 
-    First applies the base ``pPr`` / ``rPr`` from each style in the
-    basedOn chain (ancestors first, leaf last). Then — when a
-    :class:`TableContext` is provided — walks the same chain again,
-    applying every ``<w:tblStylePr w:type="...">`` branch whose type
-    matches the cell's position. Conditional types are applied in
-    ECMA-376 17.7.6.5 precedence order (``wholeTable`` → bands →
-    first/last col → first/last row → corners), so the most specific
-    branch wins.
+    Walks the basedOn chain ONCE, ancestors-first. For each style level
+    apply its base ``pPr`` / ``rPr`` then — when a
+    :class:`TableContext` is provided — its matching
+    ``<w:tblStylePr w:type="...">`` branches in ECMA-376 17.7.6.5
+    precedence order (``wholeTable`` → bands → first/last row →
+    first/last col → corners). This ensures the per-level invariant
+    "conditional branches override that level's base" holds while
+    still letting a child level's everything (base + conditional)
+    override a parent level's everything.
     """
     tbl_pr = tbl_element.find(qn("w:tblPr"))
     if tbl_pr is None:
@@ -544,32 +545,28 @@ def _apply_table_style_chain(
     style_id = tbl_style.get(qn("w:val"))
     if style_id is None:
         return
-    _apply_style_chain(acc, styles_root, style_id, "tableStyle")
-    if table_context is not None:
-        _apply_conditional_table_formatting(acc, styles_root, style_id, table_context)
 
+    chain = _collect_style_chain(styles_root, style_id)
+    matching = _matching_conditional_types(table_context) if table_context is not None else set()
 
-def _apply_conditional_table_formatting(
-    acc: _Accumulator,
-    styles_root: etree._Element,
-    leaf_style_id: str,
-    ctx: TableContext,
-) -> None:
-    """Apply ``<w:tblStylePr>`` branches matching ``ctx`` across the chain.
-
-    Walks the basedOn chain ancestors-first so leaf-style branches
-    override; within each style, applies conditional types in
-    ECMA-376 17.7.6.5 precedence order.
-    """
-    matching = _matching_conditional_types(ctx)
-    if not matching:
-        return
-    chain = _collect_style_chain(styles_root, leaf_style_id)
-    for depth, (style_id, style_el) in enumerate(reversed(chain)):
+    # Ancestors-first: reverse the leaf-to-root chain.
+    for depth, (sid, style_el) in enumerate(reversed(chain)):
         chain_depth = len(chain) - 1 - depth
-        source = FormattingSource(layer="tableStyle", style_id=style_id, chain_depth=chain_depth)
-        # Build a map type -> tblStylePr element for this style to avoid
-        # a quadratic scan when many conditional types are active.
+        source = FormattingSource(
+            layer="tableStyle", style_id=sid, chain_depth=chain_depth
+        )
+
+        # 1. Base pPr / rPr for this style level.
+        ppr = style_el.find(qn("w:pPr"))
+        if ppr is not None:
+            _apply_ppr(acc, ppr, source)
+        rpr = style_el.find(qn("w:rPr"))
+        if rpr is not None:
+            _apply_rpr(acc, rpr, source)
+
+        # 2. Matching conditional branches for this style level, in spec order.
+        if not matching:
+            continue
         branches: dict[str, etree._Element] = {}
         for branch in style_el.findall(qn("w:tblStylePr")):
             type_attr = branch.get(qn("w:type"))
@@ -579,12 +576,12 @@ def _apply_conditional_table_formatting(
             if cond_type not in matching or cond_type not in branches:
                 continue
             branch = branches[cond_type]
-            ppr = branch.find(qn("w:pPr"))
-            if ppr is not None:
-                _apply_ppr(acc, ppr, source)
-            rpr = branch.find(qn("w:rPr"))
-            if rpr is not None:
-                _apply_rpr(acc, rpr, source)
+            branch_ppr = branch.find(qn("w:pPr"))
+            if branch_ppr is not None:
+                _apply_ppr(acc, branch_ppr, source)
+            branch_rpr = branch.find(qn("w:rPr"))
+            if branch_rpr is not None:
+                _apply_rpr(acc, branch_rpr, source)
 
 
 def _matching_conditional_types(ctx: TableContext) -> set[str]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from docx import Document
 
 from docx_plus._testing.ooxml_asserts import assert_field_dirty
@@ -185,6 +186,31 @@ def test_generic_field_initial_text_renders() -> None:
     p = doc.add_paragraph()
     add_field(p, instruction="REF Bookmark1", initial_text="(placeholder)")
     assert _result_text(p) == "(placeholder)"
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "\t", "\n"])
+def test_add_field_rejects_empty_instruction(bad: str) -> None:
+    """M1 regression: empty / whitespace-only instructions produce silent blanks."""
+    doc = Document()
+    p = doc.add_paragraph()
+    with pytest.raises(ValueError, match="non-empty instruction"):
+        add_field(p, instruction=bad)
+
+
+def test_add_page_number_field_treats_empty_format_as_none() -> None:
+    """M2 regression: format="" must not emit double spaces in the instruction."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_page_number_field(p, format="")
+    assert _instruction_text(p) == " PAGE "
+
+
+def test_add_page_number_field_strips_format_whitespace() -> None:
+    """Lead/trail whitespace in format is normalised — no double spaces."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_page_number_field(p, format=r"  \* ARABIC  ")
+    assert _instruction_text(p) == r" PAGE \* ARABIC "
 
 
 # --------------------------------------------------------------------------

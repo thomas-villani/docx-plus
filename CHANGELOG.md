@@ -6,6 +6,33 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — error taxonomy + cascade interleaving (Session C of issues.md review)
+
+- **C4** — SPEC §9.7 and §16 amended to formally bless the raw
+  `ValueError` / `TypeError` carve-out for argument-shape validation at
+  the public surface, matching what ARCHITECTURE §9 already
+  documented. Typed `DocxPlusError` subclasses remain required for
+  domain failures (lookup miss, cascade limit, malformed structure,
+  etc.). SPEC §16's table now also lists the v0.2-expansion errors
+  `CommentNotFoundError` and `NoteNotFoundError`.
+- **H9** — `_apply_table_style_chain` rewritten to walk the basedOn
+  chain once and interleave base + matching conditional branches per
+  style level (ancestors first), per ECMA-376 17.7.6.5. Previously
+  the helper applied base for the whole chain then conditional for
+  the whole chain — a child style's base could not override an
+  ancestor style's matching `<w:tblStylePr>` branch. Helper
+  `_apply_conditional_table_formatting` removed (folded into
+  `_apply_table_style_chain`).
+- **H10** — `protection/document.py` now imports the shared
+  `insert_before_first_anchor` from `core.oxml` instead of carrying a
+  byte-identical local copy. Eliminates drift risk.
+- **M1** — `add_field` now raises `ValueError` on empty or
+  whitespace-only `instruction`. Previously emitted a structurally
+  invalid field that Word silently rendered as blank.
+- **M2** — `add_page_number_field(format="")` and whitespace-only
+  `format` are now treated the same as `format=None` (no double-space
+  in the emitted instruction). `format` is stripped on the way in.
+
 ### Fixed — schema / part wiring (Session B of issues.md review)
 
 - **C1** — Fresh `footnotes.xml` / `endnotes.xml` parts are now seeded

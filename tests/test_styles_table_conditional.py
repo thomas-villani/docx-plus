@@ -390,6 +390,43 @@ def test_corner_overrides_first_row() -> None:
     assert resolve_effective_formatting(ne_cell).color_rgb == "AAAAAA"
 
 
+def test_child_base_overrides_parent_conditional_branch() -> None:
+    """H9 regression: per-level base + conditional must interleave.
+
+    Per ECMA-376 17.7.6.5 each style level computes (base then matching
+    conditionals); the resulting per-level state then cascades child-
+    over-parent. So a child style's BASE rPr must override a parent's
+    matching conditional branch. The buggy implementation walked the
+    whole chain for base first, then the whole chain for conditionals,
+    inverting this at the parent/child boundary.
+    """
+    doc = Document()
+    # Parent: firstRow branch sets color to ORANGE.
+    _add_table_style(
+        doc,
+        "ParentWithFirstRow",
+        branches={"firstRow": {"w:color": {"w:val": "FFA500"}}},
+    )
+    # Child basedOn parent: base rPr sets color to GREEN. No own firstRow.
+    styles_el = doc.styles.element
+    child = sub(
+        styles_el,
+        "w:style",
+        **{"w:type": "table", "w:styleId": "ChildBaseGreen"},
+    )
+    sub(child, "w:name", **{"w:val": "ChildBaseGreen"})
+    sub(child, "w:basedOn", **{"w:val": "ParentWithFirstRow"})
+    cs_rpr = sub(child, "w:rPr")
+    sub(cs_rpr, "w:color", **{"w:val": "00FF00"})
+
+    table = _add_table_with_style(doc, "ChildBaseGreen", rows=3, cols=2)
+    top_cell = table.rows[0].cells[0]
+    resolved = resolve_effective_formatting(top_cell)
+    # Order at row 0: parent base (none) → parent firstRow (ORANGE) →
+    # child base (GREEN) → child firstRow (none). GREEN wins.
+    assert resolved.color_rgb == "00FF00"
+
+
 def test_whole_table_underlies_all_branches() -> None:
     """``wholeTable`` always applies; more-specific branches sit on top."""
     doc = Document()
