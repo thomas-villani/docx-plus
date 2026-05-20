@@ -133,10 +133,7 @@ def add_field(
     """
     stripped = instruction.strip()
     if not stripped:
-        raise ValueError(
-            "add_field requires a non-empty instruction; got "
-            f"{instruction!r}"
-        )
+        raise ValueError(f"add_field requires a non-empty instruction; got {instruction!r}")
     wrapped = f" {stripped} "
     return build_complex_field(paragraph._p, wrapped, initial_text)
 

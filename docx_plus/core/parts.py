@@ -122,14 +122,14 @@ def _notes_root_with_separators(root_tag: str, child_tag: str, marker_tag: str) 
     cont = b"continuationSeparator"
     return (
         b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-        b'<w:' + enc + b' xmlns:w="' + _W_NS.encode() + b'">'
-        b'<w:' + child + b' w:id="-1" w:type="separator">'
-        b'<w:p><w:r><w:' + marker + b'/></w:r></w:p>'
-        b'</w:' + child + b'>'
-        b'<w:' + child + b' w:id="0" w:type="continuationSeparator">'
-        b'<w:p><w:r><w:' + cont + b'/></w:r></w:p>'
-        b'</w:' + child + b'>'
-        b'</w:' + enc + b'>'
+        b"<w:" + enc + b' xmlns:w="' + _W_NS.encode() + b'">'
+        b"<w:" + child + b' w:id="-1" w:type="separator">'
+        b"<w:p><w:r><w:" + marker + b"/></w:r></w:p>"
+        b"</w:" + child + b">"
+        b"<w:" + child + b' w:id="0" w:type="continuationSeparator">'
+        b"<w:p><w:r><w:" + cont + b"/></w:r></w:p>"
+        b"</w:" + child + b">"
+        b"</w:" + enc + b">"
     )
 
 
@@ -160,9 +160,7 @@ ENDNOTES_SPEC = PartSpec(
 # ---------------------------------------------------------------------------
 
 
-def get_or_create_part(
-    doc: Document, spec: PartSpec
-) -> tuple[XmlPart, etree._Element]:
+def get_or_create_part(doc: Document, spec: PartSpec) -> tuple[XmlPart, etree._Element]:
     """Return ``(part, root_element)`` for the part identified by ``spec``.
 
     If the main document part already has a relationship of

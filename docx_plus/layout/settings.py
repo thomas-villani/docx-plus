@@ -88,9 +88,7 @@ def enable_distinct_even_odd_headers(doc: DocxDocument) -> None:
             remove(extra)
         return
     new = el("w:evenAndOddHeaders")
-    insert_before_first_anchor(
-        settings, new, _EVEN_AND_ODD_HEADERS_LATER_SIBLINGS
-    )
+    insert_before_first_anchor(settings, new, _EVEN_AND_ODD_HEADERS_LATER_SIBLINGS)
 
 
 def disable_distinct_even_odd_headers(doc: DocxDocument) -> None:

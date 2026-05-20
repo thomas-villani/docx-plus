@@ -223,9 +223,7 @@ def test_resolver_not_partial_when_no_theme_refs_and_no_theme_part() -> None:
     # Neutralise the default docDefaults font *token* so the cascade carries
     # no theme reference at all — without this the (legitimately) missing
     # theme would make font resolution partial.
-    rfonts_path = "/".join(
-        qn(t) for t in ("w:docDefaults", "w:rPrDefault", "w:rPr", "w:rFonts")
-    )
+    rfonts_path = "/".join(qn(t) for t in ("w:docDefaults", "w:rPrDefault", "w:rPr", "w:rFonts"))
     rfonts = doc.styles.element.find(rfonts_path)
     assert rfonts is not None
     for attr in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):

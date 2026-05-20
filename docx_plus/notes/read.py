@@ -131,9 +131,7 @@ def _read_notes(
 
         text = _note_body_text(note_el)
         para_idx = ref_paragraph.get(nid_raw, -1)
-        result.append(
-            NoteContent(note_id=nid, text=text, paragraph_index=para_idx)
-        )
+        result.append(NoteContent(note_id=nid, text=text, paragraph_index=para_idx))
     return result
 
 

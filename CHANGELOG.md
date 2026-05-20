@@ -4,7 +4,15 @@ All notable changes to `docx_plus` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-05-20
+
+Second cycle. Four new capability modules — anchored comments, layout
+extras, bookmarks with cross-references, and footnotes / endnotes —
+plus a `core/parts.py` foundation for separate OOXML parts. The release
+was extended in-place to close every published "Deferred" bullet and add
+a `publishing` module (TOC, captions, Table of Figures), then hardened by
+a full pre-publication review whose fixes are recorded below. See
+SPEC §15 for the scoped v0.3+ roadmap.
 
 ### Added — cascade & API (Session F of issues.md review)
 
@@ -248,15 +256,6 @@ validation helpers (`validate_seq_identifier`, `validate_numbering_picture`,
   the table instance's own `<w:tblPr>` (style-chain lookup remains
   deferred — see TableContext docstring).
 
-## [0.2.0] — 2026-05-19
-
-Second cycle. Four new capability modules — anchored comments, layout
-extras, bookmarks with cross-references, and footnotes / endnotes —
-plus a `core/parts.py` foundation for separate OOXML parts. The
-release was extended in-place to also close every published
-"Deferred" bullet and add a publishing module (TOC, captions, Table
-of Figures); see SPEC §15 for the scoped roadmap.
-
 ### Added — initial cycle
 
 - **Anchored comments** (`docx_plus.comments`) — `add_comment`,
@@ -339,9 +338,13 @@ of Figures); see SPEC §15 for the scoped roadmap.
 
 ### Quality gates
 
-- `mypy --strict` clean on all v0.2 modules.
-- `ruff check` clean (Google-convention docstrings).
-- Coverage gate at ≥90% holds (project at ~93%).
+- `pytest` — 709 passed, 8 skipped (the LibreOffice render tests, gated
+  by the `requires_libreoffice` marker).
+- `mypy --strict` clean across all modules.
+- `ruff check` and `ruff format --check` both clean (Google-convention
+  docstrings).
+- `mkdocs build --strict` clean.
+- Coverage gate at ≥90% holds.
 - Examples smoke-tested via `tests/test_examples_smoke.py`.
 
 ### Deferred to v0.3+
@@ -445,6 +448,5 @@ first-class API, anchored comments, footnotes / endnotes, bookmarks
 and cross-references, table cell shading / borders, theme writing,
 password-protected forms, content-control binding to Custom XML Parts.
 
-[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/thomas-villani/docx-plus/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/thomas-villani/docx-plus/releases/tag/v0.1.0

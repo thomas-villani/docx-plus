@@ -30,19 +30,13 @@ def build_notes_document(out_path: Path) -> Path:
     doc = Document()
     doc.add_heading("On the structure of OOXML notes", level=1)
 
-    p1 = doc.add_paragraph(
-        "Footnotes appear at the bottom of the page where they are referenced"
-    )
+    p1 = doc.add_paragraph("Footnotes appear at the bottom of the page where they are referenced")
     add_footnote(p1, "Foot of the same page is the conventional placement.")
 
-    p2 = doc.add_paragraph(
-        "Endnotes are collected at the end of the document or section"
-    )
+    p2 = doc.add_paragraph("Endnotes are collected at the end of the document or section")
     add_endnote(p2, "End-of-document is the typical placement for endnotes.")
 
-    p3 = doc.add_paragraph(
-        "Both kinds share the same part-plus-body-marker shape"
-    )
+    p3 = doc.add_paragraph("Both kinds share the same part-plus-body-marker shape")
     add_footnote(p3, "The reference marker lives inline; the text lives in a separate part.")
     add_endnote(p3, "Same pattern, different parts.")
 
@@ -60,9 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    out_path = (
-        Path(args[0]).expanduser().resolve() if args else Path.cwd() / "notes.docx"
-    )
+    out_path = Path(args[0]).expanduser().resolve() if args else Path.cwd() / "notes.docx"
     written = build_notes_document(out_path)
     print(f"# wrote: {written}")
 

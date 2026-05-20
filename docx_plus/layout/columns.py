@@ -83,9 +83,7 @@ def set_columns(
     if num < 1:
         raise ValueError(f"set_columns requires num >= 1, got {num}")
     if widths is not None and len(widths) != num:
-        raise ValueError(
-            f"widths has {len(widths)} entries but num={num} columns requested"
-        )
+        raise ValueError(f"widths has {len(widths)} entries but num={num} columns requested")
 
     sect_pr = section._sectPr
     existing = sect_pr.find(qn("w:cols"))

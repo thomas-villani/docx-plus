@@ -269,9 +269,7 @@ def test_dstrike_direct_resolves_double_strike_true() -> None:
 
 def test_dstrike_explicit_false_resolves_false() -> None:
     doc = Document()
-    _add_paragraph_style(
-        doc, "DstrikeOff", rpr_children=[("w:dstrike", {"w:val": "false"})]
-    )
+    _add_paragraph_style(doc, "DstrikeOff", rpr_children=[("w:dstrike", {"w:val": "false"})])
     p = _styled_paragraph(doc, "DstrikeOff")
 
     resolved = resolve_effective_formatting(p)

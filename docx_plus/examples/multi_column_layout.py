@@ -60,9 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    out_path = (
-        Path(args[0]).expanduser().resolve() if args else Path.cwd() / "multicol.docx"
-    )
+    out_path = Path(args[0]).expanduser().resolve() if args else Path.cwd() / "multicol.docx"
     written = build_multi_column_document(out_path)
     print(f"# wrote: {written}")
     reopened = Document(str(written))

@@ -69,9 +69,7 @@ def validate_numbering_picture(picture: str) -> str:
     """
     if not picture or picture not in _NUMBERING_PICTURES:
         valid = ", ".join(sorted(_NUMBERING_PICTURES))
-        raise ValueError(
-            f"numbering must be one of {{{valid}}}; got {picture!r}"
-        )
+        raise ValueError(f"numbering must be one of {{{valid}}}; got {picture!r}")
     return picture
 
 
@@ -87,14 +85,11 @@ def validate_outline_levels(levels: tuple[int, int]) -> tuple[int, int]:
         or len(levels) != 2
         or not all(isinstance(v, int) and not isinstance(v, bool) for v in levels)
     ):
-        raise ValueError(
-            f"levels must be a tuple of two ints (lo, hi); got {levels!r}"
-        )
+        raise ValueError(f"levels must be a tuple of two ints (lo, hi); got {levels!r}")
     lo, hi = levels
     if not (1 <= lo <= hi <= 9):
         raise ValueError(
-            f"levels must satisfy 1 <= lo <= hi <= 9 (Word's outline range); "
-            f"got ({lo}, {hi})"
+            f"levels must satisfy 1 <= lo <= hi <= 9 (Word's outline range); got ({lo}, {hi})"
         )
     return (lo, hi)
 
@@ -125,9 +120,7 @@ def validate_additional_styles(
             or not isinstance(item[1], int)
             or isinstance(item[1], bool)
         ):
-            raise ValueError(
-                f"additional_styles[{i}] must be a (str, int) tuple; got {item!r}"
-            )
+            raise ValueError(f"additional_styles[{i}] must be a (str, int) tuple; got {item!r}")
         style_name, level = item
         if not style_name or '"' in style_name or "," in style_name:
             raise ValueError(
@@ -135,9 +128,7 @@ def validate_additional_styles(
                 f"non-empty and contain no comma or double-quote"
             )
         if not (1 <= level <= 9):
-            raise ValueError(
-                f"additional_styles[{i}] level must be in 1..9; got {level}"
-            )
+            raise ValueError(f"additional_styles[{i}] level must be in 1..9; got {level}")
         out.append((style_name, level))
     return tuple(out)
 

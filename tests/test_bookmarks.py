@@ -210,6 +210,7 @@ def test_read_bookmarks_handles_orphan_start_without_end() -> None:
     add_bookmark(p.add_run("x"), "bm")
     # Strip the end marker.
     from docx_plus.core.oxml import remove
+
     for end in _ends(doc):
         remove(end)
     info = read_bookmarks(doc)[0]

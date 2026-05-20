@@ -10,7 +10,6 @@ short form ``from docx_plus.core import IdRegistry, qn, el`` documented in
 explicit about where a symbol lives.
 """
 
-
 from docx_plus.core.errors import DocxPlusError
 from docx_plus.core.ids import DuplicateIdError, IdRangeError, IdRegistry
 from docx_plus.core.ns import MC, NSMAP, W14, XML, A, InvalidNamespaceError, R, W, qn

@@ -218,20 +218,18 @@ def test_tbl_style_row_band_size_two_groups_rows_in_pairs() -> None:
     )
     table = _add_table_with_style(doc, "Pairs", rows=7, cols=1)
     # Set the band size on the table instance's own tblPr.
-    tbl_pr = table._tbl.find(
-        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPr"
-    )
+    tbl_pr = table._tbl.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPr")
     assert tbl_pr is not None
     sub(tbl_pr, "w:tblStyleRowBandSize", **{"w:val": "2"})
 
     expected = [
-        None,        # row 0 (firstRow zone)
-        "111111",    # row 1 — band1 stripe 0
-        "111111",    # row 2 — band1 stripe 0
-        "222222",    # row 3 — band2 stripe 1
-        "222222",    # row 4 — band2 stripe 1
-        "111111",    # row 5 — band1 stripe 2
-        "111111",    # row 6 — band1 stripe 2
+        None,  # row 0 (firstRow zone)
+        "111111",  # row 1 — band1 stripe 0
+        "111111",  # row 2 — band1 stripe 0
+        "222222",  # row 3 — band2 stripe 1
+        "222222",  # row 4 — band2 stripe 1
+        "111111",  # row 5 — band1 stripe 2
+        "111111",  # row 6 — band1 stripe 2
     ]
     for row_idx, want in enumerate(expected):
         got = resolve_effective_formatting(table.rows[row_idx].cells[0]).color_rgb
@@ -246,9 +244,7 @@ def test_tbl_style_col_band_size_three_groups_columns_in_triples() -> None:
         branches={"band1Vert": {"w:color": {"w:val": "333333"}}},
     )
     table = _add_table_with_style(doc, "Triples", rows=1, cols=7)
-    tbl_pr = table._tbl.find(
-        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPr"
-    )
+    tbl_pr = table._tbl.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPr")
     assert tbl_pr is not None
     sub(tbl_pr, "w:tblStyleColBandSize", **{"w:val": "3"})
 

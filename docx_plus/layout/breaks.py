@@ -25,9 +25,7 @@ if TYPE_CHECKING:
     from docx.parts.document import DocumentPart
     from docx.text.paragraph import Paragraph
 
-SectionStartType = Literal[
-    "nextPage", "continuous", "evenPage", "oddPage", "nextColumn"
-]
+SectionStartType = Literal["nextPage", "continuous", "evenPage", "oddPage", "nextColumn"]
 
 
 # Schema siblings later than `w:type` per ECMA-376 17.6.17 CT_SectPr. ``type``
@@ -103,15 +101,11 @@ def insert_section_break(
     p_element = paragraph._p
     body = p_element.getparent()
     if body is None or body.tag != qn("w:body"):
-        raise ValueError(
-            "insert_section_break requires a paragraph in the main document body"
-        )
+        raise ValueError("insert_section_break requires a paragraph in the main document body")
 
     sentinel = body.find(qn("w:sectPr"))
     if sentinel is None:
-        raise ValueError(
-            "document has no trailing sectPr to copy properties from"
-        )
+        raise ValueError("document has no trailing sectPr to copy properties from")
 
     new_sect_pr = cast("CT_SectPr", deepcopy(sentinel))
     new_sect_pr.attrib.clear()

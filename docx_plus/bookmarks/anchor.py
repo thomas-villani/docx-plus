@@ -98,9 +98,7 @@ def add_bookmark(
         >>> ref = add_bookmark(p, "section_1_intro")
     """
     if not _BOOKMARK_NAME_RE.match(name):
-        raise ValueError(
-            f"bookmark name {name!r} must match {_BOOKMARK_NAME_RE.pattern}"
-        )
+        raise ValueError(f"bookmark name {name!r} must match {_BOOKMARK_NAME_RE.pattern}")
 
     start_anchor, end_anchor, doc = _normalize_target(target)
 
@@ -173,8 +171,7 @@ def _normalize_target(
         return first._r, second._r, _doc_for(first)
 
     raise TypeError(
-        f"add_bookmark target must be Run, Paragraph, or (Run, Run); "
-        f"got {type(target).__name__}"
+        f"add_bookmark target must be Run, Paragraph, or (Run, Run); got {type(target).__name__}"
     )
 
 

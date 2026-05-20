@@ -19,10 +19,7 @@ def _instr(paragraph) -> str:
 
 
 def _field_char_types(paragraph) -> list[str | None]:
-    return [
-        fc.get(qn("w:fldCharType"))
-        for fc in xpath(paragraph._p, "./w:r/w:fldChar")
-    ]
+    return [fc.get(qn("w:fldCharType")) for fc in xpath(paragraph._p, "./w:r/w:fldChar")]
 
 
 def test_text_cross_ref_emits_ref_instruction() -> None:

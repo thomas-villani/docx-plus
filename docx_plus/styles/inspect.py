@@ -584,9 +584,7 @@ def _apply_table_style_chain(
     # Ancestors-first: reverse the leaf-to-root chain.
     for depth, (sid, style_el) in enumerate(reversed(chain)):
         chain_depth = len(chain) - 1 - depth
-        source = FormattingSource(
-            layer="tableStyle", style_id=sid, chain_depth=chain_depth
-        )
+        source = FormattingSource(layer="tableStyle", style_id=sid, chain_depth=chain_depth)
 
         # 1. Base pPr / rPr for this style level.
         ppr = style_el.find(qn("w:pPr"))
@@ -902,9 +900,7 @@ def _apply_rpr(acc: _Accumulator, rpr: etree._Element, source: FormattingSource)
                 acc.set("font_name", _resolve_font_theme(ascii_theme, acc), source)
             else:
                 literal = (
-                    child.get(qn("w:ascii"))
-                    or child.get(qn("w:hAnsi"))
-                    or child.get(qn("w:cs"))
+                    child.get(qn("w:ascii")) or child.get(qn("w:hAnsi")) or child.get(qn("w:cs"))
                 )
                 if literal is not None:
                     acc.set("font_name", literal, source)

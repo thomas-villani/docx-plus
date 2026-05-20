@@ -145,11 +145,11 @@ def test_add_caption_round_trip(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "bad_caption_type",
     [
-        "",                       # empty
-        "1Figure",                # starts with digit
-        "Figure 1",               # contains space
-        'Figure" \\f "evil',      # injection attempt — terminates identifier
-        "Figure,evil",            # contains comma
+        "",  # empty
+        "1Figure",  # starts with digit
+        "Figure 1",  # contains space
+        'Figure" \\f "evil',  # injection attempt — terminates identifier
+        "Figure,evil",  # contains comma
     ],
 )
 def test_add_caption_rejects_bad_caption_type(bad_caption_type: str) -> None:

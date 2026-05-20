@@ -97,9 +97,7 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
 
         text = _comment_body_text(comment_el)
 
-        anchored_text, paragraph_index = _anchor_lookup(
-            body, paragraph_elements, str(cid)
-        )
+        anchored_text, paragraph_index = _anchor_lookup(body, paragraph_elements, str(cid))
 
         result.append(
             AnchoredComment(

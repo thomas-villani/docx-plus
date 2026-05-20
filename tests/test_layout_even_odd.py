@@ -65,9 +65,7 @@ def test_enable_appends_when_no_anchor() -> None:
     from docx_plus.layout.settings import _EVEN_AND_ODD_HEADERS_LATER_SIBLINGS
 
     for child in list(settings):
-        if child.tag.startswith(
-            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-        ):
+        if child.tag.startswith("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"):
             local = child.tag.rpartition("}")[2]
             if f"w:{local}" in _EVEN_AND_ODD_HEADERS_LATER_SIBLINGS:
                 settings.remove(child)

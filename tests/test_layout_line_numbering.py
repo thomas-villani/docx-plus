@@ -150,9 +150,7 @@ def test_set_line_numbering_replaces_preexisting_element() -> None:
     """L18: a pre-seeded lnNumType (as if loaded from Word) is replaced in place."""
     doc = Document()
     sect_pr = doc.sections[0]._sectPr
-    sect_pr.append(
-        el("w:lnNumType", **{"w:countBy": "1", "w:restart": "newPage", "w:start": "1"})
-    )
+    sect_pr.append(el("w:lnNumType", **{"w:countBy": "1", "w:restart": "newPage", "w:start": "1"}))
 
     set_line_numbering(doc.sections[0], count_by=7, restart="continuous", start=3)
 

@@ -132,10 +132,7 @@ def test_footnotes_part_round_trip(tmp_path: Path) -> None:
     assert note_ids == ["-1", "0", "1"]
     # Verify the separator types are correctly typed for Word to render the
     # horizontal divider line above the footnote area.
-    types = {
-        n.get(qn("w:id")): n.get(qn("w:type"))
-        for n in root_again
-    }
+    types = {n.get(qn("w:id")): n.get(qn("w:type")) for n in root_again}
     assert types["-1"] == "separator"
     assert types["0"] == "continuationSeparator"
     assert types["1"] is None  # user note has no type attribute
@@ -153,10 +150,7 @@ def test_endnotes_part_round_trip(tmp_path: Path) -> None:
     assert isinstance(part_again, _EndnotesPart)
     note_ids = [n.get(qn("w:id")) for n in root_again]
     assert note_ids == ["-1", "0", "1"]
-    types = {
-        n.get(qn("w:id")): n.get(qn("w:type"))
-        for n in root_again
-    }
+    types = {n.get(qn("w:id")): n.get(qn("w:type")) for n in root_again}
     assert types["-1"] == "separator"
     assert types["0"] == "continuationSeparator"
 
