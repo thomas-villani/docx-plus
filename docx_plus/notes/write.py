@@ -226,9 +226,13 @@ def _edit_note(  # noqa: PLR0913
         raise NoteNotFoundError(note_id)
 
     note_el = matches[0]
+    # Strip ALL block-level children — note bodies can legally contain
+    # tables and SDTs in addition to paragraphs (same reason as
+    # edit_comment, see ECMA-376 17.13.4.2 / footnote equivalents).
+    # The note element's `w:id` / `w:type` attributes live on the
+    # element itself, so removal preserves them.
     for child in list(note_el):
-        if isinstance(child.tag, str) and etree.QName(child.tag).localname == "p":
-            remove(child)
+        remove(child)
     note_el.append(
         _build_note_paragraph(
             text,

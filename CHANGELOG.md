@@ -6,6 +6,37 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — schema / part wiring (Session B of issues.md review)
+
+- **C1** — Fresh `footnotes.xml` / `endnotes.xml` parts are now seeded
+  with the two reserved separator entries (`w:id="-1" w:type="separator"`
+  and `w:id="0" w:type="continuationSeparator"`) Word expects per
+  ECMA-376 17.11.16 / 17.11.7. Without them, Word may surface
+  "needs repair" prompts and strict consumers may reject the file. The
+  `read_footnotes` / `read_endnotes` filter already excludes ids ≤ 0,
+  so user-visible note iteration is unchanged.
+- **C3** — `<w:pgBorders>` child elements are now written in the
+  schema-required sequence `top → left → bottom → right` per
+  ECMA-376 17.6.10. Previous order was `top, bottom, left, right` —
+  permissive consumers accepted it but strict validators rejected.
+- **H6** — `edit_comment` and `edit_footnote` / `edit_endnote` now
+  strip ALL block-level children before re-appending the new paragraph,
+  not just `<w:p>` children. Comments / notes authored elsewhere can
+  legally contain `<w:tbl>`, `<w:sdt>`, `<w:customXml>` per
+  ECMA-376 17.13.4.2 + EG_BlockLevelElts; the prior filter left those
+  siblings next to the new paragraph.
+- **H7** — `set_page_borders` now emits `w:offsetFrom="page"` by
+  default, matching Word's UI emission. A new `offset_from` keyword
+  (`"page"` | `"text"`) lets callers choose. The `Border.space` docstring
+  is corrected: the unit is **points** (range 0-31) per ECMA-376
+  17.6.10, not twips as previously stated. New `OffsetFrom` literal
+  re-exported from `docx_plus.layout`.
+- **H8** — `clear_all_comments` is now single-pass O(N+M): one walk over
+  the document body removing every range marker / reference regardless
+  of id, then one walk over `comments.xml` removing every entry. Prior
+  implementation invoked `delete_comment` per comment, repeating the
+  full-body scan N times.
+
 ### Fixed — cascade correctness (Session A of issues.md review)
 
 - **C2** — Run-level `w:rStyle` now applies *before* direct run rPr per

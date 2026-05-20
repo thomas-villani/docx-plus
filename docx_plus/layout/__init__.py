@@ -27,7 +27,7 @@ context.
 
 from __future__ import annotations
 
-from docx_plus.layout.borders import Border, set_page_borders
+from docx_plus.layout.borders import Border, OffsetFrom, set_page_borders
 from docx_plus.layout.breaks import SectionStartType, insert_section_break
 from docx_plus.layout.columns import set_columns
 from docx_plus.layout.line_numbering import (
@@ -42,6 +42,7 @@ from docx_plus.layout.settings import (
 __all__ = [
     "Border",
     "LineNumberRestart",
+    "OffsetFrom",
     "SectionStartType",
     "disable_distinct_even_odd_headers",
     "enable_distinct_even_odd_headers",

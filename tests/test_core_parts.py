@@ -63,6 +63,9 @@ def test_get_or_create_footnotes_creates_when_absent() -> None:
     assert part.content_type == CT.WML_FOOTNOTES
     assert part.partname == "/word/footnotes.xml"
     assert root.tag == qn("w:footnotes")
+    # ECMA-376 / Word convention: separator + continuationSeparator (C1).
+    note_ids = [n.get(qn("w:id")) for n in root.findall(qn("w:footnote"))]
+    assert note_ids == ["-1", "0"]
 
 
 def test_get_or_create_endnotes_creates_when_absent() -> None:
@@ -72,6 +75,8 @@ def test_get_or_create_endnotes_creates_when_absent() -> None:
     assert part.content_type == CT.WML_ENDNOTES
     assert part.partname == "/word/endnotes.xml"
     assert root.tag == qn("w:endnotes")
+    note_ids = [n.get(qn("w:id")) for n in root.findall(qn("w:endnote"))]
+    assert note_ids == ["-1", "0"]
 
 
 def test_create_wires_relationship_from_document_part() -> None:
@@ -101,7 +106,10 @@ def test_idempotency_preserves_mutations() -> None:
     sub(root, "w:footnote", **{"w:id": "1"})
     _, root_again = get_or_create_part(doc, FOOTNOTES_SPEC)
     assert root is root_again
-    assert len(list(root_again)) == 1
+    # 2 seeded separators (ids -1, 0) + 1 user-added footnote (id 1) = 3.
+    assert len(list(root_again)) == 3
+    note_ids = [n.get(qn("w:id")) for n in root_again]
+    assert note_ids == ["-1", "0", "1"]
 
 
 # --------------------------------------------------------------------------
@@ -119,9 +127,18 @@ def test_footnotes_part_round_trip(tmp_path: Path) -> None:
     reopened = Document(str(out))
     part_again, root_again = get_or_create_part(reopened, FOOTNOTES_SPEC)
     assert isinstance(part_again, _FootnotesPart)
-    # The footnote we wrote made it through the package writer / reader.
+    # The footnote we wrote AND the seeded separators (C1) survive round-trip.
     note_ids = [n.get(qn("w:id")) for n in root_again]
-    assert "1" in note_ids
+    assert note_ids == ["-1", "0", "1"]
+    # Verify the separator types are correctly typed for Word to render the
+    # horizontal divider line above the footnote area.
+    types = {
+        n.get(qn("w:id")): n.get(qn("w:type"))
+        for n in root_again
+    }
+    assert types["-1"] == "separator"
+    assert types["0"] == "continuationSeparator"
+    assert types["1"] is None  # user note has no type attribute
 
 
 def test_endnotes_part_round_trip(tmp_path: Path) -> None:
@@ -135,7 +152,13 @@ def test_endnotes_part_round_trip(tmp_path: Path) -> None:
     part_again, root_again = get_or_create_part(reopened, ENDNOTES_SPEC)
     assert isinstance(part_again, _EndnotesPart)
     note_ids = [n.get(qn("w:id")) for n in root_again]
-    assert "1" in note_ids
+    assert note_ids == ["-1", "0", "1"]
+    types = {
+        n.get(qn("w:id")): n.get(qn("w:type"))
+        for n in root_again
+    }
+    assert types["-1"] == "separator"
+    assert types["0"] == "continuationSeparator"
 
 
 def test_no_part_created_when_not_requested(tmp_path: Path) -> None:

@@ -607,3 +607,34 @@ def test_edit_comment_round_trip(tmp_path: Path) -> None:
     assert len(comments) == 1
     assert comments[0].text == "final review"
     assert comments[0].author == "Bob"
+
+
+def test_edit_comment_strips_non_paragraph_children() -> None:
+    """H6 regression: comments can contain tables / SDTs, not just <w:p>.
+
+    ECMA-376 17.13.4.2 (`CT_Comment`) extends `EG_BlockLevelElts`, which
+    includes `<w:tbl>`, `<w:sdt>`, etc. The edit helper must strip all
+    children, not just paragraphs, or the old block-level content
+    survives next to the new paragraph.
+    """
+    from docx_plus.core.oxml import sub
+
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("hi"), "first draft")
+
+    # Inject a `<w:tbl>` directly into the comment body to simulate a
+    # comment authored elsewhere that contains a block table.
+    comments_part = doc.part.part_related_by(RT.COMMENTS)
+    comment_el = comments_part.element.find(qn("w:comment"))
+    assert comment_el is not None
+    sub(comment_el, "w:tbl")
+    assert comment_el.find(qn("w:tbl")) is not None  # sanity
+
+    edit_comment(doc, ref.comment_id, "rewritten")
+
+    # After edit: exactly one child, the new <w:p>, no leftover <w:tbl>.
+    children = list(comment_el)
+    assert len(children) == 1
+    assert children[0].tag == qn("w:p")
+    assert comment_el.find(qn("w:tbl")) is None

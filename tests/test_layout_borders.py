@@ -43,6 +43,36 @@ def test_set_page_borders_all_four_sides() -> None:
         assert child.get(qn("w:space")) == "24"
 
 
+def test_set_page_borders_child_order_is_top_left_bottom_right() -> None:
+    """ECMA-376 17.6.10 CT_PageBorders requires this child sequence (C3)."""
+    doc = Document()
+    rule = Border()
+    set_page_borders(doc.sections[0], top=rule, bottom=rule, left=rule, right=rule)
+
+    pg = _pg_borders(doc.sections[0])
+    assert pg is not None
+    actual_order = [child.tag for child in pg]
+    expected_order = [qn(t) for t in ("w:top", "w:left", "w:bottom", "w:right")]
+    assert actual_order == expected_order
+
+
+def test_set_page_borders_emits_offset_from_page_by_default() -> None:
+    """Default ``offset_from="page"`` matches Word's UI emission (H7)."""
+    doc = Document()
+    set_page_borders(doc.sections[0], top=Border())
+    pg = _pg_borders(doc.sections[0])
+    assert pg is not None
+    assert pg.get(qn("w:offsetFrom")) == "page"
+
+
+def test_set_page_borders_accepts_offset_from_text() -> None:
+    doc = Document()
+    set_page_borders(doc.sections[0], top=Border(), offset_from="text")
+    pg = _pg_borders(doc.sections[0])
+    assert pg is not None
+    assert pg.get(qn("w:offsetFrom")) == "text"
+
+
 def test_set_page_borders_only_top() -> None:
     """Sides set to ``None`` are omitted from the emitted XML."""
     doc = Document()

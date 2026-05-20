@@ -173,38 +173,55 @@ def edit_comment(doc: Document, comment_id: int, text: str) -> None:
         raise CommentNotFoundError(comment_id)
 
     comment_el = matches[0]
+    # Strip ALL block-level children — ECMA-376 17.13.4.2 (`CT_Comment`)
+    # extends `EG_BlockLevelElts`, so a comment authored in Word may
+    # legally contain `<w:tbl>`, `<w:sdt>`, `<w:customXml>`, etc. in
+    # addition to paragraphs. Filtering to `<w:p>` only would leave
+    # those siblings next to the freshly built paragraph. The comment
+    # element's own attributes (author / date / initials) live on the
+    # element itself, not on its children, so removal is safe.
     for child in list(comment_el):
-        if isinstance(child.tag, str) and etree.QName(child.tag).localname == "p":
-            remove(child)
+        remove(child)
     comment_el.append(_build_comment_paragraph(text))
 
 
 def clear_all_comments(doc: Document) -> None:
     """Remove every comment in the document.
 
-    Iterates the ``comments.xml`` part for ``w:id`` values and routes
-    each through :func:`delete_comment`. The comments part itself is
-    left in place (empty) so subsequent calls to :func:`add_comment`
-    reuse it without re-creating the relationship. Idempotent: a
-    document with no comments is a no-op.
+    Single-pass: walks the document body once removing every
+    ``<w:commentRangeStart>``, ``<w:commentRangeEnd>``, and
+    ``<w:commentReference>`` marker regardless of id, then walks
+    ``comments.xml`` once removing every ``<w:comment>`` entry. The
+    comments part itself is left in place (empty) so subsequent calls
+    to :func:`add_comment` reuse it without re-creating the
+    relationship. Idempotent: a document with no comments is a no-op.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to scrub.
     """
+    body = doc.element.body
+
+    for tag_expr in (
+        ".//w:commentRangeStart",
+        ".//w:commentRangeEnd",
+    ):
+        for elem in xpath(body, tag_expr):
+            remove(elem)
+
+    for ref in xpath(body, ".//w:commentReference"):
+        run = ref.getparent()
+        if run is not None and run.tag == qn("w:r"):
+            remove(run)
+        else:
+            remove(ref)
+
     try:
         comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))
     except KeyError:
         return
     comments_root = comments_part.element
     for comment_el in list(comments_root.findall(qn("w:comment"))):
-        raw_id = comment_el.get(qn("w:id"))
-        if raw_id is None:
-            continue
-        try:
-            comment_id = int(raw_id)
-        except ValueError:
-            continue
-        delete_comment(doc, comment_id)
+        remove(comment_el)
 
 
 def delete_comment(doc: Document, comment_id: int) -> None:

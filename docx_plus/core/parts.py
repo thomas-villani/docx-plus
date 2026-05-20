@@ -99,6 +99,37 @@ def _empty_root(local_name: str) -> bytes:
     )
 
 
+def _notes_root_with_separators(root_tag: str, child_tag: str, marker_tag: str) -> bytes:
+    """Return a footnotes / endnotes root pre-seeded with separator entries.
+
+    ECMA-376 17.11.16 / 17.11.20 ("Footnote / Endnote Separator") and
+    17.11.7 ("Continuation Separator") describe two reserved entries Word
+    expects in every footnotes.xml / endnotes.xml: ``w:id="-1"`` with
+    ``w:type="separator"`` (the horizontal line between body text and the
+    first footnote on a page) and ``w:id="0"`` with
+    ``w:type="continuationSeparator"`` (the line for footnotes that span
+    pages). Omitting them produces files that Word may surface "needs
+    repair" prompts for, and that strict consumers may reject. The ids
+    -1 and 0 are reserved (see :class:`~docx_plus.notes.registry`); user
+    notes start at 1.
+    """
+    enc = root_tag.encode()
+    child = child_tag.encode()
+    marker = marker_tag.encode()
+    cont = b"continuationSeparator"
+    return (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        b'<w:' + enc + b' xmlns:w="' + _W_NS.encode() + b'">'
+        b'<w:' + child + b' w:id="-1" w:type="separator">'
+        b'<w:p><w:r><w:' + marker + b'/></w:r></w:p>'
+        b'</w:' + child + b'>'
+        b'<w:' + child + b' w:id="0" w:type="continuationSeparator">'
+        b'<w:p><w:r><w:' + cont + b'/></w:r></w:p>'
+        b'</w:' + child + b'>'
+        b'</w:' + enc + b'>'
+    )
+
+
 COMMENTS_SPEC = PartSpec(
     partname="/word/comments.xml",
     content_type=CT.WML_COMMENTS,
@@ -110,14 +141,14 @@ FOOTNOTES_SPEC = PartSpec(
     partname="/word/footnotes.xml",
     content_type=CT.WML_FOOTNOTES,
     relationship_type=RT.FOOTNOTES,
-    root_xml=_empty_root("footnotes"),
+    root_xml=_notes_root_with_separators("footnotes", "footnote", "separator"),
 )
 
 ENDNOTES_SPEC = PartSpec(
     partname="/word/endnotes.xml",
     content_type=CT.WML_ENDNOTES,
     relationship_type=RT.ENDNOTES,
-    root_xml=_empty_root("endnotes"),
+    root_xml=_notes_root_with_separators("endnotes", "endnote", "separator"),
 )
 
 

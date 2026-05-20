@@ -110,7 +110,8 @@ def test_add_footnote_reuses_part() -> None:
     first_part = _footnote_part(doc)
     add_footnote(p, "y")
     assert _footnote_part(doc) is first_part
-    assert len(xpath(first_part.element, "./w:footnote")) == 2
+    # 2 seeded separator entries (-1, 0) + 2 user-added footnotes = 4.
+    assert len(xpath(first_part.element, "./w:footnote")) == 4
 
 
 # --------------------------------------------------------------------------
@@ -414,3 +415,32 @@ def test_edit_footnote_round_trip(tmp_path: Path) -> None:
 
     reopened = Document(str(out))
     assert [n.text for n in read_footnotes(reopened)] == ["final"]
+
+
+def test_edit_footnote_strips_non_paragraph_children() -> None:
+    """H6 regression: footnote bodies can contain tables, not just <w:p>."""
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    from docx_plus.core.oxml import sub
+
+    doc = Document()
+    p = doc.add_paragraph("anchor")
+    ref = add_footnote(p, "draft")
+
+    # Inject a <w:tbl> into the footnote body to simulate richer authoring.
+    footnotes_part = doc.part.part_related_by(RT.FOOTNOTES)
+    note_el = None
+    for el_ in footnotes_part.element.findall(qn("w:footnote")):
+        if el_.get(qn("w:id")) == str(ref.note_id):
+            note_el = el_
+            break
+    assert note_el is not None
+    sub(note_el, "w:tbl")
+    assert note_el.find(qn("w:tbl")) is not None  # sanity
+
+    edit_footnote(doc, ref.note_id, "rewritten")
+
+    children = list(note_el)
+    assert len(children) == 1
+    assert children[0].tag == qn("w:p")
+    assert note_el.find(qn("w:tbl")) is None

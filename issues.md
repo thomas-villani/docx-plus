@@ -11,9 +11,11 @@ commit messages and PR titles so we can cross-reference here.
 ## Status
 
 - **Session A — cascade correctness — DONE.** C2, H1, H2, H4, H5
-  resolved (11 new tests; 567 total pass; mypy strict + ruff clean).
-  H3 closed as **wontfix** — see annotation under the finding.
-- All other sessions pending.
+  resolved (11 new tests; mypy strict + ruff clean). H3 closed as
+  **wontfix** — see annotation under the finding.
+- **Session B — schema / part wiring — DONE.** C1, C3, H6, H7, H8
+  resolved (5 new tests, 572 total pass; mypy strict + ruff clean).
+- Sessions C–F pending.
 
 ## Stats
 
@@ -59,6 +61,7 @@ items. Everything else can ship in v0.2.1 if needed.
 ## Critical
 
 ### C1: Footnotes/endnotes parts created without required separator entries
+- **Status:** ✅ RESOLVED (Session B) — `FOOTNOTES_SPEC` and `ENDNOTES_SPEC` now use a new `_notes_root_with_separators` helper that pre-seeds the part with the two reserved entries on first creation. `read_footnotes` / `read_endnotes` already filter ids ≤ 0 so user-visible iteration is unaffected. Round-trip tests pin both the seed presence and the `w:type` attribute on each separator.
 - **Subsystem:** core / notes
 - **Location:** `docx_plus/core/parts.py:95-99` (`_empty_root`), `docx_plus/notes/write.py:_add_note`
 - **Description:** When `add_footnote` / `add_endnote` first runs, `get_or_create_part` fabricates a new `footnotes.xml` / `endnotes.xml` from `_empty_root("footnotes")` which produces just `<w:footnotes/>` — no `<w:footnote w:id="-1" w:type="separator">` or `<w:footnote w:id="0" w:type="continuationSeparator">` entries. Word expects those entries to be present and uses them to render the horizontal separator line between body text and the first footnote on a page; some Word versions will offer a "repair file" prompt when opening a docx that has user-authored footnotes but no separator entries. This is the primary reason the registry code carefully reserves ids `-1`/`0` — they're meant to be in the part. The library never writes them.
@@ -72,6 +75,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Move the `run_style_id` block (lines 411-414) so it runs *before* the `run_rpr` block at 408-410, and promote it to a distinct layer name (e.g. `"runStyle"`) instead of reusing `"linkedCharStyle"` so provenance can tell the two apart. Add a regression test: rStyle setting bold + direct `<w:b w:val="false"/>` on the same run must resolve `bold=False`.
 
 ### C3: `set_page_borders` emits children in `top,bottom,left,right` order — schema requires `top,left,bottom,right`
+- **Status:** ✅ RESOLVED (Session B) — emission loop reordered to schema sequence. New `test_set_page_borders_child_order_is_top_left_bottom_right` walks the children and asserts the exact order (not just set membership).
 - **Subsystem:** layout
 - **Location:** `docx_plus/layout/borders.py:110-115`
 - **Description:** ECMA-376 17.6.10 `CT_PageBorders` defines the four side children as a fixed sequence `top → left → bottom → right`. The current code loops in the order `top, bottom, left, right`. A schema-strict consumer (Word's xml validator in some configurations; downstream OOXML libraries; ECMA-376 schema validators) will reject the output. python-docx's own internal validators are permissive so the local round-trip tests pass, masking the bug.
@@ -133,18 +137,21 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Either (a) extend `TableContext` with `is_band2_row` / `is_band2_col`, derive as the complement of band1 (taking band-size into account), and emit those branches; or (b) explicitly drop band2 strings from `_TBL_STYLE_PR_ORDER` and document the limitation crisply.
 
 ### H6: `edit_comment` / `_edit_note` only remove `<w:p>` children — other block-level descendants leak through
+- **Status:** ✅ RESOLVED (Session B) — both helpers now strip every child element (unconditionally) before appending the new paragraph. Element-level attributes (`author`/`date`/`initials` on comments; `w:id`/`w:type` on notes) live on the element itself and are preserved. Two new tests inject a `<w:tbl>` into the body and assert it's removed by the edit call.
 - **Subsystem:** comments / notes
 - **Location:** `docx_plus/comments/anchor.py:176-178`, `docx_plus/notes/write.py:229-231`
 - **Description:** Both edit helpers filter children to `localname == "p"`, removing only paragraph children before appending the new paragraph. ECMA-376 17.13.4.2 (`CT_Comment`) and the footnote/endnote equivalents extend `EG_BlockLevelElts`, which legally includes `<w:tbl>`, `<w:customXml>`, `<w:sdt>`, etc. A comment authored in Word with an embedded table will, after `edit_comment`, end up with the OLD table next to the NEW paragraph — a hybrid body the caller never intended.
 - **Suggestion:** Strip all children unconditionally (`for child in list(comment_el): comment_el.remove(child)`), then append the new paragraph. Attributes (`author`, `date`, `initials`) live on the element itself, not on its children, so removal is safe.
 
 ### H7: `set_page_borders` omits `w:offsetFrom` — visual output won't match Word UI
+- **Status:** ✅ RESOLVED (Session B) — `<w:pgBorders w:offsetFrom="page"/>` is now the default, matching Word's UI emission. New `offset_from: Literal["page", "text"] = "page"` kwarg lets callers pick. New `OffsetFrom` literal re-exported from `docx_plus.layout`. Also corrected the `Border.space` docstring (M5 partial): the unit is **points** (range 0-31), not twips.
 - **Subsystem:** layout
 - **Location:** `docx_plus/layout/borders.py:109`
 - **Description:** ECMA-376 17.6.10 declares optional attributes on `CT_PageBorders`: `w:zOrder`, `w:display`, `w:offsetFrom`. Word's UI default for "Page Border: Box, Whole Document" emits `w:offsetFrom="page"` — offsets measured from page edge (the standard decorative-border look). With no `offsetFrom`, Word's documented default is `"text"`, which measures the gap from body text, producing a tight inner box that visually does not match the UI. `Border.space=24` default the docstring describes as "the value Word's UI emits for Whole document, Box, Default settings" is consistent with `offsetFrom="page"`, so the docstring and the emitted XML disagree.
 - **Suggestion:** Either emit `w:offsetFrom="page"` by default on `<w:pgBorders>`, or add `offset_from: Literal["page", "text"] = "page"` keyword on `set_page_borders` and write the attribute.
 
 ### H8: `clear_all_comments` is O(N×M)
+- **Status:** ✅ RESOLVED (Session B) — rewritten as a single body-walk that removes every range marker / reference regardless of id (two `xpath(body, ".//w:commentRange*")` + one `xpath(body, ".//w:commentReference")`), followed by one walk over `comments.xml` removing every entry. Existing 5 `clear_*` tests pass unchanged.
 - **Subsystem:** comments
 - **Location:** `docx_plus/comments/anchor.py:182-207`
 - **Description:** Function calls `delete_comment(doc, comment_id)` in a loop; each call runs three full-body XPaths plus another against the comments part. For N comments and body size M that's O(N×M). Functionally correct, but the function exists specifically as the bulk operation — exactly where the per-comment scan is wrong.
