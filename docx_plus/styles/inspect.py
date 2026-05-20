@@ -58,6 +58,12 @@ class TableContext:
     where the application or user explicitly set the band size, but
     misses style-defined band sizes (deferred to v0.3+).
 
+    Scope: this context selects which ``<w:tblStylePr>`` branches apply,
+    but only their **run / paragraph** properties are resolved. Cell-,
+    row-, and table-level properties (``<w:tcPr>`` / ``<w:trPr>`` /
+    ``<w:tblPr>``) from a table style are not surfaced — see the
+    :func:`resolve_effective_formatting` note.
+
     Attributes:
         is_first_row: Cell is in the first ``<w:tr>`` of its table.
         is_last_row: Cell is in the last ``<w:tr>``.
@@ -244,6 +250,15 @@ def resolve_effective_formatting(
     ``firstCol``, ``lastCol``, ``band1Horz``, ``band1Vert``, the four
     corners, and ``wholeTable``) is applied on top of the base table
     style in ECMA-376 17.7.6.5 precedence order.
+
+    Note:
+        Only **run- and paragraph-level** properties are resolved (the
+        ``<w:rPr>`` / ``<w:pPr>`` carried by a style's base and its
+        ``<w:tblStylePr>`` branches). Cell-, row-, and table-level
+        properties (``<w:tcPr>`` cell shading and margins, ``<w:trPr>``
+        row heights, ``<w:tblPr>`` table defaults) declared by a table
+        style are **not** surfaced on :class:`ResolvedFormatting` — that
+        belongs to a separate cell-formatting resolver deferred to v0.3+.
 
     Args:
         target: A python-docx :class:`~docx.text.paragraph.Paragraph`,

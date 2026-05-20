@@ -4,7 +4,7 @@ A Word caption is a paragraph that opens with a label run (e.g.
 ``"Figure "``) followed by a ``SEQ`` complex field that auto-numbers
 items of the same caption type. The Table of Figures (see
 ``docx_plus.publishing.figures``) picks up captions whose ``SEQ`` name
-matches its ``\\c`` switch.
+matches its ``\c`` switch.
 
 This module imports only from ``docx_plus.core`` (SPEC §9.1).
 """

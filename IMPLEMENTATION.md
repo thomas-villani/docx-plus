@@ -509,6 +509,46 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
+### 2026-05-19 — v0.2.0 pre-publication code/docs review — in progress
+
+Systematic review of the v0.2 in-place expansion before tagging.
+Findings compiled in `issues.md` (79 total: 5 Critical, 17 High, 23
+Medium, 21 Low, 13 Nit), resolved across themed sessions, each a
+separate commit cross-referencing finding ids.
+
+- **Session A — cascade correctness.** C2 (run `rStyle` applies before
+  direct rPr), H1 (table-style row/col precedence), H2 (`dstrike` read +
+  surfaced), H4/H5 (band2 reachability + instance band-size). H3 closed
+  wontfix (paragraph-mark rPr scope is the pilcrow, per ECMA-376
+  17.3.1.31).
+- **Session B — schema / part wiring.** C1 (footnote/endnote separator
+  seeding), C3 (`pgBorders` child order), H6 (edit verbs strip all
+  block-level children), H7 (`offsetFrom` + points unit), H8
+  (single-pass `clear_all_comments`).
+- **Session C — error taxonomy + interleave.** C4 (SPEC §9.7/§16 raw-
+  exception carve-out), H9 (single-walk table-style chain), H10 (drop
+  duplicated `insert_before_first_anchor`), M1/M2 (field instruction
+  validation).
+- **Session D — publishing hardening.** H11/M16 (field-instruction
+  injection validation), H12 (`add_toc` levels validation), H13
+  (`additional_styles` / `\t` switch), M14 (Caption-style doc note),
+  M15 (optional `label`). New `publishing/_validate.py`.
+- **Session E — docs / release-day.** H17 (six toggles writable via
+  `create_style`/`modify_style`, +12 round-trip tests — the one code
+  change in this session); H14 (test count refresh — this entry); H15/
+  M17 (four undocumented errors + reference `members:` audit, eight
+  drifted symbols restored); H16 (SPEC reframed as v0.1 contract +
+  §15 annotated); M4/M8/M19 (docstring `Raises` / scope notes); C5
+  (alpha→beta classifier; PyPI banner deferred to a publish decision);
+  nits N1/N3/N9/N10/N13.
+
+- **Gates green at Session E.** 631 tests pass; `mypy --strict` clean;
+  `ruff check` clean; `mkdocs build --strict` clean.
+- **Held for Session F (tests & smells).** Behavioural-code Mediums
+  (M3, M5–M7, M9–M13, M18), code-hygiene nits (N2, N4–N8, N11, N12),
+  the Low findings L1–L21, and M20–M23. These need careful test
+  coverage and were intentionally not folded into the docs commit.
+
 ### 2026-05-19 — v0.2 in-place expansion — complete
 
 Locked scope per `notes-v0_2-expansion-scope.md` at repo root: extend

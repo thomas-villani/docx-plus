@@ -64,8 +64,10 @@ The foundation primitives. Every capability module imports from here only.
 | `IdRegistry.next()` | method | Issue a fresh 31-bit positive `w:id` |
 | `IdRegistry.reserve(value)` | method | Reserve a specific value or raise `DuplicateIdError` |
 | `IdRegistry.issued()` | method | Frozenset snapshot of all issued IDs |
-| `DuplicateIdError` | exception | Dual-bases: `DocxPlusError, ValueError` |
+| `DuplicateIdError` | exception | Dual-bases: `DocxPlusError, ValueError`. `reserve()` on an already-issued value |
+| `IdRangeError` | exception | Dual-bases: `DocxPlusError, ValueError`. A reserved id falls outside the 31-bit positive range |
 | `qn(name)` | function | `"w:tag"` → Clark-notation `{namespace}tag` |
+| `InvalidNamespaceError` | exception | Dual-bases: `DocxPlusError, ValueError`. `qn()` got a malformed name or unknown prefix |
 | `NSMAP` | dict | The library's pre-bound namespace map (`w`, `w14`, `r`, `mc`, `a`, `xml`) |
 | `XML` | str | XML namespace URI (added Phase 5 to make `qn("xml:space")` work for `w:instrText`) |
 | `el(tag, **attrs)` | function | Create a namespaced element |
@@ -116,6 +118,7 @@ Style creation, modification, application, removal, and reconciliation.
 | `StyleNotFoundError` | exception | Referenced ID not defined |
 | `StyleInUseError` | exception | `delete_style` without `force=True` on referenced style |
 | `UnknownStylePropertyError` | exception | Dual-bases: `DocxPlusError, TypeError`. Unknown `**properties` kwarg |
+| `InvalidColorError` | exception | Dual-bases: `DocxPlusError, ValueError`. A `color_rgb` value that isn't valid `RRGGBB` hex |
 
 #### Properties accepted by `create_style` / `modify_style`
 
@@ -163,6 +166,7 @@ Architecture walkthrough in [`ARCHITECTURE.md` §6](ARCHITECTURE.md#6-content-co
 | `FormBuilder.save(path)` | method | Save the wrapped document. Returns the path as `str` |
 | `DropdownItem` | type alias | `str | tuple[str, str]` — display-only or `(display, value)` |
 | `MissingNamespaceError` | exception | Document root doesn't declare `w14` — `add_checkbox` would emit unrenderable XML |
+| `InvalidDropdownItemError` | exception | Dual-bases: `DocxPlusError, TypeError`. An `items` entry that isn't a `str` or `(display, value)` tuple |
 
 ### `docx_plus.controls` — read side
 

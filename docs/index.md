@@ -5,7 +5,8 @@ the library every python-docx power user ends up writing badly: hardened
 helpers for OOXML operations that sit just past python-docx's
 abstraction boundary.
 
-Status: **v0.2 complete**. Pre-publication — not yet on PyPI.
+Status: **v0.2.0 complete** and awaiting release. v0.1.0 is published on
+[PyPI](https://pypi.org/project/docx-plus/).
 
 ## Capabilities
 

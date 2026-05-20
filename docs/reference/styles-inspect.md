@@ -12,6 +12,7 @@ the algorithm walkthrough and the toggle semantics.
       members:
         - resolve_effective_formatting
         - ResolvedFormatting
+        - TableContext
         - FormattingSource
         - StyleCascadeError
         - MissingPartError

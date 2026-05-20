@@ -35,9 +35,10 @@ can't reach.
   table captions (`add_caption`), Table of Figures
   (`add_table_of_figures`) (v0.2).
 
-> **Status:** v0.2 complete. Pre-publication — not yet on PyPI. Read
-> [`SPEC.md`](SPEC.md) for the API contract and
-> [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the build plan.
+> **Status:** v0.1.0 is published on
+> [PyPI](https://pypi.org/project/docx-plus/); v0.2.0 (this branch) is
+> complete and awaiting release. Read [`SPEC.md`](SPEC.md) for the API
+> contract and [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the build plan.
 
 ## Install (development)
 
@@ -339,19 +340,18 @@ placeholder text, and password-protected forms. Open an issue if
 your use case needs any of these.
 
 <details>
-<summary>Build phases (for contributors)</summary>
+<summary>Build history (for contributors)</summary>
 
-| Phase | Deliverable | Status |
-|---|---|---|
-| 1 | Foundation (`core/ns`, `core/oxml`, `core/ids`, `_testing/`) | ✓ complete |
-| 2 | Style inspection (`styles/inspect`, `styles/theme`) | ✓ complete |
-| 3 | Style modification (`styles/modify`) | ✓ complete |
-| 3.5 | Style remapping (`find_matching_style`, `remap_styles`, `ensure_style(match_existing=)`) | ✓ complete |
-| 4 | Content controls (`controls/`) | ✓ complete |
-| 5 | Fields + document protection (`fields/`, `protection/`) | ✓ complete |
-| 6 | Polish — examples, headless LibreOffice smoke tests, CI doc build | ✓ complete |
-| v0.2.0 | `core/parts`, `comments/`, `layout/`, `bookmarks/`, `notes/` | ✓ complete |
-| v0.2 expansion | Toggle props, in-place edits, line numbering, page borders, conditional table styles, `publishing/` | ✓ complete |
+- **v0.1.0** — complete: foundation (`core/`), style inspection +
+  modification + remapping (`styles/`), content controls (`controls/`),
+  fields + document protection (`fields/`, `protection/`), and release
+  polish (examples, LibreOffice smoke tests, CI doc build).
+- **v0.2.0** — complete: `core/parts`, `comments/`, `layout/`,
+  `bookmarks/`, `notes/`, plus the in-place expansion (toggle
+  properties, in-place edit verbs, line numbering, page borders,
+  conditional table styles, and the `publishing/` module).
+
+The per-phase log with dates lives in `IMPLEMENTATION.md` §12.
 
 </details>
 

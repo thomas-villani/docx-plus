@@ -6,6 +6,60 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — style writer parity (Session E of issues.md review)
+
+- **H17** — `create_style` / `modify_style` now accept the six toggle
+  properties the cascade resolver already surfaces but the writer
+  could not previously produce: `cs_bold` (→ `<w:bCs>`), `cs_italic`
+  (→ `<w:iCs>`), `emboss`, `imprint`, `outline`, `shadow`. A
+  `ResolvedFormatting` read can now round-trip back through the writer
+  for all twelve ECMA-376 17.7.3 toggles instead of hitting
+  `UnknownStylePropertyError` on the six new ones. 12 new round-trip
+  tests.
+
+### Fixed — docs reconciliation + classifier (Session E of issues.md review)
+
+- **C5** — `pyproject.toml` development-status classifier bumped from
+  `3 - Alpha` to `4 - Beta` (conventional for a pre-1.0 surface this
+  size). `pyproject.toml` package description now lists `publishing`.
+  (PyPI publication banner left as-is pending a publish decision; the
+  in-docs `SPEC §…` references are prose, not links — `mkdocs build
+  --strict` is clean.)
+- **H14** — `docs/ARCHITECTURE.md` §10 test count refreshed (was the
+  stale "532"); a new `IMPLEMENTATION.md` §12 progress-log entry
+  records the pre-publication review.
+- **H15 / M17** — the four exported-but-undocumented exception classes
+  (`IdRangeError`, `InvalidNamespaceError`, `InvalidColorError`,
+  `InvalidDropdownItemError`) are now documented in
+  `docs/ARCHITECTURE.md` §9 and `docs/API.md`. Audited every
+  `docs/reference/*.md` `members:` list against its module's
+  `__all__`; added the eight v0.2 symbols that had drifted out of the
+  rendered reference (edit verbs, `clear_all_comments`, `TableContext`,
+  `OffsetFrom`, `build_complex_field`, `insert_before_first_anchor`,
+  `XML`, and the new errors).
+- **H16** — `SPEC.md` reframed: a status banner marks it the original
+  v0.1 design contract and points to `ARCHITECTURE.md` §11 for the live
+  roadmap; §15's deferred list is annotated shipped-vs-deferred (§16's
+  error table was already current as of Session C).
+- **M4** — `edit_comment` / `edit_footnote` / `edit_endnote` `Raises`
+  blocks now note that the not-found errors subclass `KeyError`
+  (SPEC §16). Also corrected their docstrings (strip "all child
+  block-level content", not just paragraphs — matches the H6 fix).
+- **M8** — documented that the cascade resolver surfaces only run /
+  paragraph properties from table styles; cell / row / table-level
+  properties (`<w:tcPr>` / `<w:trPr>` / `<w:tblPr>`) are not resolved
+  (deferred to v0.3+). Noted on `resolve_effective_formatting` and
+  `TableContext`.
+- **M19** — `insert_section_break` `Raises` block now documents the
+  second `ValueError` (document has no trailing `<w:sectPr>`).
+- **N3** — fixed `\\c` → `\c` in the publishing modules' raw (`r"""`)
+  docstrings (double backslash rendered literally).
+- **N9 / N10 / N13** — `pyproject.toml` / `mkdocs.yml` descriptions
+  mention `publishing`; the README build-phases table collapsed to a
+  compact v0.1 / v0.2 summary pointing at `IMPLEMENTATION.md` §12; the
+  CHANGELOG's initial-cycle comment / footnote bullets now forward-point
+  to the in-place edit verbs added later in this release.
+
 ### Added — publishing hardening (Session D of issues.md review)
 
 - **H13** — `add_toc` gained an optional `additional_styles` keyword:
@@ -141,7 +195,9 @@ of Figures); see `notes-v0_2-expansion-scope.md` at repo root.
   writes the `<w:comment>` body but skips the three body-side anchors
   (`commentRangeStart` / `commentRangeEnd` / the `CommentReference`
   marker run); `add_comment` writes all four, plus creates the comments
-  part on first use. Comment threading (w15) deferred to v0.3.
+  part on first use. Comment threading (w15) deferred to v0.3. In-place
+  `edit_comment` / `clear_all_comments` were added later in this release
+  — see "Added — in-place expansion" below.
 - **Layout extras** (`docx_plus.layout`) — `set_columns` for `<w:cols>`,
   `insert_section_break` for mid-document section breaks (copies the
   trailing `sectPr`'s properties into the chosen paragraph), and
@@ -156,7 +212,9 @@ of Figures); see `notes-v0_2-expansion-scope.md` at repo root.
   `add_endnote`, `read_footnotes`, `read_endnotes`, paired
   `FootnoteIdRegistry` / `EndnoteIdRegistry`. Reserved ids -1 / 0
   (separator / continuationSeparator) are unissuable; `read_*` filters
-  separator entries out of results.
+  separator entries out of results. Insert-only in the initial cycle;
+  in-place `edit_footnote` / `edit_endnote` were added later in this
+  release — see "Added — in-place expansion" below.
 - **`core/parts.py` foundation** — `get_or_create_part(doc, spec)` for
   separate OOXML parts (`comments.xml`, `footnotes.xml`,
   `endnotes.xml`). Registers `XmlPart` subclasses for footnote /

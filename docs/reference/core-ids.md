@@ -9,3 +9,4 @@ uniqueness domains and will get their own registries in later phases.
       members:
         - IdRegistry
         - DuplicateIdError
+        - IdRangeError

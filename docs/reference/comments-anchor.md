@@ -12,6 +12,9 @@ Architecture walkthrough: [`ARCHITECTURE.md` §7.6](../ARCHITECTURE.md#76-anchor
     options:
       members:
         - add_comment
+        - edit_comment
         - delete_comment
+        - clear_all_comments
         - CommentRef
         - CommentTarget
+        - CommentNotFoundError

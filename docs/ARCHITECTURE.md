@@ -768,10 +768,13 @@ sentence) calls for it.
 |---|---|---|---|
 | `DocxPlusError` | `Exception` | `core/__init__.py` | Root of the hierarchy. Catch this to catch every library error |
 | `DuplicateIdError` | `DocxPlusError`, `ValueError` | `core/ids.py` | `IdRegistry.reserve(n)` called on an already-issued value |
+| `IdRangeError` | `DocxPlusError`, `ValueError` | `core/ids.py` | A reserved id falls outside the 31-bit positive range OOXML ids must occupy |
+| `InvalidNamespaceError` | `DocxPlusError`, `ValueError` | `core/ns.py` | `qn()` given a malformed name or an unknown namespace prefix |
 | `StyleExistsError` | `DocxPlusError` | `styles/modify.py` | `create_style` called on an ID already defined |
 | `StyleNotFoundError` | `DocxPlusError` | `styles/modify.py` | `apply_style`/`modify_style`/`delete_style` referenced an undefined ID |
 | `StyleInUseError` | `DocxPlusError` | `styles/modify.py` | `delete_style` (without `force=True`) on a referenced style |
 | `UnknownStylePropertyError` | `DocxPlusError`, `TypeError` | `styles/modify.py` | Unrecognised `**properties` kwarg. SPEC §5 says these raise `TypeError`; dual inheritance lets both contracts hold |
+| `InvalidColorError` | `DocxPlusError`, `ValueError` | `styles/modify.py` | A `color_rgb` value on `create_style`/`modify_style` that isn't a valid `RRGGBB` hex string |
 | `StyleCascadeError` | `DocxPlusError` | `styles/inspect.py` | `basedOn` chain cycles or exceeds depth 11 |
 | `MissingPartError` | `DocxPlusError` | `styles/inspect.py` | A referenced part is required but absent (currently unused — see §2 layer 4) |
 | `ThemeError` | `DocxPlusError` | `styles/theme.py` | Structurally invalid theme input to the transform functions |
@@ -780,6 +783,7 @@ sentence) calls for it.
 | `DuplicateTagError` | `DocxPlusError`, `ValueError` | `controls/read.py` | `read_controls` found two SDTs sharing a tag (v0.1 doesn't support repeating sections) |
 | `ValueNotInListError` | `DocxPlusError`, `ValueError` | `controls/read.py` | `set_control_value` against a dropdown got a value that matches no item (combobox is exempt — it accepts freeform) |
 | `ControlTypeError` | `DocxPlusError`, `TypeError` | `controls/read.py` | `set_control_value` got a value whose Python type doesn't match the control type (e.g. `str` to a checkbox) |
+| `InvalidDropdownItemError` | `DocxPlusError`, `TypeError` | `controls/builder.py` | A dropdown/combobox `items` entry that isn't a `str` or a `(display, value)` tuple |
 
 `fields/` and `protection/` deliberately add **no new error classes**.
 Their argument types are `Literal[...]` so mypy catches misuse
@@ -818,11 +822,14 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **532 tests** at end of the v0.2
-  in-place expansion: v0.1's surface (319 tests) plus the v0.2 cycle
-  — `core/parts` (13), `comments/` (35), `layout/` (47), `bookmarks/`
-  + cross-refs (26), `notes/` (34), `styles/` table conditional (13),
-  `publishing/` (23) — plus example smoke tests for the new demos.
+  I/O beyond reading fixtures. **631 tests** at the v0.2.0 release:
+  v0.1's surface (319 tests) plus the v0.2 cycle — `core/parts` (13),
+  `comments/` (35), `layout/` (47), `bookmarks/` + cross-refs (26),
+  `notes/` (34), `styles/` table conditional (13), `publishing/` (23)
+  — plus example smoke tests for the new demos, plus the regression
+  coverage added by the pre-publication code/docs review (cascade
+  correctness, schema/part wiring, error taxonomy, publishing
+  validation, and the six newly-writable run toggles).
 - **Layer 2 — round-trip tests.** Build → save → reopen with
   `python-docx` → assert. The high-value class for OOXML
   correctness (`IMPLEMENTATION.md §8`). Phase 5 added round-trips for

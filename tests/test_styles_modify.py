@@ -268,6 +268,48 @@ def test_font_name_round_trip() -> None:
     assert resolve_effective_formatting(p).font_name == "Arial"
 
 
+# issues.md H17: the six toggles the resolver surfaces but the writer
+# couldn't previously produce. Each maps a ResolvedFormatting field to its
+# rPr tag; round-trip proves the writer emits XML the resolver reads back.
+@pytest.mark.parametrize(
+    ("prop", "tag"),
+    [
+        ("cs_bold", "bCs"),
+        ("cs_italic", "iCs"),
+        ("emboss", "emboss"),
+        ("imprint", "imprint"),
+        ("outline", "outline"),
+        ("shadow", "shadow"),
+    ],
+)
+def test_new_toggle_true_round_trip(prop: str, tag: str) -> None:
+    doc = Document()
+    create_style(doc, "S", **{prop: True})
+    p = _paragraph_with_style(doc, "S")
+    r = p.add_run("text")  # type: ignore[attr-defined]
+    assert getattr(resolve_effective_formatting(r), prop) is True
+
+
+@pytest.mark.parametrize(
+    ("prop", "tag"),
+    [
+        ("cs_bold", "bCs"),
+        ("cs_italic", "iCs"),
+        ("emboss", "emboss"),
+        ("imprint", "imprint"),
+        ("outline", "outline"),
+        ("shadow", "shadow"),
+    ],
+)
+def test_new_toggle_false_writes_explicit_val_false(prop: str, tag: str) -> None:
+    doc = Document()
+    proxy = create_style(doc, "S", **{prop: False})
+    rpr = proxy.element.find(qn("w:rPr"))
+    flag = rpr.find(qn(f"w:{tag}"))
+    assert flag is not None
+    assert flag.get(qn("w:val")) == "false"
+
+
 # --------------------------------------------------------------------------
 # Schema-correct child ordering.
 # --------------------------------------------------------------------------

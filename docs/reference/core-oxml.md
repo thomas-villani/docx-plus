@@ -11,3 +11,5 @@ invariant 2.
         - sub
         - xpath
         - remove
+        - build_complex_field
+        - insert_before_first_anchor

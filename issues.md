@@ -20,7 +20,18 @@ commit messages and PR titles so we can cross-reference here.
 - **Session D — publishing API hardening — DONE.** H11, H12, H13,
   M14, M15, M16 resolved (37 new tests; 616 total pass; mypy strict +
   ruff clean).
-- Sessions E–F pending.
+- **Session E — docs / release-day — DONE.** C5 (classifier + desc;
+  PyPI banner deferred to a publish decision), H14, H15, H16, H17,
+  M4, M8, M17, M19, and nits N1, N3, N9, N10, N13 resolved (H17 is the
+  one code change: six toggles now writable via `create_style` /
+  `modify_style`, +12 round-trip tests; reference `members:` audit
+  restored 8 drifted symbols). 631 tests pass; mypy strict + ruff
+  check + mkdocs strict all clean. **Scope note:** the behavioural-code
+  Mediums (M3, M5–M7, M9–M13, M18) and code-hygiene nits (N2, N4–N8,
+  N11, N12) originally bucketed here were moved to Session F — they
+  need test coverage and don't belong in a docs commit.
+- **Session F — tests & smells — pending.** L1–L21, M20–M23, plus the
+  behavioural-code Mediums and code-hygiene nits moved from E (above).
 
 ## Stats
 
@@ -51,12 +62,21 @@ polish:
    error table is missing four shipped classes.
 4. **Session D — publishing API hardening** (High H11, H12, H13, M3, M4, M5, M6, M7)
    Field-instruction injection + validation gaps; small DX improvements.
-5. **Session E — docs / release-day** (Critical C5, High H14, H15, H16, H17, M8–M19, plus all Nit)
-   Stale dates, stale "deferred to v0.2" docstrings, mkdocs nav gaps,
-   release-day decisions (PyPI banner, alpha→beta classifier).
-6. **Session F — tests & smells** (Low L1–L21, plus M20–M23)
+5. **Session E — docs / release-day** (Critical C5, High H14, H15, H16,
+   H17, plus doc-only M4, M8, M17, M19 and doc-flavoured nits N1, N3,
+   N9, N10, N13). Stale test count, undocumented exported errors, SPEC
+   §15 staleness, the `create_style` toggle gap (H17 — the one code
+   fix), and the alpha→beta classifier. **As actually run, Session E
+   was scoped to docs + H17;** the behavioural-code Mediums and
+   code-hygiene nits originally listed under "M8–M19, plus all Nit"
+   were pushed to Session F (see Status above) so the docs commit stays
+   clean and the code changes land with proper test coverage.
+6. **Session F — tests & smells** (Low L1–L21, M20–M23, plus the
+   behavioural-code Mediums M3, M5, M6, M7, M9, M10, M11, M12, M13, M18
+   and code-hygiene nits N2, N4, N5, N6, N7, N8, N11, N12 moved from E).
    Brittle assertions, coverage gaps, the conftest fixture-build duality
-   the user already flagged in `notes.md`.
+   the user already flagged in `notes.md`, plus the cascade/style-modify
+   correctness fixes that need new tests.
 
 A pre-tag "must-fix" cut would be C1–C5 + H1, H2, H4, H6, H9 — eight
 items. Everything else can ship in v0.2.1 if needed.
@@ -95,6 +115,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Pick one. Either (a) introduce typed errors (`InvalidBookmarkNameError`, `UnsupportedTargetError`, `OutOfRangeError`) for each case and update both SPEC and ARCHITECTURE to enumerate them, or (b) amend SPEC §16 to formally bless the broader carve-out ARCHITECTURE already documents. Right now a strict reader of SPEC §9.7 would flag every site above as a violation. Resolve before tag.
 
 ### C5: Release-day decisions: `Pre-publication`, alpha classifier, mkdocs missing SPEC
+- **Status:** ✅ RESOLVED (Session E). Classifier bumped `3 - Alpha` → `4 - Beta`; `pyproject.toml` description now mentions `publishing`. The mkdocs "SPEC 404s" claim was inaccurate — the in-docs `SPEC §…` references are prose/inline-code, not links, and `mkdocs build --strict` is clean; SPEC.md is intentionally a repo-root contract artifact (a banner now marks it the frozen v0.1 contract pointing to ARCHITECTURE §11, see H16). **PyPI banner corrected:** v0.1.0 is published on PyPI, so the stale "not yet on PyPI" line in README + docs/index.md now reads "v0.1.0 on PyPI; v0.2.0 (this branch) awaiting release."
 - **Subsystem:** docs / release
 - **Location:** `README.md:38-40`, `docs/index.md:8`, `pyproject.toml:11`, `mkdocs.yml:30-65`
 - **Description:** Three independent release-blockers bundled because they all need decisions before `git tag v0.2.0`:
@@ -202,24 +223,28 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Either add `omit_styles: Sequence[tuple[str, int]] | None = None` plumbing (and `\t` emission) or update the planning notes and changelog to mark explicitly as deferred to v0.3.
 
 ### H14: Test count in `ARCHITECTURE.md` §10 is stale
+- **Status:** ✅ RESOLVED (Session E) — `ARCHITECTURE.md` §10 now reads **631 tests** (the current count) with a refreshed breakdown. The stale `IMPLEMENTATION.md` §12 "532" is a historical snapshot left intact (append-only log); a new §12 progress-log entry records the pre-publication review.
 - **Subsystem:** docs
 - **Location:** `docs/ARCHITECTURE.md:824` ("**532 tests** at end of the v0.2 in-place expansion")
 - **Description:** Actual test count is 558. The breakdown in §10 ("v0.1's surface (319 tests) plus the v0.2 cycle… 532") no longer matches. `IMPLEMENTATION.md` §12's 2026-05-19 entry also locks in 532.
 - **Suggestion:** Update §10 to "558 tests" and refresh the breakdown; update IMPLEMENTATION.md §12 in the same pass.
 
 ### H15: Four exported exception classes are undocumented (`IdRangeError`, `InvalidNamespaceError`, `InvalidColorError`, `InvalidDropdownItemError`)
+- **Status:** ✅ RESOLVED (Session E) — all four added to `docs/ARCHITECTURE.md` §9 and `docs/API.md`. The suggested audit of every `docs/reference/*.md` `members:` list against module `__all__` surfaced 8 *additional* drifted symbols (the v0.2 edit verbs, `clear_all_comments`, `TableContext`, `OffsetFrom`, `build_complex_field`, `insert_before_first_anchor`, `XML`, plus the new errors) — all restored. A re-run of the audit reports every reference page complete.
 - **Subsystem:** docs / core / styles / controls
 - **Location:** `docx_plus/core/__init__.py:23`, `docx_plus/styles/__init__.py:12`, `docx_plus/controls/__init__.py:6` vs `docs/API.md` and `docs/ARCHITECTURE.md` §9
 - **Description:** All four are real public exception classes in `__all__`, but they are missing from `docs/API.md` exception tables, `docs/ARCHITECTURE.md` §9's error hierarchy table, and CHANGELOG. `IdRangeError` does get one prose mention in ARCHITECTURE §9 but is missing from the table at line 768.
 - **Suggestion:** Add four rows to `docs/ARCHITECTURE.md` §9 and to `docs/API.md` under the appropriate modules. Audit each `docs/reference/*.md` `members:` list against its module's `__all__` to catch this class of drift.
 
 ### H16: SPEC.md §15 deferred list + §16 error table are stale relative to current code
+- **Status:** ✅ RESOLVED (Session E) — §16's error table was *already* current (Session C added the v0.2 errors + the carve-out subsection). For §15: a status banner near the top frames SPEC as the original v0.1 design contract and points to `ARCHITECTURE.md` §11 for the live roadmap; §15 itself is renamed "Post-v0.1 Roadmap List" and each bullet annotated shipped-vs-deferred (comments + page borders shipped; tracked changes / table-cell formatting / etc. still deferred), with a closing note listing v0.2 capabilities that weren't in the original list (notes, bookmarks, line numbering, publishing).
 - **Subsystem:** docs / SPEC
 - **Location:** `SPEC.md:894-948`
 - **Description:** §15 is the original v0.1→v0.2 deferred list — mixes "shipped" and "still-deferred" indiscriminately. §16's error table lists 17 errors but is missing v0.2 additions `CommentNotFoundError` and `NoteNotFoundError`. `ARCHITECTURE.md` §9/§11 have corrected lists; SPEC and ARCHITECTURE now disagree on what's shipped.
 - **Suggestion:** Either freeze SPEC as a v0.1 contract with a banner ("As of v0.1 spec; see ARCHITECTURE.md §11 for current state"), or rewrite §15 to list only items still deferred at v0.2.0 and add the missing errors to §16. Pair with C4.
 
 ### H17: `_TOGGLE_PROPS` in `modify.py` missing six new toggle properties (API asymmetry)
+- **Status:** ✅ RESOLVED (Session E) — `_RUN_LEVEL_PROPS` and `_TOGGLE_PROPS` extended with `cs_bold`→`bCs`, `cs_italic`→`iCs`, `emboss`, `imprint`, `outline`, `shadow`. `_RPR_CHILD_ORDER` already listed all six tags, so the generic toggle writer + ordered-insert handle schema position. 12 new parametrized round-trip tests (true round-trips through the resolver + `w:val="false"` emission) in `test_styles_modify.py`. A `ResolvedFormatting` read now round-trips back through the writer for all twelve toggles.
 - **Subsystem:** styles modify
 - **Location:** `docx_plus/styles/modify.py:341-348` and `_RUN_LEVEL_PROPS:324-339`
 - **Description:** `_TOGGLE_PROPS` still only lists `bold/italic/caps/small_caps/strike/vanish`. There is no way to set `cs_bold`, `cs_italic`, `emboss`, `imprint`, `outline`, `shadow` via `create_style` / `modify_style`. The resolver surfaces them (per v0.2 plan) but the writer can't produce them. A user reading via `resolve_effective_formatting` and trying to round-trip through `modify_style` will hit `UnknownStylePropertyError`.
@@ -250,6 +275,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Add `self._collect_id_attrs(body, ".//w:commentRangeEnd")`.
 
 ### M4: `CommentNotFoundError` / `NoteNotFoundError` MRO is undocumented in `Raises` sections
+- **Status:** ✅ RESOLVED (Session E) — `edit_comment` / `edit_footnote` / `edit_endnote` `Raises:` blocks now state the not-found error subclasses `KeyError` (SPEC §16). Also corrected the same docstrings' stale "all child paragraphs" → "all child block-level content" (the H6 fix strips all children, not just `<w:p>`).
 - **Subsystem:** comments / notes
 - **Location:** `docx_plus/comments/anchor.py:45-50`, `docx_plus/notes/write.py:42-47`
 - **Description:** Dual-inheritance from `DocxPlusError` and `KeyError` works correctly (verified by tests). But public `Raises:` blocks on `edit_comment` / `edit_footnote` / `edit_endnote` don't disclose the `except KeyError` compatibility that SPEC §16 establishes.
@@ -278,6 +304,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Both should use `core.insert_before_first_anchor` with correct `_LATER_SIBLINGS` tuples. Mirror the pattern from `line_numbering.py` / `borders.py`.
 
 ### M8: Outer `_apply_style_chain` doesn't read `<w:tblPr>` / `<w:trPr>` / `<w:tcPr>` from a table style's base
+- **Status:** ✅ RESOLVED (Session E, doc-only per the suggestion's v0.2 path) — `resolve_effective_formatting` and `TableContext` docstrings now state the resolver surfaces only run/paragraph properties from table styles; cell/row/table-level props (`tcPr` shading + margins, `trPr` heights, `tblPr` defaults) are not resolved (a separate cell-formatting resolver, deferred to v0.3+). CHANGELOG notes it. Code extension remains v0.3+.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:455-472`
 - **Description:** `_apply_style_chain` skips `<w:tblStylePr>` correctly. But the *base* of a table style may carry `<w:tblPr>`, `<w:trPr>`, `<w:tcPr>` (table/row/cell-level properties) — none of which are touched by either `_apply_style_chain` or `_apply_table_style_chain`. So cell shading (`w:shd` in `tcPr`), cell margins, row height defaults from a built-in table style are completely ignored. "Light List" declares cell shading in tcPr that the resolver won't see.
@@ -335,6 +362,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Pair with H11 — same validation pass. Reject empty/whitespace and unknown numbering tokens at the API boundary.
 
 ### M17: `IdRangeError` is exported but undocumented in `docs/API.md`
+- **Status:** ✅ RESOLVED (Session E, with H15) — `IdRangeError` added to `docs/API.md` (`docx_plus.core` table, next to `DuplicateIdError`) and to `docs/reference/core-ids.md` autodoc members.
 - **Subsystem:** docs
 - **Location:** `docx_plus/core/__init__.py:23,54`; missing from `docs/API.md` around line 67
 - **Description:** `IdRangeError` is in `core.__all__` and SPEC §16 lists it explicitly, but `docs/API.md` lists only `DuplicateIdError` for `IdRegistry`. `docs/reference/core-ids.md` likewise omits it.
@@ -347,6 +375,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Either document the assumption ("one element max — caller responsibility to dedupe") or change to `findall` and remove/update all matches.
 
 ### M19: `Raises` block in `insert_section_break` is incomplete
+- **Status:** ✅ RESOLVED (Session E) — the `Raises:` block now documents the second `ValueError` (document has no trailing `<w:sectPr>` to copy section properties from).
 - **Subsystem:** layout
 - **Location:** `docx_plus/layout/breaks.py:64-66,84-88`
 - **Description:** Docstring documents one `ValueError` (paragraph not in body) but the function raises a second (`"document has no trailing sectPr to copy properties from"`) the user can't predict. Reachable on any custom-built document.
@@ -515,6 +544,7 @@ items. Everything else can ship in v0.2.1 if needed.
 ## Nit
 
 ### N1: Test count number `107` (built-in styles) is fragile, repeated in 4 places
+- **Status:** ✅ RESOLVED (Session E) — already guarded: `test_builtin_styles_count_matches_documented_total` pins `len(_BUILTIN_STYLES) == 107` and its docstring lists the citation sites to update together. Verified all six live citations (README, ARCHITECTURE §5, docs/index.md, TEST_GAPS ×2; the IMPLEMENTATION.md `22 → 107` line is a historical snapshot) are consistent at 107. Full code-derived dedup isn't possible in static markdown; the guard test is the canonical drift check.
 - **Subsystem:** docs / tests
 - **Location:** `README.md:109-110`, `docs/ARCHITECTURE.md §5`, `IMPLEMENTATION.md §12`, `tests/test_styles_modify.py:614-624`
 - **Description:** All four agree at the moment; drift risk on any future entry.
@@ -527,6 +557,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Single f-string or `parts` list + `" ".join`.
 
 ### N3: Module docstring escape mismatch — `r"""` with `\\c`
+- **Status:** ✅ RESOLVED (Session E) — `\\c` → `\c` in the three raw (`r"""`) module docstrings (`publishing/__init__.py`, `captions.py`, `figures.py`). The `\\` sequences in *code* f-strings (instruction assembly) are correct as-is (they produce a single backslash at runtime) and were left untouched.
 - **Subsystem:** publishing hygiene
 - **Location:** `docx_plus/publishing/__init__.py:15`, `captions.py:5,7,8`, `figures.py:1,4`
 - **Description:** Inside `r"""..."""`, `\\` renders as `\\` (literal two backslashes), not `\`. mkdocstrings may render either way; intent is `\c`.
@@ -563,12 +594,14 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Replace with a real header-paragraph fixture if practical; otherwise add a comment explaining the fake's purpose.
 
 ### N9: `mkdocs.yml` `site_description` and `pyproject.toml` description don't mention `publishing`
+- **Status:** ✅ RESOLVED (Session E) — `pyproject.toml` description now ends `…, notes, publishing.` (`mkdocs.yml` `site_description` already listed `publishing`).
 - **Subsystem:** docs / packaging
 - **Location:** `mkdocs.yml:2`, `pyproject.toml:4`
 - **Description:** Both describe v0.1 capabilities. v0.2 added `publishing`.
 - **Suggestion:** Append `, publishing` to both descriptions.
 
 ### N10: README "Build phases" table is now historic clutter
+- **Status:** ✅ RESOLVED (Session E) — the per-phase table (already inside a collapsed `<details>`) is collapsed to a compact two-bullet v0.1 / v0.2 summary that points to `IMPLEMENTATION.md` §12 for the dated per-phase log.
 - **Subsystem:** docs
 - **Location:** `README.md:344-355`
 - **Description:** Contributor-facing artefact dating from v0.1. Now mostly historic; new entries added at bottom don't make it more useful.
@@ -587,6 +620,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Catch `dataclasses.FrozenInstanceError` specifically; mirror `test_resolved_formatting_is_frozen`.
 
 ### N13: CHANGELOG `[0.2.0]` initial-cycle entry says "Footnotes — insert-only API" without forward pointer to edit verbs
+- **Status:** ✅ RESOLVED (Session E) — both initial-cycle bullets (comments and footnotes/endnotes) now forward-point to the in-place edit verbs added in the "Added — in-place expansion" subsection below.
 - **Subsystem:** docs / changelog
 - **Location:** `CHANGELOG.md:36-41` vs `:68-71`
 - **Description:** Two separated sections; a reader skimming "initial cycle" might miss that edit verbs are added below.

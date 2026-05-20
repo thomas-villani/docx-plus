@@ -144,10 +144,10 @@ def add_endnote(
 def edit_footnote(doc: Document, note_id: int, text: str) -> None:
     """Replace the body text of an existing footnote in place.
 
-    Removes all child paragraphs of the matching ``<w:footnote>`` element
-    and appends a fresh paragraph with ``text``. The reference glyph run
-    is rebuilt as part of the new paragraph; the body-side reference
-    marker run in the main document is untouched.
+    Removes all child block-level content of the matching ``<w:footnote>``
+    element and appends a fresh paragraph with ``text``. The reference
+    glyph run is rebuilt as part of the new paragraph; the body-side
+    reference marker run in the main document is untouched.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to mutate.
@@ -160,6 +160,8 @@ def edit_footnote(doc: Document, note_id: int, text: str) -> None:
         ValueError: If ``note_id`` is ``<= 0``.
         NoteNotFoundError: If no footnote with ``note_id`` exists,
             including the case where the footnotes part is absent.
+            Subclasses :class:`KeyError`, so ``except KeyError`` also
+            catches it (SPEC §16).
     """
     _edit_note(
         doc,
@@ -186,6 +188,8 @@ def edit_endnote(doc: Document, note_id: int, text: str) -> None:
     Raises:
         ValueError: If ``note_id`` is ``<= 0``.
         NoteNotFoundError: If no endnote with ``note_id`` exists.
+            Subclasses :class:`KeyError`, so ``except KeyError`` also
+            catches it (SPEC §16).
     """
     _edit_note(
         doc,

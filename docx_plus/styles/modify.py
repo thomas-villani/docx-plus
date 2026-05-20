@@ -335,6 +335,12 @@ _RUN_LEVEL_PROPS: frozenset[str] = frozenset(
         "small_caps",
         "vanish",
         "vert_align",
+        "cs_bold",
+        "cs_italic",
+        "emboss",
+        "imprint",
+        "outline",
+        "shadow",
     }
 )
 
@@ -345,6 +351,12 @@ _TOGGLE_PROPS: dict[str, str] = {
     "small_caps": "smallCaps",
     "strike": "strike",
     "vanish": "vanish",
+    "cs_bold": "bCs",
+    "cs_italic": "iCs",
+    "emboss": "emboss",
+    "imprint": "imprint",
+    "outline": "outline",
+    "shadow": "shadow",
 }
 
 _ALL_PROPS: frozenset[str] = _PARAGRAPH_LEVEL_PROPS | _RUN_LEVEL_PROPS

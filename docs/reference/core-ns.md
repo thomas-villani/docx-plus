@@ -8,8 +8,10 @@ module reaches for these when constructing or querying OOXML.
       members:
         - NSMAP
         - qn
+        - InvalidNamespaceError
         - W
         - W14
         - R
         - MC
         - A
+        - XML

@@ -12,7 +12,7 @@ Public surface:
 
 - :func:`add_toc` — ``TOC`` complex field
 - :func:`add_caption` — ``SEQ`` complex field with a leading label run
-- :func:`add_table_of_figures` — ``TOC \\c "Figure"`` complex field
+- :func:`add_table_of_figures` — ``TOC \c "Figure"`` complex field
 
 Bibliography (sources + citations + ``BIBLIOGRAPHY`` field) is deferred
 to v0.3 because it rides on the Custom XML Parts data-binding

@@ -145,8 +145,8 @@ def add_comment(
 def edit_comment(doc: Document, comment_id: int, text: str) -> None:
     """Replace the body text of an existing comment in place.
 
-    Removes all child paragraphs of the matching ``<w:comment>`` element
-    and appends a fresh paragraph with ``text`` as its run. The
+    Removes all child block-level content of the matching ``<w:comment>``
+    element and appends a fresh paragraph with ``text`` as its run. The
     ``<w:comment>`` element's attributes (``w:author``, ``w:date``,
     ``w:initials``) are preserved — only the body content changes. The
     body-side range markers and reference run are also untouched, so the
@@ -161,6 +161,8 @@ def edit_comment(doc: Document, comment_id: int, text: str) -> None:
     Raises:
         CommentNotFoundError: If no comment with ``comment_id`` exists,
             including the case where the comments part itself is absent.
+            Subclasses :class:`KeyError`, so ``except KeyError`` also
+            catches it (SPEC §16).
     """
     cid = str(comment_id)
     try:

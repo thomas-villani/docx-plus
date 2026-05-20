@@ -12,3 +12,4 @@ Architecture walkthrough: [`ARCHITECTURE.md` §6](../ARCHITECTURE.md#6-content-c
         - FormBuilder
         - DropdownItem
         - MissingNamespaceError
+        - InvalidDropdownItemError

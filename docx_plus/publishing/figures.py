@@ -1,7 +1,7 @@
 r"""Table of Figures — ``TOC \c "Figure"`` complex field.
 
 A Table of Figures is structurally the same as a Table of Contents,
-except the field instruction uses the ``\\c "<caption_type>"`` switch
+except the field instruction uses the ``\c "<caption_type>"`` switch
 to collect ``SEQ`` captions of the named type instead of paragraphs
 with outline levels. The caption helpers in
 ``docx_plus.publishing.captions`` produce the entries this table

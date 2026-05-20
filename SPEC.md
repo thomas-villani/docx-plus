@@ -10,6 +10,14 @@ This document is the contract. Implementations that diverge from the public
 API specified here are wrong, even if they work. Internal implementation is
 flexible; section 9 lists the invariants that constrain it.
 
+> **Status note (as of v0.2.0).** This is the original v0.1 design
+> contract. It remains the authority on the public API shape and on the
+> error taxonomy (§16, kept current through v0.2). For the *current*
+> shipped surface and the live v0.3+ roadmap, see
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §9 and §11 — several
+> items in §15's deferred list shipped during the v0.2 cycle and are
+> annotated there.
+
 ---
 
 ## 1. Purpose & Non-Goals
@@ -898,26 +906,46 @@ not, regardless of how good the code looks.
 
 ---
 
-## 15. v0.2 Deferred List
+## 15. Post-v0.1 Roadmap List
 
-Explicit roadmap for what comes after v0.1. Not for implementation in this
-pass. Listed here so reviewers know the deferred items are tracked, not
-forgotten.
+The original v0.1-era list of what comes after v0.1. **This list is
+historical** — it predates the v0.2 cycle and the v0.2 in-place
+expansion, so it mixes items that have since shipped with items still
+deferred. The authoritative current roadmap is
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11; the annotations
+below reconcile this list with what actually shipped at v0.2.0.
 
 (*Note*: `find_matching_style` and `remap_styles`, originally drafted as
 v0.2 work, **landed in v0.1** as Phase 3.5. See §5 for their public API.)
 
 - **Sections, headers, footers** as a first-class API (`sections/` module)
+  — *still deferred (v0.3+).*
 - **Table cell merging, borders, shading** beyond python-docx defaults
-- **Custom numbering definitions** (`numbering/` module)
-- **Data binding** of content controls to Custom XML Parts
-- **Comments and tracked changes** read/write API
-- **Theme manipulation** (writing themes, not just reading)
+  — *still deferred (v0.3+).* (Distinct from *page* borders, which
+  shipped in v0.2 as `layout/borders.py`.)
+- **Custom numbering definitions** (`numbering/` module) — *still
+  deferred (v0.3+).*
+- **Data binding** of content controls to Custom XML Parts — *still
+  deferred (v0.3+).*
+- **Comments and tracked changes** read/write API — *comments **shipped
+  in v0.2*** (`comments/`: add / edit / delete / clear, anchored to runs,
+  paragraphs, and run ranges); **tracked changes still deferred (v0.3+).***
+- **Theme manipulation** (writing themes, not just reading) — *still
+  deferred (v0.3+).*
 - **Glossary-based placeholder text** (the "formal" placeholder mechanism)
-- **Password-protected forms** (legacy hash algorithm)
+  — *still deferred (v0.3+).*
+- **Password-protected forms** (legacy hash algorithm) — *still deferred
+  (v0.3+).*
 - **A high-level "restyle" planner** that takes a target `ResolvedFormatting`
   and computes the minimal cascade modification to achieve it (the inverse
-  of the inspector; deferred because the design space is large)
+  of the inspector; deferred because the design space is large) — *still
+  deferred (v0.3+).*
+
+Beyond this original list, the v0.2 cycle also shipped capabilities not
+enumerated here: **footnotes / endnotes** (`notes/`), **bookmarks and
+cross-references** (`bookmarks/`), **line numbering** (`layout/`), and
+the **publishing primitives** (`publishing/`: TOC, captions, table of
+figures). See `ARCHITECTURE.md` §11 for the consolidated picture.
 
 ---
 

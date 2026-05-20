@@ -63,7 +63,9 @@ def insert_section_break(
 
     Raises:
         ValueError: If ``paragraph`` is not parented to ``<w:body>``
-            (e.g. a header/footer paragraph).
+            (e.g. a header/footer paragraph), or if the document has no
+            trailing ``<w:sectPr>`` to copy section properties from
+            (reachable on a hand-built document that never had one).
 
     Example:
         >>> from docx import Document
