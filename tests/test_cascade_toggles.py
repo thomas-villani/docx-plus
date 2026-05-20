@@ -250,3 +250,64 @@ def test_new_toggle_explicit_false_resets(tag: str, field_name: str) -> None:
 
     resolved = resolve_effective_formatting(p)
     assert getattr(resolved, field_name) is False
+
+
+# --------------------------------------------------------------------------
+# dstrike — non-toggle (last-writer-wins) per ECMA-376 17.7.3 + 17.3.2.10.
+# Regression coverage for H2.
+# --------------------------------------------------------------------------
+
+
+def test_dstrike_direct_resolves_double_strike_true() -> None:
+    doc = Document()
+    _add_paragraph_style(doc, "Dstrike", rpr_children=[("w:dstrike", None)])
+    p = _styled_paragraph(doc, "Dstrike")
+
+    resolved = resolve_effective_formatting(p)
+    assert resolved.double_strike is True
+
+
+def test_dstrike_explicit_false_resolves_false() -> None:
+    doc = Document()
+    _add_paragraph_style(
+        doc, "DstrikeOff", rpr_children=[("w:dstrike", {"w:val": "false"})]
+    )
+    p = _styled_paragraph(doc, "DstrikeOff")
+
+    resolved = resolve_effective_formatting(p)
+    assert resolved.double_strike is False
+
+
+def test_dstrike_child_overrides_parent_last_writer_wins() -> None:
+    """Two layers both set dstrike — child wins (non-toggle, no XOR)."""
+    doc = Document()
+    _add_paragraph_style(doc, "DstrikeParent", rpr_children=[("w:dstrike", None)])
+    _add_paragraph_style(
+        doc,
+        "DstrikeChild",
+        based_on="DstrikeParent",
+        rpr_children=[("w:dstrike", {"w:val": "false"})],
+    )
+    p = _styled_paragraph(doc, "DstrikeChild")
+
+    resolved = resolve_effective_formatting(p)
+    assert resolved.double_strike is False
+
+
+def test_dstrike_and_strike_are_independent() -> None:
+    """``strike`` and ``dstrike`` are separate properties — both can be set.
+
+    Word's UI enforces mutual exclusivity but ECMA-376 does not; the
+    resolver preserves whatever the cascade actually emits.
+    """
+    doc = Document()
+    _add_paragraph_style(
+        doc,
+        "Both",
+        rpr_children=[("w:strike", None), ("w:dstrike", None)],
+    )
+    p = _styled_paragraph(doc, "Both")
+
+    resolved = resolve_effective_formatting(p)
+    assert resolved.strike is True
+    assert resolved.double_strike is True

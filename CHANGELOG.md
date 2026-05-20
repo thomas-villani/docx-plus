@@ -6,6 +6,30 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — cascade correctness (Session A of issues.md review)
+
+- **C2** — Run-level `w:rStyle` now applies *before* direct run rPr per
+  ECMA-376 17.3.2.29. Previously the run's own character-style chain ran
+  after the direct rPr, so a style-defined property would override a
+  direct one. Provenance for run-level `rStyle` is now reported as a new
+  `runStyle` layer (distinct from `linkedCharStyle`, which remains the
+  paragraph style's `w:link` companion).
+- **H1** — Conditional table-style precedence: `_TBL_STYLE_PR_ORDER`
+  now lists rows before columns per ECMA-376 17.7.6.5, so at a cell
+  matching both `firstRow` and `firstCol` (with no `nwCell` defined)
+  the column branch wins, matching Word.
+- **H2** — `<w:dstrike>` (double strikethrough) is now read by the
+  resolver and surfaced as `ResolvedFormatting.double_strike`. Handled
+  as a non-toggle property (last-writer-wins) per ECMA-376 17.7.3 —
+  `dstrike` is not in the toggle property list. Independent of `strike`.
+- **H4/H5** — Band2 conditional branches (`band2Horz` / `band2Vert`)
+  are now reachable: `TableContext` gained `is_band2_row` and
+  `is_band2_col` fields, derived as the complement of band1 at the
+  default band-size. The resolver now honors
+  `<w:tblStyleRowBandSize>` / `<w:tblStyleColBandSize>` when present on
+  the table instance's own `<w:tblPr>` (style-chain lookup remains
+  deferred — see TableContext docstring).
+
 ## [0.2.0] — 2026-05-19
 
 Second cycle. Four new capability modules — anchored comments, layout

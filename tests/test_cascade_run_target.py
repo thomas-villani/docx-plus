@@ -53,10 +53,10 @@ def test_resolve_run_target_inherits_paragraph_style(tmp_path: Path) -> None:
     assert resolved.style_id == "Heading1"
 
 
-def test_resolve_run_target_with_rstyle_applies_linked_char_chain(
+def test_resolve_run_target_with_rstyle_applies_run_style_chain(
     tmp_path: Path,
 ) -> None:
-    """A run with ``w:rStyle`` triggers the linked-char-style branch."""
+    """A run with ``w:rStyle`` picks up properties from that character style."""
     doc = Document()
     # Hand-build a character style with a distinctive color.
     styles_root = doc.styles.element
@@ -79,8 +79,49 @@ def test_resolve_run_target_with_rstyle_applies_linked_char_chain(
 
     reopened = Document(str(out))
     target_run = reopened.paragraphs[0].runs[0]
-    resolved = resolve_effective_formatting(target_run)
+    resolved = resolve_effective_formatting(target_run, include_provenance=True)
     assert resolved.color_rgb == "FF00FF"
+    # Provenance should attribute the color to the runStyle layer
+    # (distinct from linkedCharStyle, which is the paragraph style's companion).
+    prov = resolved.provenance or {}
+    assert prov["color_rgb"].layer == "runStyle"
+
+
+def test_run_rstyle_is_overridden_by_direct_run_rpr(tmp_path: Path) -> None:
+    """Per ECMA-376 17.3.2.29, run-level rStyle sits BELOW direct run rPr.
+
+    A run with both ``w:rStyle`` (pointing at a style that sets one colour)
+    and a direct ``w:color`` (a different colour) must resolve to the direct
+    colour — regression for C2.
+    """
+    doc = Document()
+    # Character style: red.
+    styles_root = doc.styles.element
+    char_style = sub(
+        styles_root,
+        "w:style",
+        **{"w:type": "character", "w:styleId": "MyChar"},
+    )
+    sub(char_style, "w:name", **{"w:val": "MyChar"})
+    cs_rpr = sub(char_style, "w:rPr")
+    sub(cs_rpr, "w:color", **{"w:val": "FF0000"})
+
+    para = doc.add_paragraph()
+    run = para.add_run("text")
+    r_pr = sub(run._r, "w:rPr")
+    sub(r_pr, "w:rStyle", **{"w:val": "MyChar"})
+    # Direct run formatting: green. Must win.
+    sub(r_pr, "w:color", **{"w:val": "00FF00"})
+
+    out = tmp_path / "rstyle_override.docx"
+    doc.save(str(out))
+
+    reopened = Document(str(out))
+    target_run = reopened.paragraphs[0].runs[0]
+    resolved = resolve_effective_formatting(target_run, include_provenance=True)
+    assert resolved.color_rgb == "00FF00"
+    prov = resolved.provenance or {}
+    assert prov["color_rgb"].layer == "directRun"
 
 
 def test_resolve_paragraph_in_table_cell_walks_table_style(tmp_path: Path) -> None:

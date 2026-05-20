@@ -40,25 +40,34 @@ class TableContext:
     ECMA-376 17.7.6.5 lets a ``<w:style w:type="table">`` carry
     conditional formatting branches (``<w:tblStylePr w:type="firstRow"/>``,
     ``"lastRow"``, ``"firstCol"``, ``"lastCol"``, ``"band1Horz"``,
-    ``"band1Vert"``, ``"nwCell"`` / ``"neCell"`` / ``"swCell"`` /
-    ``"seCell"``). To pick the right branches the cascade resolver needs
-    to know where in the table the target lives.
+    ``"band1Vert"``, ``"band2Horz"``, ``"band2Vert"``,
+    ``"nwCell"`` / ``"neCell"`` / ``"swCell"`` / ``"seCell"``). To pick
+    the right branches the cascade resolver needs to know where in the
+    table the target lives.
 
     Construct manually for an out-of-band query, or pass a ``_Cell`` to
     :func:`resolve_effective_formatting` to derive the context
     automatically from the cell's parent row / table.
+
+    Band size: by default rows alternate band1 / band2 every row. When
+    the table instance's ``<w:tblPr>`` carries a ``<w:tblStyleRowBandSize
+    w:val="N"/>`` (resp. ``<w:tblStyleColBandSize>``), bands span ``N``
+    rows / columns each. Note that v0.2 does not yet walk the table
+    **style chain** looking for these attributes — only the table
+    instance's own ``tblPr`` is consulted. This is sufficient for tables
+    where the application or user explicitly set the band size, but
+    misses style-defined band sizes (deferred to v0.3+).
 
     Attributes:
         is_first_row: Cell is in the first ``<w:tr>`` of its table.
         is_last_row: Cell is in the last ``<w:tr>``.
         is_first_col: Cell is the first ``<w:tc>`` of its row.
         is_last_col: Cell is the last ``<w:tc>`` of its row.
-        is_band_row: Cell is on a band1 row (every other row starting
-            from the second). The v0.2 surface exposes ``band1Horz``;
-            ``band2Horz`` (the complementary parity) is not yet wired
-            because real-world table styles overwhelmingly use only
-            band1 for shaded headers and zebra stripes.
-        is_band_col: Cell is on a band1 column.
+        is_band_row: Cell is in a "band1" horizontal stripe (first band).
+        is_band_col: Cell is in a "band1" vertical stripe (first band).
+        is_band2_row: Cell is in a "band2" horizontal stripe (second
+            band — the complement of band1 at default band-size=1).
+        is_band2_col: Cell is in a "band2" vertical stripe.
     """
 
     is_first_row: bool = False
@@ -67,21 +76,25 @@ class TableContext:
     is_last_col: bool = False
     is_band_row: bool = False
     is_band_col: bool = False
+    is_band2_row: bool = False
+    is_band2_col: bool = False
 
 
 # ``<w:tblStylePr w:type=...>`` values in ECMA-376 17.7.6.5 application
 # order: later entries override earlier ones. ``wholeTable`` always
 # applies; the rest depend on the resolver's :class:`TableContext`.
+# Rows precede columns so that column branches win at row/col intersections
+# (which is why corner branches exist as the final override layer).
 _TBL_STYLE_PR_ORDER: tuple[str, ...] = (
     "wholeTable",
     "band1Vert",
     "band2Vert",
     "band1Horz",
     "band2Horz",
-    "firstCol",
-    "lastCol",
     "firstRow",
     "lastRow",
+    "firstCol",
+    "lastCol",
     "nwCell",
     "neCell",
     "swCell",
@@ -104,8 +117,10 @@ _TOGGLE_RPR: dict[str, str] = {
     "outline": "outline",
     "shadow": "shadow",
 }
-# dstrike is intentionally excluded — per ECMA-376 it overrides rather than
-# XORing, unlike the twelve true toggles above.
+# dstrike is intentionally excluded from the XOR toggle set — per
+# ECMA-376 17.7.3 the toggle list is the twelve above. dstrike is handled
+# in :func:`_apply_rpr` as a non-toggle property (last writer wins) and
+# surfaced on :class:`ResolvedFormatting.double_strike`.
 
 
 Layer = Literal[
@@ -115,6 +130,7 @@ Layer = Literal[
     "linkedCharStyle",
     "numbering",
     "directParagraph",
+    "runStyle",
     "directRun",
 ]
 
@@ -187,6 +203,7 @@ class ResolvedFormatting:
     cs_italic: bool | None = None
     underline: str | None = None
     strike: bool | None = None
+    double_strike: bool | None = None
     color_rgb: str | None = None
     highlight: str | None = None
     caps: bool | None = None
@@ -404,14 +421,17 @@ def _apply_paragraph_cascade(
             if linked_id is not None:
                 _apply_style_chain(acc, styles_root, linked_id, "linkedCharStyle")
 
-        # Layer 6: direct run formatting
+        # Run-level rStyle reference (character style applied to one run).
+        # Per ECMA-376 17.3.2.29 this is a style layer that sits BELOW direct
+        # run formatting — direct rPr on the run must override it.
+        run_style_id = _run_style_id(run_element)
+        if run_style_id is not None:
+            _apply_style_chain(acc, styles_root, run_style_id, "runStyle")
+
+        # Layer 6: direct run formatting (highest precedence for the run).
         run_rpr = run_element.find(qn("w:rPr"))
         if run_rpr is not None:
             _apply_rpr(acc, run_rpr, FormattingSource(layer="directRun"))
-        # Run-level rStyle reference (character style applied to one run)
-        run_style_id = _run_style_id(run_element)
-        if run_style_id is not None:
-            _apply_style_chain(acc, styles_root, run_style_id, "linkedCharStyle")
 
 
 def _apply_cell_cascade(
@@ -577,8 +597,12 @@ def _matching_conditional_types(ctx: TableContext) -> set[str]:
     types: set[str] = {"wholeTable"}
     if ctx.is_band_col:
         types.add("band1Vert")
+    if ctx.is_band2_col:
+        types.add("band2Vert")
     if ctx.is_band_row:
         types.add("band1Horz")
+    if ctx.is_band2_row:
+        types.add("band2Horz")
     if ctx.is_first_col:
         types.add("firstCol")
     if ctx.is_last_col:
@@ -598,6 +622,29 @@ def _matching_conditional_types(ctx: TableContext) -> set[str]:
     return types
 
 
+def _read_band_size(tbl: etree._Element, child_name: str) -> int:
+    """Read ``<w:tblStyleRowBandSize>`` / ``<w:tblStyleColBandSize>`` from a table.
+
+    Looks at the table instance's own ``<w:tblPr>``. Returns 1 if the
+    element is absent or the value is unparseable. Does not currently
+    walk the table style chain — see :class:`TableContext` docstring.
+    """
+    tbl_pr = tbl.find(qn("w:tblPr"))
+    if tbl_pr is None:
+        return 1
+    el = tbl_pr.find(qn(child_name))
+    if el is None:
+        return 1
+    raw = el.get(qn("w:val"))
+    if raw is None:
+        return 1
+    try:
+        n = int(raw)
+    except ValueError:
+        return 1
+    return n if n >= 1 else 1
+
+
 def _derive_table_context_from_element(node: etree._Element) -> TableContext:
     """Derive a :class:`TableContext` from a body element's table position.
 
@@ -605,9 +652,13 @@ def _derive_table_context_from_element(node: etree._Element) -> TableContext:
     row / column indices and band parity. Returns an empty (all-False)
     :class:`TableContext` when ``node`` is not inside a table.
 
-    Band parity follows the 0-indexed convention where row/col index 1,
-    3, 5, ... is "band1". This matches Word's default rendering of
-    `band1Horz`/`band1Vert` as the "first banded" stripe colour.
+    Band parity follows the convention that row index 1, 3, 5, ... is
+    "band1" and 2, 4, 6, ... is "band2" at the default band-size of 1.
+    Row 0 is treated as not-banded; in practice the ``firstRow``
+    conditional (if defined) overrides any band branch at row 0 per
+    ECMA-376 17.7.6.5 precedence. When the table's ``<w:tblPr>``
+    declares ``tblStyleRowBandSize`` or ``tblStyleColBandSize``, bands
+    span that many rows / columns each.
     """
     if isinstance(node.tag, str) and etree.QName(node.tag).localname == "tc":
         tc: etree._Element | None = node
@@ -630,13 +681,37 @@ def _derive_table_context_from_element(node: etree._Element) -> TableContext:
     except ValueError:
         return TableContext()
 
+    row_band_size = _read_band_size(tbl, "w:tblStyleRowBandSize")
+    col_band_size = _read_band_size(tbl, "w:tblStyleColBandSize")
+
+    # Row 0 is excluded from the banding sequence (firstRow's job, if it
+    # exists). For row_idx >= 1, the (row_idx - 1) // size yields the
+    # stripe index; even stripes are band1, odd are band2.
+    if row_idx >= 1:
+        row_stripe = (row_idx - 1) // row_band_size
+        is_band_row = (row_stripe % 2) == 0
+        is_band2_row = (row_stripe % 2) == 1
+    else:
+        is_band_row = False
+        is_band2_row = False
+
+    if col_idx >= 1:
+        col_stripe = (col_idx - 1) // col_band_size
+        is_band_col = (col_stripe % 2) == 0
+        is_band2_col = (col_stripe % 2) == 1
+    else:
+        is_band_col = False
+        is_band2_col = False
+
     return TableContext(
         is_first_row=row_idx == 0,
         is_last_row=row_idx == len(rows) - 1,
         is_first_col=col_idx == 0,
         is_last_col=col_idx == len(cells) - 1,
-        is_band_row=(row_idx % 2 == 1),
-        is_band_col=(col_idx % 2 == 1),
+        is_band_row=is_band_row,
+        is_band_col=is_band_col,
+        is_band2_row=is_band2_row,
+        is_band2_col=is_band2_col,
     )
 
 
@@ -810,6 +885,10 @@ def _apply_rpr(acc: _Accumulator, rpr: etree._Element, source: FormattingSource)
             val = child.get(qn("w:val"))
             if val is not None:
                 acc.set("underline", val, source)
+        elif local == "dstrike":
+            # ECMA-376 17.3.2.10: not a toggle (last writer wins).
+            val = child.get(qn("w:val"))
+            acc.set("double_strike", val != "false" and val != "0", source)
         elif local == "highlight":
             val = child.get(qn("w:val"))
             if val is not None:

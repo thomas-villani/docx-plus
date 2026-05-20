@@ -84,6 +84,8 @@ def test_table_context_defaults_are_all_false() -> None:
     assert ctx.is_last_col is False
     assert ctx.is_band_row is False
     assert ctx.is_band_col is False
+    assert ctx.is_band2_row is False
+    assert ctx.is_band2_col is False
 
 
 def test_table_context_is_frozen() -> None:
@@ -151,6 +153,113 @@ def test_band1_horz_applies_to_odd_rows() -> None:
     assert resolve_effective_formatting(row_1_cell).color_rgb == "FF0000"
 
 
+def test_band2_horz_applies_to_even_data_rows() -> None:
+    """``band2Horz`` colors rows 2, 4, ... (complement of band1) — H5 regression.
+
+    With the default band-size of 1, row 0 is the firstRow zone (skipped),
+    rows 1/3/5 are band1, rows 2/4 are band2.
+    """
+    doc = Document()
+    _add_table_style(
+        doc,
+        "ZebraBand2",
+        branches={"band2Horz": {"w:color": {"w:val": "00FFFF"}}},
+    )
+    table = _add_table_with_style(doc, "ZebraBand2", rows=5, cols=2)
+
+    row_0_cell = table.rows[0].cells[0]  # firstRow zone, not band
+    row_1_cell = table.rows[1].cells[0]  # band1
+    row_2_cell = table.rows[2].cells[0]  # band2
+    row_3_cell = table.rows[3].cells[0]  # band1
+    row_4_cell = table.rows[4].cells[0]  # band2
+
+    assert resolve_effective_formatting(row_0_cell).color_rgb is None
+    assert resolve_effective_formatting(row_1_cell).color_rgb is None
+    assert resolve_effective_formatting(row_2_cell).color_rgb == "00FFFF"
+    assert resolve_effective_formatting(row_3_cell).color_rgb is None
+    assert resolve_effective_formatting(row_4_cell).color_rgb == "00FFFF"
+
+
+def test_band2_vert_applies_to_even_data_columns() -> None:
+    doc = Document()
+    _add_table_style(
+        doc,
+        "VerticalBand2",
+        branches={"band2Vert": {"w:color": {"w:val": "AA00AA"}}},
+    )
+    table = _add_table_with_style(doc, "VerticalBand2", rows=2, cols=5)
+
+    col_0 = table.rows[0].cells[0]  # firstCol zone
+    col_1 = table.rows[0].cells[1]  # band1
+    col_2 = table.rows[0].cells[2]  # band2
+    col_3 = table.rows[0].cells[3]  # band1
+    col_4 = table.rows[0].cells[4]  # band2
+
+    assert resolve_effective_formatting(col_0).color_rgb is None
+    assert resolve_effective_formatting(col_1).color_rgb is None
+    assert resolve_effective_formatting(col_2).color_rgb == "AA00AA"
+    assert resolve_effective_formatting(col_3).color_rgb is None
+    assert resolve_effective_formatting(col_4).color_rgb == "AA00AA"
+
+
+def test_tbl_style_row_band_size_two_groups_rows_in_pairs() -> None:
+    """``tblStyleRowBandSize="2"`` makes each band span two rows — H4 regression.
+
+    Layout (band-size 2, no firstRow override): row 0 skipped, rows 1-2 →
+    band1, rows 3-4 → band2, rows 5-6 → band1, ...
+    """
+    doc = Document()
+    _add_table_style(
+        doc,
+        "Pairs",
+        branches={
+            "band1Horz": {"w:color": {"w:val": "111111"}},
+            "band2Horz": {"w:color": {"w:val": "222222"}},
+        },
+    )
+    table = _add_table_with_style(doc, "Pairs", rows=7, cols=1)
+    # Set the band size on the table instance's own tblPr.
+    tbl_pr = table._tbl.find(
+        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPr"
+    )
+    assert tbl_pr is not None
+    sub(tbl_pr, "w:tblStyleRowBandSize", **{"w:val": "2"})
+
+    expected = [
+        None,        # row 0 (firstRow zone)
+        "111111",    # row 1 — band1 stripe 0
+        "111111",    # row 2 — band1 stripe 0
+        "222222",    # row 3 — band2 stripe 1
+        "222222",    # row 4 — band2 stripe 1
+        "111111",    # row 5 — band1 stripe 2
+        "111111",    # row 6 — band1 stripe 2
+    ]
+    for row_idx, want in enumerate(expected):
+        got = resolve_effective_formatting(table.rows[row_idx].cells[0]).color_rgb
+        assert got == want, f"row {row_idx}: got {got!r}, want {want!r}"
+
+
+def test_tbl_style_col_band_size_three_groups_columns_in_triples() -> None:
+    doc = Document()
+    _add_table_style(
+        doc,
+        "Triples",
+        branches={"band1Vert": {"w:color": {"w:val": "333333"}}},
+    )
+    table = _add_table_with_style(doc, "Triples", rows=1, cols=7)
+    tbl_pr = table._tbl.find(
+        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblPr"
+    )
+    assert tbl_pr is not None
+    sub(tbl_pr, "w:tblStyleColBandSize", **{"w:val": "3"})
+
+    # firstCol skipped; cols 1-3 → band1 stripe 0; cols 4-6 → band2 stripe 1.
+    expected = [None, "333333", "333333", "333333", None, None, None]
+    for col_idx, want in enumerate(expected):
+        got = resolve_effective_formatting(table.rows[0].cells[col_idx]).color_rgb
+        assert got == want, f"col {col_idx}: got {got!r}, want {want!r}"
+
+
 def test_band1_vert_applies_to_odd_columns() -> None:
     doc = Document()
     _add_table_style(
@@ -193,6 +302,67 @@ def test_first_row_overrides_band1_horz() -> None:
     top_cell = table.rows[0].cells[0]
     resolved = resolve_effective_formatting(top_cell)
     assert resolved.color_rgb == "222222"
+
+
+def test_first_col_overrides_first_row_at_corner_without_corner_branch() -> None:
+    """Column branches win at row/col intersections — regression for H1.
+
+    Per ECMA-376 17.7.6.5, the application order is rows → cols → corners,
+    so a cell that matches both ``firstRow`` and ``firstCol`` (with no
+    ``nwCell`` branch defined) must resolve to ``firstCol``'s properties.
+    """
+    doc = Document()
+    _add_table_style(
+        doc,
+        "RowVsCol",
+        branches={
+            "firstRow": {"w:color": {"w:val": "AAAAAA"}},
+            "firstCol": {"w:color": {"w:val": "BBBBBB"}},
+        },
+    )
+    table = _add_table_with_style(doc, "RowVsCol", rows=3, cols=3)
+
+    nw_cell = table.rows[0].cells[0]  # matches both firstRow and firstCol
+    ne_cell = table.rows[0].cells[2]  # matches firstRow only
+    sw_cell = table.rows[2].cells[0]  # matches firstCol only
+
+    assert resolve_effective_formatting(nw_cell).color_rgb == "BBBBBB"  # firstCol wins
+    assert resolve_effective_formatting(ne_cell).color_rgb == "AAAAAA"  # firstRow only
+    assert resolve_effective_formatting(sw_cell).color_rgb == "BBBBBB"  # firstCol only
+
+
+def test_single_row_table_last_row_overrides_first_row() -> None:
+    """A 1-row table matches both firstRow and lastRow — lastRow wins."""
+    doc = Document()
+    _add_table_style(
+        doc,
+        "OneRow",
+        branches={
+            "firstRow": {"w:color": {"w:val": "111111"}},
+            "lastRow": {"w:color": {"w:val": "222222"}},
+        },
+    )
+    table = _add_table_with_style(doc, "OneRow", rows=1, cols=3)
+
+    only_cell = table.rows[0].cells[1]
+    assert resolve_effective_formatting(only_cell).color_rgb == "222222"
+
+
+def test_single_column_table_last_col_overrides_first_col() -> None:
+    """A 1-column table matches both firstCol and lastCol — lastCol wins."""
+    doc = Document()
+    _add_table_style(
+        doc,
+        "OneCol",
+        branches={
+            "firstCol": {"w:color": {"w:val": "333333"}},
+            "lastCol": {"w:color": {"w:val": "444444"}},
+        },
+    )
+    table = _add_table_with_style(doc, "OneCol", rows=3, cols=1)
+
+    only_cell = table.rows[1].cells[0]
+    assert resolve_effective_formatting(only_cell).color_rgb == "444444"
 
 
 def test_corner_overrides_first_row() -> None:
