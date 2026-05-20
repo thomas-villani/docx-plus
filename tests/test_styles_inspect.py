@@ -32,13 +32,16 @@ def test_doc_defaults_provide_font_size() -> None:
     assert resolved.font_size == 11.0
 
 
-def test_doc_defaults_provide_font_name_token() -> None:
-    """Theme-font tokens pass through unresolved in Phase 2."""
+def test_doc_defaults_resolve_theme_font_to_typeface() -> None:
+    """A theme-font token resolves to the theme's concrete typeface (M10)."""
     doc = Document()
     p = doc.add_paragraph("text")
     resolved = resolve_effective_formatting(p)
-    # python-docx's default rPrDefault uses w:asciiTheme="minorHAnsi"
-    assert resolved.font_name == "minorHAnsi"
+    # python-docx's default rPrDefault uses w:asciiTheme="minorHAnsi"; the
+    # bundled theme's minor latin font is "Cambria". Because the token
+    # resolves to a real face, the result is NOT partial.
+    assert resolved.font_name == "Cambria"
+    assert resolved.partial is False
 
 
 # --------------------------------------------------------------------------

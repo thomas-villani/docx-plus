@@ -509,7 +509,7 @@ Hold the line in both directions.
 Tracks state across multi-session work. Each entry: date, phase, what was
 done, what's next. Most-recent at top.
 
-### 2026-05-19 — v0.2.0 pre-publication code/docs review — in progress
+### 2026-05-19 — v0.2.0 pre-publication code/docs review — complete
 
 Systematic review of the v0.2 in-place expansion before tagging.
 Findings compiled in `issues.md` (79 total: 5 Critical, 17 High, 23
@@ -544,10 +544,22 @@ separate commit cross-referencing finding ids.
 
 - **Gates green at Session E.** 631 tests pass; `mypy --strict` clean;
   `ruff check` clean; `mkdocs build --strict` clean.
-- **Held for Session F (tests & smells).** Behavioural-code Mediums
-  (M3, M5–M7, M9–M13, M18), code-hygiene nits (N2, N4–N8, N11, N12),
-  the Low findings L1–L21, and M20–M23. These need careful test
-  coverage and were intentionally not folded into the docs commit.
+- **Session F — tests & smells.** Closed every remaining finding. Cascade:
+  theme-font resolution + accurate `partial` (M10, M9, M13). Comments:
+  registry seeds from `commentRangeEnd` (M3), cleanup preserves shared-run
+  text (M6), `clear_all_comments(remove_part=…)` (L17), ms timestamps (L1).
+  Styles modify: style-type-aware matching + multi-part reference scanning
+  (M11, M12). Layout: `Border` color validation + schema-strict `set_columns`
+  / section-break `w:type` (M5, M7), `distance` validation (L15), settings
+  dedup (M18). Core hygiene: `core/errors.py` extraction (L14), `xpath`
+  cache (L11), uniform `etree` imports (L13), shared `body_document_for`
+  (N4). Docs/tests: `notes-v0_*` refs removed (M20), conftest/fixture
+  duality resolved + LibreOffice covers all examples (M21, M22), TEST_GAPS
+  status note (M23), plus L2–L10/L16/L18–L21 and nits N2/N5–N8/N11/N12.
+- **Gates green at Session F.** 717 tests collected (709 pass, 8 LibreOffice-
+  skipped); `mypy --strict` clean; `ruff check` clean; `mkdocs build
+  --strict` clean. All 79 issues.md findings resolved (H3 wontfix; L7
+  already resolved in Session A).
 
 ### 2026-05-19 — v0.2 in-place expansion — complete
 

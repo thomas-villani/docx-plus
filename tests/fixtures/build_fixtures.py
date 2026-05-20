@@ -1,8 +1,11 @@
 """Generate the .docx fixtures used by the test suite.
 
-Fixtures are generated, not committed (SPEC §10). Run as a script to (re)build
-all fixtures into ``tests/fixtures/``; the test ``conftest.py`` also calls
-:func:`build_all` lazily on first request.
+Fixtures are generated, not committed (SPEC §10). The **canonical** path is
+``conftest.py``, which builds each fixture lazily into a per-session tmp dir.
+This module's :func:`main` is a separate, manual inspection helper: it builds
+into a fresh temp dir (or a directory you name on the command line) and prints
+the paths — it never writes into the committed ``tests/fixtures/`` tree, so a
+stray ``python -m`` run cannot leave generated ``.docx`` files in source.
 
 Each builder function is small and explicit so the fixture's contents are
 obvious from reading this file.
@@ -11,13 +14,12 @@ obvious from reading this file.
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 from docx import Document
 
 from docx_plus.core.oxml import sub
-
-FIXTURES_DIR = Path(__file__).resolve().parent
 
 
 def build_empty(path: Path) -> Path:
@@ -206,8 +208,8 @@ def build_numbered(path: Path) -> Path:
     return path
 
 
-def build_all(out_dir: Path = FIXTURES_DIR) -> dict[str, Path]:
-    """Build every Phase 1 fixture into ``out_dir`` and return their paths."""
+def build_all(out_dir: Path) -> dict[str, Path]:
+    """Build every fixture into ``out_dir`` (required) and return their paths."""
     out_dir.mkdir(parents=True, exist_ok=True)
     return {
         "empty": build_empty(out_dir / "empty.docx"),
@@ -218,9 +220,16 @@ def build_all(out_dir: Path = FIXTURES_DIR) -> dict[str, Path]:
     }
 
 
-def main() -> int:
-    """Entry point for ``python -m tests.fixtures.build_fixtures``."""
-    built = build_all()
+def main(argv: list[str] | None = None) -> int:
+    """Manual inspection helper for ``python -m tests.fixtures.build_fixtures``.
+
+    Tests do not use this — they go through ``conftest.py``. Pass an output
+    directory to inspect the generated files there; omit it to build into a
+    fresh temp dir whose path is printed. Never writes into ``tests/fixtures/``.
+    """
+    args = sys.argv[1:] if argv is None else argv
+    out_dir = Path(args[0]) if args else Path(tempfile.mkdtemp(prefix="docx_plus_fixtures_"))
+    built = build_all(out_dir)
     for name, path in built.items():
         print(f"built {name}: {path}")
     return 0

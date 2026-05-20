@@ -34,10 +34,10 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.opc.packuri import PackURI
 from docx.opc.part import PartFactory, XmlPart
 from docx.oxml.parser import parse_xml
+from lxml import etree
 
 if TYPE_CHECKING:
     from docx.document import Document
-    from lxml import etree
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +51,9 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+# NOTE: ``tests/test_core_parts.py`` imports these private classes by name to
+# assert ``PartFactory.part_type_for`` is wired to them. If either is renamed
+# or inlined, update that test in the same change (L10).
 class _FootnotesPart(XmlPart):
     """Internal :class:`XmlPart` subclass for ``/word/footnotes.xml``."""
 

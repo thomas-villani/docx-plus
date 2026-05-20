@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from lxml import etree
+
 from docx_plus.core.oxml import build_complex_field
 from docx_plus.publishing._validate import (
     validate_additional_styles,
@@ -22,7 +24,6 @@ from docx_plus.publishing._validate import (
 
 if TYPE_CHECKING:
     from docx.text.paragraph import Paragraph
-    from lxml import etree
 
 
 def add_toc(

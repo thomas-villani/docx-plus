@@ -1,5 +1,14 @@
 # Test Suite Gap Audit
 
+> **Status (2026-05-20):** The per-item audit below was snapshotted at
+> end-of-Phase-5 (v0.1) and has **not** been re-run against the v0.2 suite.
+> Treat its stats as historical: the current suite is **717 tests across 34
+> files** (pytest, mypy `--strict`, ruff `check` all green). The v0.1 and
+> v0.2 cycles did not formally close the IMPORTANT gaps catalogued here —
+> later test growth narrowed several, but they remain the priority backlog
+> for a v0.3 re-audit. The original "realistic target before Phase 4"
+> milestone was not met; that planning note is left below as a record.
+
 **Snapshot date:** 2026-05-19 (end of Phase 5)
 **Scope:** Phases 1–5 — `core/`, `styles/`, `controls/`, `fields/`, `protection/`
 **Suite size at snapshot:** 285 tests across 17 files; mypy `--strict`, ruff `check`, ruff `format --check` all green on both `docx_plus/` and `tests/`
@@ -235,8 +244,9 @@ Filed in the order that maximizes value-per-effort and unblocks Phase 4:
 7. **N1** (`assert_style_not_defined`)
 8. **N2** (xfail placeholder for conditional table formatting)
 
-Items 1–4 are the realistic target before Phase 4 begins; 5–8 can land
-alongside Phase 4 work.
+Items 1–4 were the realistic target before Phase 4 began; 5–8 to land
+alongside Phase 4 work. (Historical: this milestone was not met — see the
+status note at the top of the file. Re-prioritise during the v0.3 audit.)
 
 ---
 

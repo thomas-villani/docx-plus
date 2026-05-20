@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el, insert_before_first_anchor
+from docx_plus.core.oxml import el, insert_before_first_anchor, remove
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -45,6 +45,10 @@ def mark_fields_dirty(doc: DocxDocument) -> None:
 
     Idempotent: calling twice produces a single ``w:updateFields`` element.
     If an existing element has ``w:val="false"``, it is updated to ``"true"``.
+    Should a malformed ``settings.xml`` (e.g. from another tool) contain
+    several ``w:updateFields`` copies, they are collapsed to one set to
+    ``"true"`` — leaving a stale duplicate behind would let Word read the
+    wrong value (``CT_Settings`` permits at most one).
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` whose settings
@@ -59,9 +63,11 @@ def mark_fields_dirty(doc: DocxDocument) -> None:
         >>> mark_fields_dirty(doc)
     """
     settings = doc.settings.element
-    existing = settings.find(qn("w:updateFields"))
-    if existing is not None:
-        existing.set(qn("w:val"), "true")
+    existing = settings.findall(qn("w:updateFields"))
+    if existing:
+        existing[0].set(qn("w:val"), "true")
+        for extra in existing[1:]:
+            remove(extra)
         return
     new = el("w:updateFields", **{"w:val": "true"})
     insert_before_first_anchor(settings, new, _UPDATE_FIELDS_LATER_SIBLINGS)

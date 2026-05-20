@@ -21,7 +21,7 @@ from docx.opc.part import XmlPart
 from lxml import etree
 
 from docx_plus.core import DocxPlusError
-from docx_plus.core.oxml import el, remove, sub, xpath
+from docx_plus.core.oxml import body_document_for, el, remove, sub, xpath
 from docx_plus.core.parts import (
     ENDNOTES_SPEC,
     FOOTNOTES_SPEC,
@@ -90,7 +90,11 @@ def add_footnote(
         >>> p = doc.add_paragraph("See the footnote.")
         >>> add_footnote(p, "Explanatory text.")
     """
-    registry = id_registry if id_registry is not None else FootnoteIdRegistry(_doc_for(paragraph))
+    registry = (
+        id_registry
+        if id_registry is not None
+        else FootnoteIdRegistry(body_document_for(paragraph, operation="add_footnote"))
+    )
     note_id, note_body = _add_note(
         paragraph,
         text,
@@ -126,7 +130,11 @@ def add_endnote(
         A :class:`EndnoteRef` with the assigned note id and a handle
         to the note body element.
     """
-    registry = id_registry if id_registry is not None else EndnoteIdRegistry(_doc_for(paragraph))
+    registry = (
+        id_registry
+        if id_registry is not None
+        else EndnoteIdRegistry(body_document_for(paragraph, operation="add_endnote"))
+    )
     note_id, note_body = _add_note(
         paragraph,
         text,
@@ -271,7 +279,7 @@ def _add_note(  # noqa: PLR0913
     paragraph._p.append(ref_run)
 
     # Part-side note body.
-    document = _doc_for(paragraph)
+    document = body_document_for(paragraph, operation="add_footnote / add_endnote")
     _, root = get_or_create_part(document, spec)
     note_body = _build_note_body(
         note_id=note_id,
@@ -284,18 +292,6 @@ def _add_note(  # noqa: PLR0913
     root.append(note_body)
 
     return note_id, note_body
-
-
-def _doc_for(paragraph: Paragraph) -> Document:
-    """Return the :class:`Document` containing ``paragraph``."""
-    part = paragraph.part
-    document = getattr(part, "document", None)
-    if document is None:
-        raise ValueError(
-            "add_footnote / add_endnote only support the main document body "
-            f"in v0.2; got paragraph parented to {type(part).__name__}"
-        )
-    return cast("Document", document)
 
 
 def _build_note_body(

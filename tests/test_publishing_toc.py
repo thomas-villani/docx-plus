@@ -7,23 +7,20 @@ from pathlib import Path
 import pytest
 from docx import Document
 
+from docx_plus._testing.ooxml_asserts import (
+    assert_field_dirty,
+    assert_field_not_dirty,
+    field_instruction_text,
+)
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
+from docx_plus.fields import mark_fields_dirty
 from docx_plus.publishing import add_toc
 
 
 def _instruction(field_run):
     """Extract the instruction string from the field that ``field_run`` opens."""
-    p = field_run.getparent()
-    instr = p.find(qn("w:r") + "/" + qn("w:instrText"))
-    # Fallback: search any run for instrText (the begin-run has no instrText).
-    if instr is None:
-        for r in p.findall(qn("w:r")):
-            t = r.find(qn("w:instrText"))
-            if t is not None:
-                return t.text
-        return None
-    return instr.text
+    return field_instruction_text(field_run.getparent())
 
 
 # --------------------------------------------------------------------------
@@ -172,3 +169,21 @@ def test_add_toc_additional_styles_none_omits_t_switch() -> None:
     add_toc(p)  # additional_styles default is None
     instructions = xpath(p._p, ".//w:instrText")
     assert "\\t" not in instructions[0].text
+
+
+# --------------------------------------------------------------------------
+# L20: add_toc must NOT auto-mark fields dirty (caller's explicit step).
+# --------------------------------------------------------------------------
+
+
+def test_add_toc_does_not_mark_fields_dirty() -> None:
+    doc = Document()
+    add_toc(doc.add_paragraph())
+    assert_field_not_dirty(doc)
+
+
+def test_add_toc_then_mark_fields_dirty_sets_flag() -> None:
+    doc = Document()
+    add_toc(doc.add_paragraph())
+    mark_fields_dirty(doc)
+    assert_field_dirty(doc)

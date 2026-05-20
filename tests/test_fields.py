@@ -283,6 +283,17 @@ def test_mark_fields_dirty_updates_existing_false_to_true() -> None:
     assert matches[0].get(qn("w:val")) == "true"
 
 
+def test_mark_fields_dirty_collapses_duplicates_to_one_true() -> None:
+    """M18: several stale copies are collapsed to a single true element."""
+    doc = Document()
+    sub(doc.settings.element, "w:updateFields", **{"w:val": "false"})
+    sub(doc.settings.element, "w:updateFields", **{"w:val": "false"})
+    mark_fields_dirty(doc)
+    matches = xpath(doc.settings.element, "./w:updateFields")
+    assert len(matches) == 1
+    assert matches[0].get(qn("w:val")) == "true"
+
+
 def test_mark_fields_dirty_inserts_before_compat() -> None:
     """``w:compat`` comes after ``w:updateFields`` in CT_Settings.
 

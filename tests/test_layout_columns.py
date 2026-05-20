@@ -83,6 +83,22 @@ def test_set_columns_rejects_widths_length_mismatch() -> None:
         set_columns(doc.sections[0], 3, widths=[100, 200])
 
 
+def test_set_columns_lands_before_docGrid() -> None:
+    """M7: w:cols must precede w:docGrid per ECMA-376 17.6.17.
+
+    A fresh Document() already has a docGrid; the pre-fix ``append`` landed
+    the rewritten cols *after* it.
+    """
+    doc = Document()
+    sect_pr = doc.sections[0]._sectPr
+    set_columns(doc.sections[0], 2)
+
+    tags = [c.tag for c in sect_pr]
+    cols_idx = tags.index(qn("w:cols"))
+    assert qn("w:docGrid") in tags
+    assert cols_idx < tags.index(qn("w:docGrid"))
+
+
 def test_set_columns_round_trip(tmp_path: Path) -> None:
     doc = Document()
     set_columns(doc.sections[0], 2, space=720, separator=True)

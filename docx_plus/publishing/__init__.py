@@ -18,7 +18,7 @@ Bibliography (sources + citations + ``BIBLIOGRAPHY`` field) is deferred
 to v0.3 because it rides on the Custom XML Parts data-binding
 subsystem (also v0.3).
 
-See SPEC §15 and ``notes-v0_2-expansion-scope.md §3.3``.
+See SPEC §15 (the post-v0.1 roadmap).
 """
 
 from __future__ import annotations

@@ -120,7 +120,11 @@ def _read_notes(
             # Reserved: -1 (separator), 0 (continuation separator).
             continue
 
-        # If the note declares itself as a separator via @w:type, drop it.
+        # Two-tier filter (L16): reserved entries normally use ids <= 0, but a
+        # tool may also tag a separator with a positive id. The @w:type check
+        # is deliberately belt-and-suspenders — note that it would also drop a
+        # (highly unusual) user note that set w:type to one of the two
+        # separator values. Any other legal w:type passes through.
         note_type = note_el.get(qn("w:type"))
         if note_type in {"separator", "continuationSeparator"}:
             continue

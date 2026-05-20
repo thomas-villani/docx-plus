@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from lxml import etree
 
-from docx_plus.core import DocxPlusError
+from docx_plus.core.errors import DocxPlusError
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
 

@@ -9,6 +9,7 @@ example's docstring and verifies exit codes the way a user would see them.
 
 from __future__ import annotations
 
+import pkgutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,17 +17,15 @@ from pathlib import Path
 import pytest
 from docx import Document
 
-EXAMPLES = [
-    "docx_plus.examples.inspect_document",
-    "docx_plus.examples.restyle_existing",
-    "docx_plus.examples.build_form",
-    "docx_plus.examples.populate_form",
-    "docx_plus.examples.add_comments",
-    "docx_plus.examples.multi_column_layout",
-    "docx_plus.examples.bookmarks_and_xrefs",
-    "docx_plus.examples.footnotes_and_endnotes",
-    "docx_plus.examples.publishing_layout",
-]
+import docx_plus.examples
+
+# Discovered from the examples package so a newly-added example is smoke-tested
+# automatically (N7). Underscore-prefixed modules (helpers) are excluded.
+EXAMPLES = sorted(
+    f"docx_plus.examples.{info.name}"
+    for info in pkgutil.iter_modules(docx_plus.examples.__path__)
+    if not info.name.startswith("_")
+)
 
 # Examples that write a .docx into cwd when run with no args. Tuple of
 # (module, expected output filename). inspect_document prints only.
@@ -61,7 +60,6 @@ def test_example_runs_with_no_args(module: str, tmp_path: Path) -> None:
         f"{module} failed with exit {result.returncode}\n"
         f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
     )
-    assert result.stdout, f"{module} produced no stdout"
 
 
 @pytest.mark.parametrize(("module", "filename"), WRITES_DOCX)

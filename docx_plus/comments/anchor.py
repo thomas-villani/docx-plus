@@ -32,7 +32,7 @@ from lxml import etree
 from docx_plus.comments.registry import CommentIdRegistry
 from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el, remove, sub, xpath
+from docx_plus.core.oxml import body_document_for, el, remove, sub, xpath
 from docx_plus.core.parts import COMMENTS_SPEC, get_or_create_part
 
 if TYPE_CHECKING:
@@ -91,7 +91,10 @@ def add_comment(
             - A ``(start_run, end_run)`` tuple spans from the start run's
               leading edge to the end run's trailing edge. Both runs
               must already be parented and live in the main document
-              body.
+              body. The caller is responsible for ordering: ``start_run``
+              must appear before ``end_run`` in document order. A reversed
+              pair is accepted without error but produces a backwards
+              range that Word renders as empty.
         text: Comment body text. Whitespace is preserved
             (``xml:space="preserve"``).
         author: Author shown in the review pane. The empty string is
@@ -187,19 +190,24 @@ def edit_comment(doc: Document, comment_id: int, text: str) -> None:
     comment_el.append(_build_comment_paragraph(text))
 
 
-def clear_all_comments(doc: Document) -> None:
+def clear_all_comments(doc: Document, *, remove_part: bool = False) -> None:
     """Remove every comment in the document.
 
     Single-pass: walks the document body once removing every
     ``<w:commentRangeStart>``, ``<w:commentRangeEnd>``, and
     ``<w:commentReference>`` marker regardless of id, then walks
-    ``comments.xml`` once removing every ``<w:comment>`` entry. The
-    comments part itself is left in place (empty) so subsequent calls
-    to :func:`add_comment` reuse it without re-creating the
-    relationship. Idempotent: a document with no comments is a no-op.
+    ``comments.xml`` once removing every ``<w:comment>`` entry.
+    Idempotent: a document with no comments is a no-op.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to scrub.
+        remove_part: When ``False`` (default) the now-empty comments part
+            is left in place so a subsequent :func:`add_comment` reuses it
+            without re-creating the relationship. When ``True`` the part
+            and its relationship are torn down entirely, so the saved
+            document carries no comments part at all — useful when a
+            consumer dislikes an empty-but-related comments part, and the
+            cleaner state for a document that is done with comments.
     """
     body = doc.element.body
 
@@ -211,16 +219,17 @@ def clear_all_comments(doc: Document) -> None:
             remove(elem)
 
     for ref in xpath(body, ".//w:commentReference"):
-        run = ref.getparent()
-        if run is not None and run.tag == qn("w:r"):
-            remove(run)
-        else:
-            remove(ref)
+        _remove_reference_marker(ref)
 
     try:
         comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))
     except KeyError:
         return
+
+    if remove_part:
+        _drop_comments_part(doc)
+        return
+
     comments_root = comments_part.element
     for comment_el in list(comments_root.findall(qn("w:comment"))):
         remove(comment_el)
@@ -253,11 +262,7 @@ def delete_comment(doc: Document, comment_id: int) -> None:
             remove(elem)
 
     for ref in xpath(body, ".//w:commentReference[@w:id=$cid]", cid=cid):
-        run = ref.getparent()
-        if run is not None and run.tag == qn("w:r"):
-            remove(run)
-        else:
-            remove(ref)
+        _remove_reference_marker(ref)
 
     try:
         comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))
@@ -273,6 +278,42 @@ def delete_comment(doc: Document, comment_id: int) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _remove_reference_marker(ref: etree._Element) -> None:
+    """Remove a ``<w:commentReference>`` and prune its run only if now empty.
+
+    OOXML permits a single ``<w:r>`` to host the reference marker
+    alongside other content — multiple references, or a reference mixed
+    with ``<w:t>`` text — and hand-edited or cross-tool round-tripped
+    documents do exactly that. Removing the whole parent run
+    unconditionally (the pre-fix behaviour) would drop that sibling
+    content. So delete only the marker, then remove the run only when
+    nothing but an optional ``<w:rPr>`` remains. The reference run
+    :func:`add_comment` builds holds only ``<w:rPr>`` + the marker, so
+    internally created comments still collapse to nothing as before.
+    """
+    run = ref.getparent()
+    remove(ref)
+    if run is None or run.tag != qn("w:r"):
+        return
+    if all(child.tag == qn("w:rPr") for child in run):
+        remove(run)
+
+
+def _drop_comments_part(doc: Document) -> None:
+    """Tear down the comments part and its document-part relationship.
+
+    python-docx serializes only the parts reachable through the
+    relationship graph, so dropping the relationship is sufficient to
+    keep the comments part out of the saved package. ``drop_rel`` is a
+    no-op-safe call: the comments relationship is never referenced by an
+    ``r:id`` in ``document.xml`` (its reference count is 0), so it is
+    always eligible for removal.
+    """
+    for rid, rel in list(doc.part.rels.items()):
+        if rel.reltype == RT.COMMENTS:
+            doc.part.drop_rel(rid)
+
+
 def _normalize_target(
     target: CommentTarget,
 ) -> tuple[etree._Element, etree._Element, Document]:
@@ -284,41 +325,23 @@ def _normalize_target(
     part graph for the comments-part create-or-reuse step.
     """
     if isinstance(target, Run):
-        return target._r, target._r, _doc_for(target)
+        return target._r, target._r, body_document_for(target, operation="add_comment")
 
     if isinstance(target, Paragraph):
         runs = [child for child in target._p if child.tag == qn("w:r")]
         if not runs:
             raise ValueError("add_comment requires a paragraph with at least one run")
-        return runs[0], runs[-1], _doc_for(target)
+        return runs[0], runs[-1], body_document_for(target, operation="add_comment")
 
     if isinstance(target, tuple) and len(target) == 2:
         first, second = target
         if not (isinstance(first, Run) and isinstance(second, Run)):
             raise TypeError("range target must be a tuple of (Run, Run)")
-        return first._r, second._r, _doc_for(first)
+        return first._r, second._r, body_document_for(first, operation="add_comment")
 
     raise TypeError(
         f"add_comment target must be Run, Paragraph, or (Run, Run); got {type(target).__name__}"
     )
-
-
-def _doc_for(proxy: Run | Paragraph) -> Document:
-    """Return the :class:`Document` containing ``proxy``.
-
-    python-docx proxies inherit ``.part`` from :class:`Parented`. For a
-    proxy in the main body, ``part`` is the :class:`DocumentPart` which
-    exposes a ``.document`` property; for headers/footers it would not,
-    which is why we bail with a clear error.
-    """
-    part = proxy.part
-    document = getattr(part, "document", None)
-    if document is None:
-        raise ValueError(
-            "add_comment only supports the main document body in v0.2; "
-            f"got proxy parented to {type(part).__name__}"
-        )
-    return cast("Document", document)
 
 
 def _build_reference_run(comment_id: int) -> etree._Element:
@@ -376,8 +399,15 @@ def _build_comment_paragraph(text: str) -> etree._Element:
 
 
 def _now_iso() -> str:
-    """``xsd:dateTime`` (UTC) for the ``w:date`` attribute."""
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """``xsd:dateTime`` (UTC, millisecond precision) for ``w:date``.
+
+    Millisecond precision keeps two :func:`add_comment` calls in the same
+    wall-clock second from colliding on an identical timestamp. The
+    trailing ``Z`` is the canonical UTC designator; ``read_comments``
+    parses it back through :func:`datetime.datetime.fromisoformat`.
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    return now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 __all__ = [

@@ -65,10 +65,11 @@ def enable_distinct_even_odd_headers(doc: DocxDocument) -> None:
     """Enable distinct even-page vs odd-page headers and footers.
 
     Writes ``<w:evenAndOddHeaders/>`` into ``settings.xml`` if absent.
-    Idempotent: a second call does not stack elements. Word will read
-    even-page header/footer references from each section's
-    ``<w:headerReference w:type="even">`` / ``<w:footerReference w:type="even">``
-    children when this flag is set.
+    Idempotent: a second call does not stack elements, and any duplicate
+    copies left by another tool are collapsed to one (``CT_Settings``
+    permits at most one). Word will read even-page header/footer references
+    from each section's ``<w:headerReference w:type="even">`` /
+    ``<w:footerReference w:type="even">`` children when this flag is set.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` whose
@@ -81,7 +82,10 @@ def enable_distinct_even_odd_headers(doc: DocxDocument) -> None:
         >>> enable_distinct_even_odd_headers(doc)
     """
     settings = doc.settings.element
-    if settings.find(qn("w:evenAndOddHeaders")) is not None:
+    existing = settings.findall(qn("w:evenAndOddHeaders"))
+    if existing:
+        for extra in existing[1:]:
+            remove(extra)
         return
     new = el("w:evenAndOddHeaders")
     insert_before_first_anchor(
@@ -93,13 +97,14 @@ def disable_distinct_even_odd_headers(doc: DocxDocument) -> None:
     """Remove ``<w:evenAndOddHeaders/>`` from ``settings.xml`` if present.
 
     Idempotent: removing the flag when it is already absent is a no-op.
+    Removes *every* copy, so a malformed file with duplicates is fully
+    cleared rather than leaving a stale second element behind.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to mutate.
     """
     settings = doc.settings.element
-    existing = settings.find(qn("w:evenAndOddHeaders"))
-    if existing is not None:
+    for existing in settings.findall(qn("w:evenAndOddHeaders")):
         remove(existing)
 
 

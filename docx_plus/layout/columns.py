@@ -19,10 +19,25 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el, remove, sub
+from docx_plus.core.oxml import el, insert_before_first_anchor, remove, sub
 
 if TYPE_CHECKING:
     from docx.section import Section
+
+
+# Schema siblings later than `w:cols` per ECMA-376 17.6.17 CT_SectPr.
+_LATER_SIBLINGS: tuple[str, ...] = (
+    "w:formProt",
+    "w:vAlign",
+    "w:noEndnote",
+    "w:titlePg",
+    "w:textDirection",
+    "w:bidi",
+    "w:rtlGutter",
+    "w:docGrid",
+    "w:printerSettings",
+    "w:sectPrChange",
+)
 
 
 def set_columns(
@@ -36,7 +51,9 @@ def set_columns(
     """Configure multi-column layout for ``section``.
 
     Idempotent: a call replaces any existing ``<w:cols>`` rather than
-    stacking elements.
+    stacking elements. Schema-strict — the element lands in its
+    ECMA-376 17.6.17 slot regardless of which other ``<w:sectPr>``
+    children (e.g. ``<w:docGrid>``) are already present.
 
     Args:
         section: A python-docx :class:`~docx.section.Section`. The
@@ -91,7 +108,7 @@ def set_columns(
                 col_attrs["w:space"] = str(space)
             sub(cols, "w:col", **col_attrs)
 
-    sect_pr.append(cols)
+    insert_before_first_anchor(sect_pr, cols, _LATER_SIBLINGS)
 
 
 __all__ = ["set_columns"]

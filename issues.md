@@ -30,8 +30,23 @@ commit messages and PR titles so we can cross-reference here.
   Mediums (M3, M5–M7, M9–M13, M18) and code-hygiene nits (N2, N4–N8,
   N11, N12) originally bucketed here were moved to Session F — they
   need test coverage and don't belong in a docs commit.
-- **Session F — tests & smells — pending.** L1–L21, M20–M23, plus the
-  behavioural-code Mediums and code-hygiene nits moved from E (above).
+- **Session F — tests & smells — DONE.** All remaining findings resolved:
+  behavioural-code Mediums M3, M5, M6, M7, M9, M10, M11, M12, M13, M18;
+  docs/packaging Mediums M20, M21, M22, M23; every Low L1–L21; and code
+  nits N2, N4, N5, N6, N7, N8, N11, N12. Notable code changes: comment-id
+  registry now seeds from `commentRangeEnd` (M3); comment cleanup preserves
+  shared-run sibling text (M6); the cascade resolves theme *fonts* and only
+  flags `partial` on a genuinely-failed theme reference (M9, M10, M13);
+  `find_matching_style` / `remap_styles` / `delete_style` are style-type
+  aware and scan headers/footers/notes/comments parts (M11, M12); `Border`
+  validates its color and `set_columns` / section-break `w:type` use
+  schema-strict insertion (M5, M7); `mark_fields_dirty` + even/odd helpers
+  collapse duplicates (M18); `DocxPlusError` moved to `core/errors.py` and
+  `body_document_for` hoisted into `core/oxml` (L14, N4); `xpath` caches
+  compiled expressions (L11). L7 was already resolved by Session A (the
+  `runStyle` layer); L16 needed only a clarifying comment. 717 tests
+  collected (709 pass, 8 LibreOffice-skipped); mypy strict + ruff check +
+  mkdocs strict all clean.
 
 ## Stats
 
@@ -269,6 +284,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** `instruction = f" {field} {format} " if format else f" {field} "`.
 
 ### M3: `CommentIdRegistry` does not seed from `w:commentRangeEnd`
+- **Status:** ✅ RESOLVED (Session F) — seeder now also collects `.//w:commentRangeEnd` ids (registry.py); a lone orphaned rangeEnd blocks reuse. Regression test added.
 - **Subsystem:** comments
 - **Location:** `docx_plus/comments/registry.py:45-47`
 - **Description:** Seeder collects ids from `w:commentRangeStart` and `w:commentReference` but skips `w:commentRangeEnd`. The docstring explicitly motivates orphan protection — a doc where rangeStart was stripped but rangeEnd remains will not block reuse of that id, defeating the stated contract.
@@ -282,6 +298,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Add a one-line note to each `Raises` section: `"CommentNotFoundError: ... (also catches as KeyError per SPEC §16)"`.
 
 ### M5: `Border` dataclass — `color` not validated; `space` unit annotated as "twips" but is actually points
+- **Status:** ✅ RESOLVED (Session F) — `Border.__post_init__` validates `color` against `^(auto|[0-9A-Fa-f]{6})$` (raises `ValueError`); tests cover reject/accept. The `space` docstring already said "points" (corrected with H7 in Session B).
 - **Subsystem:** layout
 - **Location:** `docx_plus/layout/borders.py:48-78`
 - **Description:** Two related defects in the same dataclass:
@@ -290,12 +307,14 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Add `__post_init__` validating `color` matches `^(auto|[0-9A-Fa-f]{6})$`. Correct the `space` docstring to "points (range 0-31)". Tie pairing with H7 since `space` semantics depend on `offsetFrom`.
 
 ### M6: `delete_comment` / `clear_all_comments` drops sibling content when reference-run is shared
+- **Status:** ✅ RESOLVED (Session F) — new `_remove_reference_marker` removes only the `<w:commentReference>` child and prunes the run only when nothing but an optional `<w:rPr>` remains; both cleanup paths use it. Tests cover a shared run with text plus the rPr-only collapse.
 - **Subsystem:** comments
 - **Location:** `docx_plus/comments/anchor.py:236-241`
 - **Description:** Cleanup finds each `<w:commentReference>` and removes its parent `<w:r>` entirely. `add_comment` builds the reference run in isolation, so internal callers are safe. But OOXML allows a `<w:r>` to contain multiple references or to mix reference with `<w:t>` text content (hand-edited / cross-tool round-tripped docs do this). Current code drops sibling text.
 - **Suggestion:** Remove only the `<w:commentReference>` child; check if parent `<w:r>` is empty (or only has `<w:rPr>`) and remove conditionally. Add a test that builds a shared reference run with text content.
 
 ### M7: `set_columns` and `breaks._set_start_type` use schema-loose positioning
+- **Status:** ✅ RESOLVED (Session F) — both now use `core.insert_before_first_anchor` with correct `_LATER_SIBLINGS` tuples (cols lands before docGrid; `w:type` lands after header/footer refs and before pgSz). Schema-position tests added.
 - **Subsystem:** layout
 - **Location:** `docx_plus/layout/columns.py:94`, `docx_plus/layout/breaks.py:99-111`
 - **Description:** Two pre-v0.2 helpers that violate ECMA-376 17.6.17 sectPr child order:
@@ -311,30 +330,35 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** For v0.2 release, document the limitation in `TableContext`/`resolve_effective_formatting` docstrings + CHANGELOG. For v0.3, extend the resolver to read tcPr/trPr/tblPr and add fields to `ResolvedFormatting`.
 
 ### M9: `_resolve_color` returns the theme name literally when theme is loaded but lookup fails
+- **Status:** ✅ RESOLVED (Session F) — `_resolve_color` returns the unresolved name only when the theme part is absent; when the theme loaded but the name is unknown it returns `None` (still `partial=True`), and `themeColor="none"` returns `None` without flagging partial. Tests updated/added.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:823-838`
 - **Description:** When `themeColor="accent7"` (unknown) is used and the theme part DID load, `resolve_theme_color` returns `None`, then `_resolve_color` sets `acc.partial = True` and returns `theme_name`. That string is stored in `color_rgb`, which downstream code (e.g. `_write_color`) rejects as invalid hex. Same logic kicks in for `themeColor="none"` which `resolve_theme_color` explicitly returns `None` for — `color_rgb = "none"` would be stored.
 - **Suggestion:** In `_resolve_color`, only fall through to "return unresolved name" when the theme really IS missing (`acc.theme is None`). When theme loaded but lookup failed, return `None` (and still set `partial=True`). Special-case `name == "none"` to return `None` without setting `partial`.
 
 ### M10: `_resolve_font_theme` returns the token without setting `acc.partial = True`
+- **Status:** ✅ RESOLVED (Session F, option b) — added `a:fontScheme` parsing to `load_theme` + `resolve_theme_font`; the cascade now resolves `*Theme` tokens to real typefaces (e.g. `minorHAnsi` → `Cambria`). Only when the theme/token can't resolve does it surface the token and set `partial`. Doc-defaults test updated to assert `font_name == "Cambria"`, `partial is False`.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:841-849`
 - **Description:** Unlike `_resolve_color`, doesn't set `partial`. A document with theme font references resolves to a half-meaningful `font_name` and `partial=False`, contradicting SPEC §4. `test_doc_defaults_provide_font_name_token` even asserts the unresolved token (`"minorHAnsi"`) is returned — pinning the half-broken behaviour in tests.
 - **Suggestion:** Set `acc.partial = True` whenever `_resolve_font_theme` returns a theme token; update the doc-defaults test to also assert `partial is True`. Optionally take theme part as a parameter and actually resolve `minorHAnsi`/`majorHAnsi` via `a:fontScheme`.
 
 ### M11: `find_matching_style` / `remap_styles` don't filter by `style_type` — wrong-type collisions silently break Word docs
+- **Status:** ✅ RESOLVED (Session F) — `find_matching_style` gained an optional `style_type` filter; `ensure_style` passes the built-in's type; `remap_styles` rewrites a target only through the ref tag matching the resolved style's type (pStyle/rStyle/tblStyle). Tests cover the char-look-alike rejection and tag-correct rewrite.
 - **Subsystem:** styles modify
 - **Location:** `docx_plus/styles/modify.py:560-592` (`find_matching_style`), `:511-557` (`ensure_style`), `:667-675` (`remap_styles`)
 - **Description:** A doc with a *character* style named "Heading 1" plus a `find_matching_style(doc, "Heading1")` resolves to the character style; `ensure_style(doc, "Heading1", match_existing=True)` returns that proxy; `apply_style(p, proxy.style_id)` writes `w:pStyle` pointing at a character style → Word ignores or repairs it. `remap_styles` similarly rewrites refs without checking the source style's type matches the ref type.
 - **Suggestion:** Accept optional `style_type` arg on `find_matching_style`; pass `_BUILTIN_STYLES[target_id].get("style_type")` from `ensure_style`. In `remap_styles`, verify resolved style's `w:type` matches the ref tag (`pStyle` → paragraph, `rStyle` → character, `tblStyle` → table).
 
 ### M12: Body element traversal misses headers/footers/footnotes/endnotes/comments
+- **Status:** ✅ RESOLVED (Session F) — new `_reference_search_roots` returns the main body plus every related header/footer/footnotes/endnotes/comments part with a parsed `.element`; `_find_references` and `remap_styles` iterate it. Tests: deleting a header-only style raises `StyleInUseError`; remap rewrites header refs.
 - **Subsystem:** styles modify
 - **Location:** `docx_plus/styles/modify.py:1100-1119` (`_find_references`), `:667-675` (`remap_styles`)
 - **Description:** Both use `doc.part.element` as search root — main document body only. A paragraph in a header/footer referencing the style being deleted is missed; `delete_style(doc, sid)` succeeds and breaks the header on next Word open. `remap_styles` likewise leaves header/footer refs unrewritten.
 - **Suggestion:** Iterate every Part that can contain WordprocessingML body content (Header, Footer, Footnotes, Endnotes, Comments) via `doc.part.related_parts`. Add coverage: insert a header, style it, attempt to delete the style → assert `StyleInUseError`.
 
 ### M13: `acc.partial = True` set upfront when theme is missing, even with no theme refs
+- **Status:** ✅ RESOLVED (Session F) — dropped the upfront set in `resolve_effective_formatting`; `partial` is now set only inside `_resolve_color` / `_resolve_font_theme` when a theme reference actually fails. Regression test: a theme-less doc with no theme refs resolves `partial is False`.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:267-268`
 - **Description:** `resolve_effective_formatting` sets `acc.partial = True` whenever the theme part is absent — but `partial` is documented as "theme resolution incomplete". On a document with no theme part AND no theme color references, the result is reported as `partial=True` even though every value is fully resolved. Makes `partial` non-actionable. No test asserts `partial is False` on an unthemed doc with no refs.
@@ -369,6 +393,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Add a row in API.md next to `DuplicateIdError`; add it to `core-ids.md` autodoc members. (Subset of H15; resolve together.)
 
 ### M18: `mark_fields_dirty` and even/odd-header helpers only act on the first match
+- **Status:** ✅ RESOLVED (Session F) — switched to `findall`: `mark_fields_dirty` sets the first `w:updateFields` true and removes extras; `enable_distinct_even_odd_headers` collapses duplicates; `disable_…` removes every copy. Dedup tests added.
 - **Subsystem:** core / fields / layout
 - **Location:** `docx_plus/fields/update.py:62-67`, `docx_plus/layout/settings.py:84-89,101-103`
 - **Description:** Both use `settings.find(qn(...))` returning only the first match. Idempotency on outputs they wrote themselves works (one element max). But settings.xml from another tool with two pathological copies leaves the second in place with stale values.
@@ -382,24 +407,28 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Add to `Raises:` section: `ValueError: ... or the document has no trailing sectPr to copy section properties from.`
 
 ### M20: `notes-v0_2-expansion-scope.md` and `notes-v0_1-scope.md` referenced in shipped docs but excluded from sdist (and partially untracked)
+- **Status:** ✅ RESOLVED (Session F, option a) — removed the `notes-v0_*` cross-references from the five library `__init__.py` docstrings (now point at SPEC §15, which ships in the sdist) and softened the user-facing CHANGELOG + ARCHITECTURE references. IMPLEMENTATION.md's historical progress-log mentions are left (dev-only, excluded from sdist, and self-aware that the file is untracked).
 - **Subsystem:** docs / packaging
 - **Location:** `pyproject.toml:64-71` (sdist include list) vs `docx_plus/{bookmarks,comments,notes,layout,publishing}/__init__.py`, `CHANGELOG.md:16`, `docs/ARCHITECTURE.md:856`, `IMPLEMENTATION.md`
 - **Description:** Eight library files link to `notes-v0_1-scope.md` and `notes-v0_2-expansion-scope.md`. `pyproject.toml` sdist `include` list omits them. PyPI users who `pip download` and read the package will see broken cross-references. Also: `git status` at review time showed `notes-v0_1-scope.md` and `notes.md` as untracked — they will not exist at a tagged commit.
 - **Suggestion:** Either (a) remove the `notes-v0_*` references from library docstrings (they're internal artefacts), or (b) ship them in sdist `include`. (a) is cleaner.
 
 ### M21: `tests/conftest.py` builds fixtures into tmp dir while `build_fixtures.py main()` writes to `tests/fixtures/` — user already flagged confusion
+- **Status:** ✅ RESOLVED (Session F) — conftest (per-fixture lazy builders into a session tmp dir) is now the single canonical generation path; `build_all` requires an explicit out dir, and `main()` is a manual inspection helper that builds into a fresh temp dir (or a CLI-named one) — never `tests/fixtures/`. Docstrings state the split.
 - **Subsystem:** tests
 - **Location:** `tests/conftest.py:14-18`, `tests/fixtures/build_fixtures.py:20,209,222`
 - **Description:** Two divergent paths. The user's `notes.md` literally asks "What are the docx files in build/fixtures for? They seem like they may not match — do I need to manually create?" — this is the confusion.
 - **Suggestion:** Pick one. If the build script is a debugging helper, make `main()` also use a tmp dir or remove the directly-writing default. If fixtures are meant to be inspectable post-build, document and remove the conftest tmp-build path. Currently neither is canonical.
 
 ### M22: `tests/test_examples_libreoffice.py` only covers 3 of 9 examples — misses the entire v0.2 surface
+- **Status:** ✅ RESOLVED (Session F) — the LibreOffice render test now parametrizes over the smoke suite's `WRITES_DOCX` list (imported, so the two never drift), covering all 8 docx-writing examples including the full v0.2 surface (comments, layout, bookmarks, notes, publishing).
 - **Subsystem:** tests
 - **Location:** `tests/test_examples_libreoffice.py:83-90`
 - **Description:** Layer-3 smoke runs against `restyle_existing`, `build_form`, `populate_form` only — leaves `add_comments`, `multi_column_layout`, `bookmarks_and_xrefs`, `footnotes_and_endnotes`, `publishing_layout` unverified by headless render. These are the v0.2 features — exactly the ones most likely to produce a "Word reports an error" file.
 - **Suggestion:** Add the five v0.2 examples to the LibreOffice parametrize list. Each adds ~1 minute of CI runtime on the soffice leg.
 
 ### M23: `docs/TEST_GAPS.md` header is frozen at end-of-Phase-5 — eight IMPORTANT gaps unresolved through v0.2 with no acknowledgement
+- **Status:** ✅ RESOLVED (Session F) — added a top-of-file status note marking the snapshot historical, giving current stats (717 tests / 34 files), acknowledging the missed "before Phase 4" milestone, and flagging the IMPORTANT items as the v0.3 re-audit backlog. The stale milestone line is annotated rather than rewritten.
 - **Subsystem:** docs
 - **Location:** `docs/TEST_GAPS.md:3-5, 30-186, 224`
 - **Description:** Header says "Snapshot date: 2026-05-19 (end of Phase 5)", "Suite size at snapshot: 285 tests across 17 files". Real: ~558 tests across 34 files. Recommended priority order at line 224 said "Items 1–4 are the realistic target before Phase 4 begins" — that target was missed; the file does not acknowledge the slip. Items I1–I8 remain open.
@@ -410,120 +439,140 @@ items. Everything else can ship in v0.2.1 if needed.
 ## Low
 
 ### L1: `_now_iso` strips sub-second precision
+- **Status:** ✅ RESOLVED (Session F) — `_now_iso` now emits millisecond precision via `isoformat(timespec="milliseconds")` + `Z`; round-trips through `_parse_date`. Test asserts fractional seconds present.
 - **Subsystem:** comments
 - **Location:** `docx_plus/comments/anchor.py:359-361`
 - **Description:** `strftime("%Y-%m-%dT%H:%M:%SZ")` truncates microseconds. Two `add_comment` calls within the same second get identical timestamps. Not wrong (xsd:dateTime allows whole-second), but worth a fidelity decision.
 - **Suggestion:** Either keep for canonical readability or switch to `.isoformat(timespec="milliseconds") + "Z"`.
 
 ### L2: `read_comments._text_between` returns nonsense on inverted ranges
+- **Status:** ✅ RESOLVED (Session F, doc-only) — `_text_between` and the `AnchoredComment.anchored_text` docstrings now state that inverted (rangeEnd-before-rangeStart) markers yield an empty string.
 - **Subsystem:** comments
 - **Location:** `docx_plus/comments/read.py:152-173`
 - **Description:** A malformed doc with `commentRangeEnd` before `commentRangeStart` returns `""` silently. Edge case; not covered by tests.
 - **Suggestion:** No code change needed; add docstring note: "if rangeStart/rangeEnd ordering is inverted, anchored_text is empty."
 
 ### L3: `add_comment` tuple-target docstring promises validation it doesn't perform
+- **Status:** ✅ RESOLVED (Session F, doc-only) — the tuple-target docstring now states the caller is responsible for `start_run` preceding `end_run` in document order and that a reversed pair produces an empty range (accepted without error).
 - **Subsystem:** comments
 - **Location:** `docx_plus/comments/anchor.py:91-94`, `_normalize_target:276-280`
 - **Description:** "Both runs must already be parented and live in the main document body." Implementation only checks `isinstance(... Run)`; doesn't verify document order. Passing `(later_run, earlier_run)` succeeds with backwards range.
 - **Suggestion:** Compare document positions and raise on inversion, or document the limitation: "caller is responsible for first appearing before second in document order."
 
 ### L4: `apply_lum_mod` / `apply_lum_off` defined but never wired into the cascade
+- **Status:** ✅ RESOLVED (Session F, doc-only) — verified `w:color` (ECMA-376 CT_Color) carries only `themeTint`/`themeShade`, not `lumMod`/`lumOff`, so wiring them into `_resolve_color` would be for input the element cannot hold. Documented in the theme module + `_resolve_color` docstrings that these helpers serve DrawingML transforms (shape fills, `w14` effects), not the `w:color` path.
 - **Subsystem:** styles theme
 - **Location:** `docx_plus/styles/theme.py:201-233`
 - **Description:** Both helpers exported and unit-tested but never invoked by `_resolve_color` (which only handles `themeTint` / `themeShade`). ECMA-376 17.18.40 allows `lumMod`/`lumOff` on theme color refs; python-docx's bundled theme uses them. Any `<w:color w:themeColor="accent1" w:themeLumMod="50000"/>` resolves to unmodified accent1 with no warning.
 - **Suggestion:** Wire into `_resolve_color` (small effort, fixes real-world inputs), or document as unsupported in CHANGELOG and `_resolve_color` docstring.
 
 ### L5: `_apply_cell_cascade` accepts `doc` but doesn't use it (silenced `noqa`)
+- **Status:** ✅ RESOLVED (Session F) — dropped the unused `doc` parameter (and the `noqa: ARG001`); updated the lone call site. Docstring notes cells skip the doc-aware numbering layer.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:417-428`
 - **Description:** `doc` param unused; `# noqa: ARG001` kept for signature symmetry with `_apply_paragraph_cascade`. Cells don't have paragraph-level numbering, so the parameter is dead.
 - **Suggestion:** Drop the `doc` parameter (and the noqa). Local call sites; saves one shuffle and signals cells deliberately skip the doc-aware layers.
 
 ### L6: `target_kind` string + three `type: ignore` comments is heavier than needed
+- **Status:** ✅ RESOLVED (Session F) — `_classify_target` now returns `(kind, element)`; the `._p`/`._r`/`._tc` access happens once where `isinstance` has narrowed the type, removing all three `# type: ignore[union-attr]`.
 - **Subsystem:** styles cascade hygiene
 - **Location:** `docx_plus/styles/inspect.py:261-292`
 - **Description:** Works but is slightly fragile — a future change to `_classify_target` returning a new string value would silently take the cell branch. The variable extraction did NOT introduce aliasing problems (verified).
 - **Suggestion:** Optional: have `_classify_target` return `tuple[Literal[...], etree._Element]` so mypy narrows without the ignores. Low priority.
 
 ### L7: Run target's rStyle conflated with `linkedCharStyle` in provenance
+- **Status:** ✅ RESOLVED (already, Session A/C2) — the `Layer` literal already includes a distinct `"runStyle"`, and `_apply_paragraph_cascade` attributes a run's own `w:rStyle` to `runStyle` separately from the `w:link`-derived `linkedCharStyle`. No further change needed in Session F.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:401-414`
 - **Description:** `w:link`-derived character style AND run's own `w:rStyle` reference both attributed to `"linkedCharStyle"` layer. Conceptually different; a consumer asking "why is this run pink?" can't tell which set the color.
 - **Suggestion:** Introduce `"runStyle"` Layer literal; distinct from `linkedCharStyle`. Pair with C2.
 
 ### L8: `TableContext` docstring promises auto-derivation that breaks on SDT-wrapped cells
+- **Status:** ✅ RESOLVED (Session F, doc-only) — `TableContext` docstring documents the SDT-wrapped-cell limitation (auto-derivation returns an empty context; pass an explicit one) and that nested tables resolve against the inner cell; a matching comment marks the `except ValueError` fallback in `_derive_table_context_from_element`.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:36-69`, `_derive_table_context_from_element`
 - **Description:** Works when paragraph is directly inside `<w:tc>`. If a row contains `<w:sdt>` wrapping cells, `cells.index(tc)` throws `ValueError` (caught silently, returns empty `TableContext()` — masking real positional info). Nested tables work for inner cell position only.
 - **Suggestion:** Document the SDT-wrapped-cell limitation; consider walking into SDT containers when computing column index.
 
 ### L9: Self-cycle in `basedOn` raises with a slightly confusing message
+- **Status:** ✅ RESOLVED (Session F, comment-only) — added a comment in `_collect_style_chain` noting `basedOn` is single-valued so the chain is linear (never a diamond) and a self-cycle prints as `X -> X`.
 - **Subsystem:** styles cascade
 - **Location:** `docx_plus/styles/inspect.py:484-485`
 - **Description:** Cycle detection reports the chain but can't distinguish "true cycle" from "diamond". For basedOn (single-valued) diamonds don't happen, so the message is fine — worth a code comment.
 - **Suggestion:** Add a comment noting the cycle path is the actual basedOn chain; no code change.
 
 ### L10: Internal `_FootnotesPart` / `_EndnotesPart` imported by tests but not in `__all__`
+- **Status:** ✅ RESOLVED (Session F, comment-only) — added a comment above the two classes in `parts.py` noting `tests/test_core_parts.py` imports them by name to assert `PartFactory` wiring; keep the names stable or update that test.
 - **Subsystem:** tests
 - **Location:** `tests/test_core_parts.py:20-21`; `docx_plus/core/parts.py:172-178`
 - **Description:** Tests reach into `parts.py` for `_FootnotesPart` / `_EndnotesPart` to assert `PartFactory.part_type_for` is wired correctly. Private (`_` prefix). If renamed or inlined, test silently breaks.
 - **Suggestion:** Either expose a public predicate (`parts.registered_part_class_for(content_type)`) or add a comment in `parts.py` noting cross-reference from tests.
 
 ### L11: `xpath` recompiles every call (no compilation cache)
+- **Status:** ✅ RESOLVED (Session F) — extracted `_compile_xpath` with `@lru_cache(maxsize=512)` keyed on the expression (NSMAP is a module constant, so caching on expr alone is correct); `xpath` reuses the compiled object. Test asserts the same expression compiles once.
 - **Subsystem:** core hygiene
 - **Location:** `docx_plus/core/oxml.py:88`
 - **Description:** `etree.XPath(expr, namespaces=NSMAP)` built fresh each call; called from hot loops (registry seeding, reads). Minor.
 - **Suggestion:** Either document the choice (simplicity over caching) or add an `lru_cache` keyed on `expr`.
 
 ### L12: `test_import_invariant.py` doesn't catch relative or dynamic imports
+- **Status:** ✅ RESOLVED (Session F) — added `test_no_relative_imports` forbidding `level > 0` ImportFrom in capability modules (so the absolute-name cross-capability check stays sound); the module docstring documents the residual dynamic-import (`importlib`) gap as by-design.
 - **Subsystem:** tests
 - **Location:** `tests/test_import_invariant.py:42-51`
 - **Description:** AST walk handles absolute imports only. Skips `ImportFrom` with `node.module is None` (i.e. `from . import foo`). Currently moot, but a future `from ..fields import X` from a sibling capability would pass silently. Also doesn't see `importlib.import_module`.
 - **Suggestion:** Reject `level > 0` ImportFrom outright (no relative imports as a rule), or reconstruct the absolute path from `level` + file package. Document the dynamic-import gap.
 
 ### L13: `etree` import-style inconsistency across modules
+- **Status:** ✅ RESOLVED (Session F) — standardized on **module-level** `from lxml import etree` for every module that references etree (the existing majority), moving the four outliers (`core/parts.py`, `publishing/{captions,figures,toc}.py`) out of their `TYPE_CHECKING` block. One coherent rule; zero runtime risk; ruff/mypy clean.
 - **Subsystem:** core hygiene
 - **Location:** `docx_plus/fields/simple.py:20`, `bookmarks/anchor.py:21`, `comments/anchor.py:30`, `comments/read.py:19` (module-level) vs `publishing/*.py`, `core/parts.py:40` (`if TYPE_CHECKING:`)
 - **Description:** Some modules import `etree` at module level despite `from __future__ import annotations`; others gate behind `TYPE_CHECKING`. Inconsistent.
 - **Suggestion:** Pick one. Cost is negligible — consistency is the point.
 
 ### L14: `core/__init__.py` circular-import-by-design via `noqa: E402` pattern
+- **Status:** ✅ RESOLVED (Session F) — moved `DocxPlusError` into a new `core/errors.py` (imports nothing from core); `core/__init__` re-exports it with all imports now top-of-file (no `# noqa: E402`); `ids.py`/`ns.py` import from `core.errors` directly. Identity guard test added.
 - **Subsystem:** core hygiene
 - **Location:** `docx_plus/core/__init__.py:23-39`
 - **Description:** `noqa: E402` comments necessary because `DocxPlusError` must be defined before imports. Fine as-is but fragile — if `DocxPlusError` moves below the imports the package fails to load.
 - **Suggestion:** Optional refactor — move `DocxPlusError` to its own tiny `docx_plus/core/errors.py` that no other core module imports; have `core/__init__.py` re-export.
 
 ### L15: `set_line_numbering`'s `distance` not range-validated
+- **Status:** ✅ RESOLVED (Session F) — added `if distance is not None and distance < 0: raise ValueError(...)` and documented it in the Raises block. Tests cover reject-negative and accept-zero.
 - **Subsystem:** layout
 - **Location:** `docx_plus/layout/line_numbering.py:74-78`
 - **Description:** `count_by` and `start` validated; `distance` not. Negative `distance` silently written; Word may reject.
 - **Suggestion:** Add `if distance is not None and distance < 0: raise ValueError(...)` matching the existing pattern.
 
 ### L16: `read_notes` filter relies on a two-tier check that's slightly over-eager
+- **Status:** ✅ RESOLVED (Session F, comment-only) — added a comment in `_read_notes` explaining the two-tier filter (id ≤ 0, plus the two separator `w:type` values) is deliberately belt-and-suspenders and that any other legal `w:type` passes through. No behaviour change.
 - **Subsystem:** notes
 - **Location:** `docx_plus/notes/read.py:119-126`
 - **Description:** Separator entries with `id <= 0` AND/OR `w:type` filtered. A user-authored note with `w:type` set to something legal is filtered out by the type check. Probably fine for v0.2.
 - **Suggestion:** No action; documenting for visibility.
 
 ### L17: `clear_all_comments` after part exists but is empty leaves comments part connected
+- **Status:** ✅ RESOLVED (Session F) — added a `remove_part: bool = False` kwarg to `clear_all_comments`; when `True` it drops the comments relationship via `drop_rel` so the saved document carries no comments part (verified: the relationship has ref-count 0, so removal is always eligible). Default preserves the reuse-the-empty-part behaviour. Teardown + round-trip tests added.
 - **Subsystem:** comments
 - **Location:** `docx_plus/comments/anchor.py:182-207`
 - **Description:** Docstring explicitly says "comments part is left in place (empty) so subsequent add_comment reuses it." Some Word versions complain when opening a docx with an empty comments part and the relationship intact. python-docx parser tolerates it; Word behaviour not verified across all targeted versions.
 - **Suggestion:** Either verify Word 2019+ / M365 tolerate empty-part-with-relationship, or add `remove_part=True` kwarg that tears down the relationship and part itself.
 
 ### L18: `set_line_numbering` / `set_page_borders` idempotency tests don't cover pre-existing-from-load case
+- **Status:** ✅ RESOLVED (Session F) — added tests that pre-seed the element via `el()` (simulating a prior Word save) then call the setter, asserting one element remains with the new attributes — for both `set_line_numbering` and `set_page_borders`.
 - **Subsystem:** tests
 - **Location:** `tests/test_layout_line_numbering.py`, `tests/test_layout_borders.py`
 - **Description:** Tests call the helpers twice on a fresh `Document()`. The interesting case — opening a doc that *already* has the element (from prior Word save) and calling the helper — is not covered. Replacement logic uses `sect_pr.find(...)` which works the same way, so it's a coverage gap, not a known bug.
 - **Suggestion:** Add tests that pre-seed the section with the element (via `el()`) then call the setter and assert one element remains with updated attrs.
 
 ### L19: Schema-strict insertion tests use only one anchor sibling at a time
+- **Status:** ✅ RESOLVED (Session F) — added tests asserting the new element lands before **both** `w:cols` and `w:docGrid` (a fresh `Document()` carries both in schema order), for `set_line_numbering` and `set_page_borders` — the multi-anchor case that catches `_LATER_SIBLINGS` misordering.
 - **Subsystem:** tests
 - **Location:** `tests/test_layout_line_numbering.py:99-112`, `tests/test_layout_borders.py:103-128`
 - **Description:** Each test seeds one anchor (e.g. `w:cols`). The harder case — `sect_pr` with both `w:cols` and `w:docGrid` — would catch `_LATER_SIBLINGS` misordering.
 - **Suggestion:** Add a test seeding `w:pgNumType`, `w:cols`, `w:docGrid` together and assert new element lands before all three in correct relative position.
 
 ### L20: Publishing helper tests don't assert the absence of `w:updateFields` (SPEC §9.1 discipline)
+- **Status:** ✅ RESOLVED (Session F) — added a shared `assert_field_not_dirty` helper and, for each of `add_toc` / `add_caption` / `add_table_of_figures`, a negative test (helper alone leaves no `w:updateFields`) and a positive test (helper + `mark_fields_dirty` sets it).
 - **Subsystem:** tests / publishing
 - **Location:** `tests/test_publishing_toc.py`, `test_publishing_captions.py`, `test_publishing_figures.py`
 - **Description:** Brief specifically requires publishing helpers do NOT auto-call `mark_fields_dirty`. Tests verify the field is emitted but never verify the absence of `w:updateFields`. A regression that quietly adds `mark_fields_dirty` inside one would pass.
@@ -537,6 +586,7 @@ items. Everything else can ship in v0.2.1 if needed.
   - `styles-theme.md` says "Writing themes is a v0.2 goal" — v0.2 didn't ship theme writing.
   - `protection-document.md` says "Password-protected forms deferred to v0.2" — v0.2 didn't add them.
   - `comments-anchor.md` `members:` omits `edit_comment`, `clear_all_comments`, `CommentNotFoundError`.
+- **Status:** ✅ RESOLVED (Session E + F) — `notes-write.md` and `comments-anchor.md` were corrected in Session E (intro + members). Session F fixed `styles-theme.md` ("Writing themes is a v0.2 goal" → "out of scope, read-only"; also added the new `resolve_theme_font` member) and `protection-document.md` ("deferred to v0.2" → "deferred — neither v0.1 nor the v0.2 cycle added them"). Also added the new `body_document_for` to `core-oxml.md` + `docs/API.md` so members track `__all__`.
 - **Suggestion:** Audit every `docs/reference/*.md` against the current source; rewrite "deferred to v0.2" stamps; expand `members:` lists to current `__all__`.
 
 ---
@@ -551,6 +601,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Expose `__doc_total__` or just `len(_BUILTIN_STYLES)` from `modify.py` and reference it from one canonical location.
 
 ### N2: `add_table_of_figures` builds instruction by repeated `+=`
+- **Status:** ✅ RESOLVED (Session F) — switched to a `switches` list joined with `" ".join(...)` wrapped in a single f-string; output is byte-identical to before (verified by the existing instruction tests).
 - **Subsystem:** publishing hygiene
 - **Location:** `docx_plus/publishing/figures.py:59-63`
 - **Description:** Five-line conditional concatenation followed by trailing `instruction += " "`. Easy to misread.
@@ -564,30 +615,35 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Replace `\\` with `\` inside raw module docstrings, or drop the `r` prefix.
 
 ### N4: `_doc_for` duplicated between `comments/anchor.py` and `notes/write.py`
+- **Status:** ✅ RESOLVED (Session F) — hoisted to `core/oxml.py` as `body_document_for(proxy, *, operation=...)` (re-exported from `core`); both modules' `_doc_for` removed and call sites updated. Tests cover the happy path and the non-body-proxy ValueError.
 - **Subsystem:** core hygiene
 - **Location:** `docx_plus/notes/write.py:281-290`, `docx_plus/comments/anchor.py:287-302`
 - **Description:** Same function in both modules. SPEC §9.1 allows this in `core` since it's a shared utility.
 - **Suggestion:** Move to `docx_plus/core/oxml.py` (or new `core/proxy.py`) as `body_document_for(proxy)`.
 
 ### N5: Test helper `_instruction` in `test_publishing_toc.py` is dead-defensive
+- **Status:** ✅ RESOLVED (Session F) — added `field_instruction_text` to `_testing/ooxml_asserts.py`; the toc test's `_instruction` now delegates to it (the dead `p.find(...)`-then-loop branching is gone).
 - **Subsystem:** tests
 - **Location:** `tests/test_publishing_toc.py:14-25`
 - **Description:** Helper does `p.find(...)` then on `None` falls through to a manual loop. The fallback is what actually catches results. Compare to cleaner caption-side helper.
 - **Suggestion:** Normalise to one helper in `docx_plus/_testing/ooxml_asserts.py`.
 
 ### N6: `tests/test_examples_smoke.py::assert result.stdout` is brittle
+- **Status:** ✅ RESOLVED (Session F) — dropped the `assert result.stdout`; `returncode == 0` is the signal, so an example that prints only under `--verbose` no longer fails the smoke test.
 - **Subsystem:** tests
 - **Location:** `tests/test_examples_smoke.py:64`
 - **Description:** Requires every example to write at least one byte to stdout. Couples the smoke test to example output side-effects; an example changed to print only on `--verbose` fails.
 - **Suggestion:** Drop the stdout assertion; `returncode == 0` is enough signal.
 
 ### N7: `tests/test_examples_smoke.py` EXAMPLES and WRITES_DOCX lists are manually maintained
+- **Status:** ✅ RESOLVED (Session F) — `EXAMPLES` is now derived from `pkgutil.iter_modules(docx_plus.examples.__path__)` (excluding underscore-prefixed), so a new example is smoke-tested automatically; `WRITES_DOCX` stays manual (output filenames are example-specific) and is now also reused by the LibreOffice suite.
 - **Subsystem:** tests
 - **Location:** `tests/test_examples_smoke.py:19-42`
 - **Description:** Adding a new example requires updating both lists.
 - **Suggestion:** Derive `EXAMPLES` from `pkgutil.iter_modules(docx_plus.examples.__path__)`; keep `WRITES_DOCX` manual since output-filename mapping is example-specific.
 
 ### N8: `tests/test_layout_breaks.py::test_insert_section_break_requires_body_parent` uses an unexercised `FakePart`
+- **Status:** ✅ RESOLVED (Session F) — replaced the `FakePart` contraption with a real header paragraph (parented to `<w:hdr>`, not `<w:body>`), so the body-parent guard fires on a genuine non-body proxy.
 - **Subsystem:** tests
 - **Location:** `tests/test_layout_breaks.py:123-139`
 - **Description:** `FakePart()` constructed but the assertion fires before the part is consulted. Smell: the fake never runs.
@@ -608,12 +664,14 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Collapse to "v0.1.0 / v0.2.0 — complete" or move to IMPLEMENTATION.md.
 
 ### N11: `tests/conftest.py` builds all fixtures unconditionally per session
+- **Status:** ✅ RESOLVED (Session F) — conftest now uses per-fixture session-scoped lazy builders (each `*_docx_path` builds only its own file into the shared session tmp dir), so a run that touches only one fixture no longer builds all five. Folded into the M21 rewrite.
 - **Subsystem:** tests
 - **Location:** `tests/conftest.py:14-18`
 - **Description:** Session-scoped, ~5 small docx files built at first request. Not a correctness issue; sub-second.
 - **Suggestion:** Defer to per-fixture lazy builders; or accept the overhead and move on.
 
 ### N12: `test_table_context_is_frozen` swallows any exception type
+- **Status:** ✅ RESOLVED (Session F) — now uses `pytest.raises(dataclasses.FrozenInstanceError)` instead of a bare `except Exception: return`, mirroring `test_resolved_formatting_is_frozen`.
 - **Subsystem:** tests
 - **Location:** `tests/test_styles_table_conditional.py:89-96`
 - **Description:** `except Exception: return` catches everything, not just `dataclasses.FrozenInstanceError`. Future refactor (e.g. `__slots__` → `AttributeError`) would still pass.

@@ -124,10 +124,45 @@ def assert_field_dirty(doc: Document) -> None:
     assert value == "true", f"w:updateFields/@w:val is {value!r}, expected 'true'"
 
 
+def assert_field_not_dirty(doc: Document) -> None:
+    """Assert ``settings.xml`` carries no ``w:updateFields`` element.
+
+    The inverse of :func:`assert_field_dirty`. Used to prove a helper does
+    *not* auto-flag fields dirty (SPEC §9.1: that is the caller's explicit
+    :func:`docx_plus.fields.mark_fields_dirty` step).
+
+    Args:
+        doc: python-docx Document to inspect.
+
+    Raises:
+        AssertionError: If any ``w:updateFields`` element is present.
+    """
+    settings = doc.settings.element
+    matches = xpath(settings, "./w:updateFields")
+    assert not matches, "w:updateFields is present but the helper must not set it"
+
+
+def field_instruction_text(p_element: Any) -> str | None:
+    """Return the concatenated ``<w:instrText>`` text in ``p_element``.
+
+    Walks every ``<w:instrText>`` descendant in document order and joins
+    their text. Returns ``None`` when the paragraph carries no field
+    instruction. Shared by the publishing tests so each does not re-roll a
+    bespoke (and, in one case, dead-defensive) extractor.
+
+    Args:
+        p_element: A ``<w:p>`` lxml element holding a complex field.
+    """
+    texts = [t.text for t in xpath(p_element, ".//w:instrText") if t.text is not None]
+    return "".join(texts) if texts else None
+
+
 __all__ = [
     "assert_field_dirty",
+    "assert_field_not_dirty",
     "assert_ids_unique",
     "assert_protected",
     "assert_style_defined",
     "count_controls",
+    "field_instruction_text",
 ]

@@ -20,6 +20,7 @@ from docx_plus.styles.theme import (
     apply_theme_tint,
     load_theme,
     resolve_theme_color,
+    resolve_theme_font,
 )
 
 
@@ -144,6 +145,44 @@ def test_apply_theme_shade_rejects_malformed_hex_color() -> None:
 
 def test_apply_theme_tint_strips_leading_hash() -> None:
     assert apply_theme_tint("#4F81BD", "FF") == "4F81BD"
+
+
+# --------------------------------------------------------------------------
+# Font scheme resolution (M10).
+# --------------------------------------------------------------------------
+
+
+def test_load_theme_populates_font_tokens() -> None:
+    theme = load_theme(Document())
+    assert theme is not None
+    # python-docx's default theme: major latin = Calibri, minor latin = Cambria.
+    assert theme.font("majorHAnsi") == "Calibri"
+    assert theme.font("minorHAnsi") == "Cambria"
+    # *Ascii is an alias of *HAnsi (both map to the latin typeface).
+    assert theme.font("minorAscii") == theme.font("minorHAnsi")
+
+
+def test_resolve_theme_font_with_none_theme() -> None:
+    assert resolve_theme_font(None, "minorHAnsi") is None
+
+
+def test_resolve_theme_font_unknown_token_returns_none() -> None:
+    theme = load_theme(Document())
+    assert theme is not None
+    assert resolve_theme_font(theme, "nosuchtoken") is None
+
+
+def test_resolve_theme_font_resolves_known_token() -> None:
+    theme = load_theme(Document())
+    assert theme is not None
+    assert resolve_theme_font(theme, "majorHAnsi") == "Calibri"
+
+
+def test_theme_colors_fonts_defaults_to_empty() -> None:
+    # A ThemeColors built without a font scheme (as in color-only tests)
+    # resolves every token to None rather than raising.
+    theme = ThemeColors(scheme={"accent1": "4F81BD"})
+    assert theme.font("minorHAnsi") is None
 
 
 def test_themed_fixture_round_trips(themed_docx_path: object) -> None:

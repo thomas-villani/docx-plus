@@ -39,7 +39,10 @@ class AnchoredComment:
         text: The comment body text. Multiple text runs are concatenated.
         anchored_text: The document text between the comment's
             ``commentRangeStart`` and ``commentRangeEnd`` markers.
-            Empty if no matching body range exists (orphaned comment).
+            Empty if no matching body range exists (orphaned comment),
+            or if the markers are inverted (``rangeEnd`` appears before
+            ``rangeStart`` in document order) — a malformed state this
+            reader reports as empty rather than guessing.
         paragraph_index: Zero-based index (within
             ``doc.paragraphs``) of the paragraph that contains the
             ``commentRangeStart`` marker. ``-1`` for orphaned comments.
@@ -157,7 +160,10 @@ def _text_between(
     """Concatenate ``<w:t>`` text between ``start`` and ``end`` in document order.
 
     Walks every descendant of ``body`` exactly once; matches text content
-    encountered after ``start`` and before ``end``.
+    encountered after ``start`` and before ``end``. If the markers are
+    inverted (``end`` precedes ``start`` in document order) the walk hits
+    ``end`` while still not collecting and returns ``""`` — inverted
+    ranges are reported as empty rather than as reversed text.
     """
     collecting = False
     parts: list[str] = []

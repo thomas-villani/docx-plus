@@ -21,7 +21,12 @@ from lxml import etree
 from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
-from docx_plus.styles.theme import ThemeColors, load_theme, resolve_theme_color
+from docx_plus.styles.theme import (
+    ThemeColors,
+    load_theme,
+    resolve_theme_color,
+    resolve_theme_font,
+)
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -63,6 +68,12 @@ class TableContext:
     row-, and table-level properties (``<w:tcPr>`` / ``<w:trPr>`` /
     ``<w:tblPr>``) from a table style are not surfaced — see the
     :func:`resolve_effective_formatting` note.
+
+    Auto-derivation limitation: when a row wraps its cells in a
+    ``<w:sdt>`` (a content control around table cells), the derived
+    column index cannot be computed and an empty (all-False)
+    :class:`TableContext` is returned. Pass an explicit context in that
+    case. Nested tables resolve against the **inner** cell's position.
 
     Attributes:
         is_first_row: Cell is in the first ``<w:tr>`` of its table.
@@ -290,38 +301,37 @@ def resolve_effective_formatting(
         >>> resolved.font_size  # e.g. 11.0 from docDefaults
         11.0
     """
-    target_kind = _classify_target(target)
+    target_kind, target_el = _classify_target(target)
     doc = _document_of(target)
     styles_root = doc.styles.element
     theme = load_theme(doc)
 
+    # ``partial`` is set lazily — only when a theme reference actually fails
+    # to resolve (inside _resolve_color / _resolve_font_theme). A missing
+    # theme part is not, on its own, an incomplete resolution: a document
+    # with no theme refs resolves fully even without a theme (SPEC §4).
     acc = _Accumulator(theme=theme, want_provenance=include_provenance)
-    if theme is None:
-        acc.partial = True
 
-    # target_kind narrows the union at runtime, but mypy can't track narrowing
-    # through a separately-bound string variable — so ._p / ._r / ._tc each
-    # need an ignore for the union-attr check that's already proven by hand.
+    # _classify_target returns the underlying element alongside the kind, so
+    # the union-attr access happens once where isinstance has already narrowed
+    # the type — no per-branch type: ignore needed here.
     if target_kind == "paragraph":
-        p_el = target._p  # type: ignore[union-attr]
-        ctx = table_context or _derive_table_context_from_element(p_el)
-        _apply_paragraph_cascade(acc, doc, styles_root, p_el, table_context=ctx)
+        ctx = table_context or _derive_table_context_from_element(target_el)
+        _apply_paragraph_cascade(acc, doc, styles_root, target_el, table_context=ctx)
     elif target_kind == "run":
-        r_el = target._r  # type: ignore[union-attr]
-        paragraph_element = _enclosing_paragraph(r_el)
+        paragraph_element = _enclosing_paragraph(target_el)
         ctx = table_context or _derive_table_context_from_element(paragraph_element)
         _apply_paragraph_cascade(
             acc,
             doc,
             styles_root,
             paragraph_element,
-            run_element=r_el,
+            run_element=target_el,
             table_context=ctx,
         )
     else:  # cell
-        tc_el = target._tc  # type: ignore[union-attr]
-        ctx = table_context or _derive_table_context_from_element(tc_el)
-        _apply_cell_cascade(acc, doc, styles_root, tc_el, table_context=ctx)
+        ctx = table_context or _derive_table_context_from_element(target_el)
+        _apply_cell_cascade(acc, styles_root, target_el, table_context=ctx)
 
     return acc.freeze()
 
@@ -451,12 +461,16 @@ def _apply_paragraph_cascade(
 
 def _apply_cell_cascade(
     acc: _Accumulator,
-    doc: Document,  # noqa: ARG001
     styles_root: etree._Element,
     tc_element: etree._Element,
     table_context: TableContext | None = None,
 ) -> None:
-    """Resolve formatting for a table cell — table style chain only, for now."""
+    """Resolve formatting for a table cell — table style chain only, for now.
+
+    Takes no ``doc`` parameter (unlike :func:`_apply_paragraph_cascade`):
+    cells carry no paragraph-level numbering, so the doc-aware numbering
+    layer that needs ``numbering.xml`` does not apply here.
+    """
     _apply_doc_defaults(acc, styles_root)
     table_element = _enclosing_table(tc_element)
     if table_element is not None:
@@ -516,6 +530,9 @@ def _collect_style_chain(
     current_id: str | None = leaf_style_id
     while current_id is not None:
         if current_id in visited:
+            # basedOn is single-valued, so the chain is linear: this path is
+            # the real basedOn sequence up to the repeat, never a diamond.
+            # A self-cycle (X basedOn X) prints as "X -> X".
             cycle_path = " -> ".join([sid for sid, _ in chain] + [current_id])
             raise StyleCascadeError(f"cycle in basedOn chain: {cycle_path}")
         if len(chain) > _MAX_STYLE_CHAIN_DEPTH:
@@ -691,6 +708,9 @@ def _derive_table_context_from_element(node: etree._Element) -> TableContext:
         row_idx = rows.index(tr)
         col_idx = cells.index(tc)
     except ValueError:
+        # tr/tc not a direct child of its parent — happens when a <w:sdt>
+        # wraps the row's cells. Position is indeterminate; fall back to an
+        # empty context (caller may pass an explicit one). See TableContext.
         return TableContext()
 
     row_band_size = _read_band_size(tbl, "w:tblStyleRowBandSize")
@@ -873,15 +893,21 @@ def _apply_rpr(acc: _Accumulator, rpr: etree._Element, source: FormattingSource)
             acc.toggle(field_name, child.get(qn("w:val")), source)
             continue
         if local == "rFonts":
-            font = (
-                child.get(qn("w:asciiTheme"))
-                or child.get(qn("w:ascii"))
-                or child.get(qn("w:hAnsi"))
-                or child.get(qn("w:cs"))
-            )
-            if font is not None:
-                resolved = _resolve_font_theme(font, source)
-                acc.set("font_name", resolved, source)
+            # A theme token (w:asciiTheme) resolves against the theme's
+            # font scheme; a literal face (w:ascii / w:hAnsi / w:cs) is used
+            # verbatim. Theme attributes take precedence — that is what Word
+            # writes when a font is theme-bound.
+            ascii_theme = child.get(qn("w:asciiTheme"))
+            if ascii_theme is not None:
+                acc.set("font_name", _resolve_font_theme(ascii_theme, acc), source)
+            else:
+                literal = (
+                    child.get(qn("w:ascii"))
+                    or child.get(qn("w:hAnsi"))
+                    or child.get(qn("w:cs"))
+                )
+                if literal is not None:
+                    acc.set("font_name", literal, source)
         elif local == "sz":
             raw = child.get(qn("w:val"))
             if raw is not None:
@@ -912,32 +938,56 @@ def _apply_rpr(acc: _Accumulator, rpr: etree._Element, source: FormattingSource)
 
 
 def _resolve_color(color_el: etree._Element, acc: _Accumulator) -> str | None:
+    """Resolve a ``<w:color>`` element to an uppercase ``RRGGBB`` hex string.
+
+    Handles the two theme transforms ``<w:color>`` can carry —
+    ``themeTint`` and ``themeShade`` (ECMA-376 CT_Color). The DrawingML
+    ``lumMod`` / ``lumOff`` transforms are not applicable here: the
+    ``w:color`` schema cannot carry them (see :mod:`docx_plus.styles.theme`).
+
+    On an unresolvable theme reference the result is flagged
+    ``partial`` (SPEC §4). The unresolved name is surfaced as the value
+    **only** when the theme part is entirely absent — so callers without a
+    theme can still log which color was wanted. When the theme loaded but
+    the name is not in its scheme (a typo such as ``"accent7"``, or the
+    explicit ``"none"`` sentinel), no value is returned: a bare name would
+    land a non-hex string in ``color_rgb`` that the style writers reject.
+    """
     theme_name = color_el.get(qn("w:themeColor"))
     if theme_name is not None:
+        if theme_name == "none":
+            # Explicit "no theme color" — not a resolution failure.
+            return None
         tint = color_el.get(qn("w:themeTint"))
         shade = color_el.get(qn("w:themeShade"))
         resolved = resolve_theme_color(acc.theme, theme_name, tint=tint, shade=shade)
         if resolved is not None:
             return resolved
-        # Theme requested but theme not resolvable — emit unresolved name and
-        # mark the result partial. SPEC §4 "Theme resolution edge cases".
         acc.partial = True
-        return theme_name
+        if acc.theme is None:
+            return theme_name
+        return None
     val = color_el.get(qn("w:val"))
     if val and val.lower() != "auto":
         return val.upper()
     return None
 
 
-def _resolve_font_theme(value: str, source: FormattingSource) -> str:  # noqa: ARG001
-    """Theme font tokens (majorAscii etc.) pass through as-is for v0.1.
+def _resolve_font_theme(token: str, acc: _Accumulator) -> str:
+    """Resolve a ``w:asciiTheme`` font token to its concrete typeface.
 
-    Theme font resolution would require reading ``a:fontScheme`` from the
-    theme part; deferred until a caller actually depends on the resolved
-    typeface name. Returning the token preserves enough information for
-    diagnostic output.
+    Reads the theme's ``a:fontScheme`` (e.g. ``"minorHAnsi"`` -> ``"Calibri"``).
+    When the theme is absent or the token has no scheme entry the token is
+    surfaced unchanged and the result is flagged ``partial`` — the same
+    contract :func:`_resolve_color` uses, so a ``partial=True`` result
+    reliably means "a theme reference did not resolve to a concrete value"
+    (SPEC §4).
     """
-    return value
+    resolved = resolve_theme_font(acc.theme, token)
+    if resolved is not None:
+        return resolved
+    acc.partial = True
+    return token
 
 
 # --------------------------------------------------------------------------
@@ -945,17 +995,25 @@ def _resolve_font_theme(value: str, source: FormattingSource) -> str:  # noqa: A
 # --------------------------------------------------------------------------
 
 
-def _classify_target(target: object) -> Literal["paragraph", "run", "cell"]:
+def _classify_target(
+    target: object,
+) -> tuple[Literal["paragraph", "run", "cell"], etree._Element]:
+    """Classify ``target`` and return ``(kind, underlying_element)``.
+
+    Returning the element here — where ``isinstance`` has narrowed the type
+    — lets the caller avoid a ``type: ignore[union-attr]`` on each of
+    ``._p`` / ``._r`` / ``._tc``.
+    """
     from docx.table import _Cell
     from docx.text.paragraph import Paragraph
     from docx.text.run import Run
 
     if isinstance(target, Paragraph):
-        return "paragraph"
+        return "paragraph", target._p
     if isinstance(target, Run):
-        return "run"
+        return "run", target._r
     if isinstance(target, _Cell):
-        return "cell"
+        return "cell", target._tc
     kind = type(target).__name__
     raise TypeError(f"resolve_effective_formatting expects Paragraph, Run, or _Cell; got {kind}")
 

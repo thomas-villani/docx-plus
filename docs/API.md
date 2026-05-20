@@ -74,6 +74,7 @@ The foundation primitives. Every capability module imports from here only.
 | `sub(parent, tag, **attrs)` | function | Create + append a namespaced child |
 | `xpath(node, expr)` | function | XPath against `node` with `NSMAP` pre-bound. Use this — `BaseOxmlElement.xpath()` rejects `namespaces=` kwarg |
 | `remove(node)` | function | Detach from parent, no-op if already detached |
+| `body_document_for(proxy, *, operation=...)` | function | Resolve the owning main-body `Document` from a python-docx proxy; raises `ValueError` for header/footer proxies. Shared by `comments` / `notes` |
 | `build_complex_field(p_element, instruction, initial_text)` | function | Emit the 5-run complex-field sequence (begin / instrText / separate / result / end). Used by `fields/simple.py` and `bookmarks/crossref.py` |
 | `insert_before_first_anchor(parent, new_element, anchor_tags)` | function | Schema-strict insertion helper for `settings.xml` mutations. Used by `fields/update.py` and `layout/settings.py` |
 | `get_or_create_part(doc, spec)` | function | Return `(part, root_element)` for a separate OOXML part (creates and wires the relationship if absent). v0.2 |
@@ -140,10 +141,12 @@ Read-only theme color resolution. Theme writing is a v0.2 goal.
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `load_theme(doc)` | function | Read `word/theme/theme1.xml`. Returns `None` on missing/malformed |
-| `ThemeColors(scheme)` | dataclass (frozen) | Holds the parsed `a:clrScheme` |
-| `ThemeColors.base(theme_name)` | method | Lookup by Word `ST_ThemeColor` name; returns `None` for unknowns |
+| `load_theme(doc)` | function | Read `word/theme/theme1.xml` (`a:clrScheme` + `a:fontScheme`). Returns `None` on missing/malformed |
+| `ThemeColors(scheme, fonts={})` | dataclass (frozen) | Holds the parsed `a:clrScheme` and `a:fontScheme` |
+| `ThemeColors.base(theme_name)` | method | Lookup color by Word `ST_ThemeColor` name; returns `None` for unknowns |
+| `ThemeColors.font(token)` | method | Lookup typeface by `ST_Theme` font token (`minorHAnsi`, …); returns `None` for unknowns |
 | `resolve_theme_color(theme, name, *, tint=None, shade=None)` | function | Translate aliases + apply tint/shade. Returns hex `RRGGBB` |
+| `resolve_theme_font(theme, token)` | function | Resolve a `*Theme` font token to its concrete typeface (e.g. `minorHAnsi` → `Calibri`) |
 | `apply_theme_tint(hex_color, tint_byte)` | function | Lighten toward white |
 | `apply_theme_shade(hex_color, shade_byte)` | function | Darken toward black |
 | `apply_lum_mod(hex_color, lum_mod)` | function | Multiply lightness by per-mille factor (ECMA-376 17.18.40) |

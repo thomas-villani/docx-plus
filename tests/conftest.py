@@ -1,4 +1,12 @@
-"""Shared pytest configuration and fixture-provider hooks."""
+"""Shared pytest configuration and fixture-provider hooks.
+
+Fixture ``.docx`` files are *generated*, never committed (SPEC §10). This
+module is the single canonical generation path: each ``*_docx_path`` fixture
+builds only the file it needs, once per session, into a session tmp dir. The
+``tests/fixtures/build_fixtures.py`` module's ``main()`` is a separate manual
+inspection helper — it does not feed the tests and does not write into the
+committed source tree.
+"""
 
 from __future__ import annotations
 
@@ -6,43 +14,46 @@ from pathlib import Path
 
 import pytest
 
-from tests.fixtures.build_fixtures import build_all
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
+from tests.fixtures.build_fixtures import (
+    build_empty,
+    build_existing_form,
+    build_multistyle,
+    build_numbered,
+    build_themed,
+)
 
 
 @pytest.fixture(scope="session")
-def fixtures(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
-    """Build every Phase 1 fixture once per session into a tmp dir."""
-    out = tmp_path_factory.mktemp("docx_plus_fixtures")
-    return build_all(out)
+def _fixtures_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Session-scoped tmp dir that holds generated fixtures."""
+    return tmp_path_factory.mktemp("docx_plus_fixtures")
 
 
-@pytest.fixture
-def empty_docx_path(fixtures: dict[str, Path]) -> Path:
+@pytest.fixture(scope="session")
+def empty_docx_path(_fixtures_dir: Path) -> Path:
     """Path to the freshly-built ``empty.docx`` fixture."""
-    return fixtures["empty"]
+    return build_empty(_fixtures_dir / "empty.docx")
 
 
-@pytest.fixture
-def multistyle_docx_path(fixtures: dict[str, Path]) -> Path:
+@pytest.fixture(scope="session")
+def multistyle_docx_path(_fixtures_dir: Path) -> Path:
     """Path to the freshly-built ``multistyle.docx`` fixture."""
-    return fixtures["multistyle"]
+    return build_multistyle(_fixtures_dir / "multistyle.docx")
 
 
-@pytest.fixture
-def themed_docx_path(fixtures: dict[str, Path]) -> Path:
+@pytest.fixture(scope="session")
+def themed_docx_path(_fixtures_dir: Path) -> Path:
     """Path to the freshly-built ``themed.docx`` fixture."""
-    return fixtures["themed"]
+    return build_themed(_fixtures_dir / "themed.docx")
 
 
-@pytest.fixture
-def existing_form_docx_path(fixtures: dict[str, Path]) -> Path:
+@pytest.fixture(scope="session")
+def existing_form_docx_path(_fixtures_dir: Path) -> Path:
     """Path to the freshly-built ``existing_form.docx`` fixture."""
-    return fixtures["existing_form"]
+    return build_existing_form(_fixtures_dir / "existing_form.docx")
 
 
-@pytest.fixture
-def numbered_docx_path(fixtures: dict[str, Path]) -> Path:
+@pytest.fixture(scope="session")
+def numbered_docx_path(_fixtures_dir: Path) -> Path:
     """Path to the freshly-built ``numbered.docx`` fixture."""
-    return fixtures["numbered"]
+    return build_numbered(_fixtures_dir / "numbered.docx")

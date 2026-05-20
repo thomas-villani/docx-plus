@@ -78,8 +78,8 @@ def set_line_numbering(
             typical).
 
     Raises:
-        ValueError: If ``count_by < 1``, ``start < 1``, or ``restart``
-            is not one of the three allowed values.
+        ValueError: If ``count_by < 1``, ``start < 1``, ``distance`` is
+            negative, or ``restart`` is not one of the three allowed values.
 
     Example:
         >>> from docx import Document
@@ -95,6 +95,8 @@ def set_line_numbering(
         raise ValueError(
             f'restart must be "newPage", "newSection", or "continuous"; got "{restart}"'
         )
+    if distance is not None and distance < 0:
+        raise ValueError(f"set_line_numbering requires distance >= 0, got {distance}")
 
     sect_pr = section._sectPr
     existing = sect_pr.find(qn("w:lnNumType"))

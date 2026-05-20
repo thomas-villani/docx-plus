@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.test_examples_smoke import WRITES_DOCX
+
 _SOFFICE = shutil.which("soffice") or shutil.which("libreoffice")
 
 pytestmark = [
@@ -80,14 +82,11 @@ def _soffice_to_pdf(docx_path: Path, out_dir: Path) -> Path:
     return pdf_path
 
 
-@pytest.mark.parametrize(
-    ("module", "filename"),
-    [
-        ("docx_plus.examples.restyle_existing", "restyled.docx"),
-        ("docx_plus.examples.build_form", "form.docx"),
-        ("docx_plus.examples.populate_form", "filled.docx"),
-    ],
-)
+# Render every docx-writing example — including the full v0.2 surface
+# (comments, layout, bookmarks, notes, publishing) — so a structurally
+# invalid file that python-docx tolerates but a real renderer rejects is
+# caught here (M22). Shares WRITES_DOCX with the smoke suite to avoid drift.
+@pytest.mark.parametrize(("module", "filename"), WRITES_DOCX)
 def test_example_renders_to_pdf(module: str, filename: str, tmp_path: Path) -> None:
     """Each example's docx output must convert to a non-empty PDF."""
     _run_example(module, tmp_path)

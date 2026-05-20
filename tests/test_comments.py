@@ -609,6 +609,122 @@ def test_edit_comment_round_trip(tmp_path: Path) -> None:
     assert comments[0].author == "Bob"
 
 
+def test_registry_seeds_from_orphaned_range_end() -> None:
+    """M3: a lone `commentRangeEnd` (rangeStart stripped) still blocks reuse."""
+    doc = Document()
+    p = doc.add_paragraph()
+    run = p.add_run("hi")
+    add_comment(run, "real one")
+    from docx_plus.core.oxml import el
+
+    orphan_id = 888_222
+    orphan = el("w:commentRangeEnd", **{"w:id": str(orphan_id)})
+    run._r.addnext(orphan)
+
+    reg = CommentIdRegistry(doc)
+    with pytest.raises(DuplicateIdError):
+        reg.reserve(orphan_id)
+
+
+def test_delete_comment_preserves_text_in_shared_reference_run() -> None:
+    """M6: cleanup removes only the marker, not sibling text in the run."""
+    from docx_plus.core.oxml import sub
+
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("anchor"), "note")
+    # Simulate a hand-edited doc: the reference run also carries text.
+    ref_run = _reference_runs(doc, ref.comment_id)[0].getparent()
+    t = sub(ref_run, "w:t")
+    t.text = "KEEP"
+
+    delete_comment(doc, ref.comment_id)
+
+    assert _reference_runs(doc, ref.comment_id) == []
+    assert ref_run.getparent() is not None  # run itself survives
+    surviving = ref_run.find(qn("w:t"))
+    assert surviving is not None and surviving.text == "KEEP"
+
+
+def test_clear_all_comments_preserves_text_in_shared_reference_run() -> None:
+    """M6: bulk cleanup also keeps sibling text in a shared reference run."""
+    from docx_plus.core.oxml import sub
+
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("anchor"), "note")
+    ref_run = _reference_runs(doc, ref.comment_id)[0].getparent()
+    sub(ref_run, "w:t").text = "KEEP"
+
+    clear_all_comments(doc)
+
+    assert _reference_runs(doc, ref.comment_id) == []
+    assert ref_run.getparent() is not None
+    assert ref_run.find(qn("w:t")).text == "KEEP"
+
+
+def test_delete_comment_collapses_marker_only_reference_run() -> None:
+    """M6 regression: the internally-built reference run still fully collapses."""
+    doc = Document()
+    p = doc.add_paragraph()
+    ref = add_comment(p.add_run("x"), "y")
+    ref_run = _reference_runs(doc, ref.comment_id)[0].getparent()
+
+    delete_comment(doc, ref.comment_id)
+
+    assert ref_run.getparent() is None  # rPr-only run removed entirely
+
+
+def test_now_iso_has_millisecond_precision() -> None:
+    """L1: timestamps carry sub-second precision and still round-trip."""
+    from docx_plus.comments.anchor import _now_iso
+
+    stamp = _now_iso()
+    assert stamp.endswith("Z")
+    assert "." in stamp  # fractional seconds present
+    parsed = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    assert parsed.tzinfo is not None
+
+
+def test_clear_all_comments_remove_part_tears_down_relationship() -> None:
+    """L17: remove_part=True drops the comments part and its relationship."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "y")
+    assert doc.part.part_related_by(RT.COMMENTS) is not None
+
+    clear_all_comments(doc, remove_part=True)
+
+    with pytest.raises(KeyError):
+        doc.part.part_related_by(RT.COMMENTS)
+
+
+def test_clear_all_comments_default_keeps_empty_part() -> None:
+    """L17: the default leaves the (now empty) part connected for reuse."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("x"), "y")
+    clear_all_comments(doc)
+    part = doc.part.part_related_by(RT.COMMENTS)
+    assert xpath(part.element, "./w:comment") == []
+
+
+def test_clear_all_comments_remove_part_round_trip(tmp_path: Path) -> None:
+    """L17: a torn-down comments part stays absent through save / reopen."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_comment(p.add_run("a"), "first")
+    add_comment(p.add_run("b"), "second")
+    clear_all_comments(doc, remove_part=True)
+    out = tmp_path / "noparts.docx"
+    doc.save(str(out))
+
+    reopened = Document(str(out))
+    with pytest.raises(KeyError):
+        reopened.part.part_related_by(RT.COMMENTS)
+    assert read_comments(reopened) == []
+
+
 def test_edit_comment_strips_non_paragraph_children() -> None:
     """H6 regression: comments can contain tables / SDTs, not just <w:p>.
 

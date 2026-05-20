@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from lxml import etree
 
 from docx_plus.core import DocxPlusError
@@ -558,7 +559,11 @@ def ensure_style(
     if existing is not None:
         return StyleProxy(doc, existing)
     if match_existing:
-        matched_id = find_matching_style(doc, style_id)
+        # When the requested id is a known built-in, constrain the match to
+        # the built-in's own type so a wrong-type look-alike can't satisfy it
+        # (M11). For unknown custom ids there is no canonical type to filter by.
+        builtin_type = _BUILTIN_STYLES.get(style_id, {}).get("style_type")
+        matched_id = find_matching_style(doc, style_id, style_type=builtin_type)
         if matched_id is not None:
             matched_el = _find_style_element(styles_root, matched_id)
             if matched_el is not None:
@@ -569,7 +574,9 @@ def ensure_style(
     return create_style(doc, style_id, **defaults_if_creating)
 
 
-def find_matching_style(doc: Document, target_id: str) -> str | None:
+def find_matching_style(
+    doc: Document, target_id: str, *, style_type: StyleType | None = None
+) -> str | None:
     """Find an existing style that fulfils the role of ``target_id``.
 
     Matches case/space-insensitively against both the ``w:styleId`` and
@@ -580,11 +587,20 @@ def find_matching_style(doc: Document, target_id: str) -> str | None:
     Args:
         doc: Document to search.
         target_id: The id you want to map onto (e.g. ``"Heading1"``).
+        style_type: If given, only consider styles of this ``w:type``
+            (``"paragraph"``, ``"character"``, ``"table"``, ``"numbering"``).
+            This guards against wrong-type collisions: a document with a
+            *character* style literally named "Heading 1" must not satisfy a
+            request for the *paragraph* style ``"Heading1"``, since applying
+            it via ``w:pStyle`` would point a paragraph at a character style
+            and Word would ignore or "repair" it. When ``None`` (default),
+            type is not considered (legacy behaviour).
 
     Returns:
         The :attr:`w:styleId` of the first matching defined style, or
         ``None`` if none match. If a style with id ``target_id`` is already
-        defined exactly, returns ``target_id`` (the trivial match).
+        defined exactly *and* (when ``style_type`` is given) is of the right
+        type, returns ``target_id`` (the trivial match).
     """
     target_norm = _normalize_style_key(target_id)
     if not target_norm:
@@ -593,6 +609,8 @@ def find_matching_style(doc: Document, target_id: str) -> str | None:
     for style_el in styles_root.findall(qn("w:style")):
         sid: str | None = style_el.get(qn("w:styleId"))
         if sid is None:
+            continue
+        if style_type is not None and (style_el.get(qn("w:type")) or "paragraph") != style_type:
             continue
         if _normalize_style_key(sid) == target_norm:
             return sid
@@ -625,7 +643,11 @@ def remap_styles(
 
     Body references (``w:pStyle``, ``w:rStyle``, ``w:tblStyle``) pointing at
     the original target id are rewritten in place to the resolved id, so a
-    subsequent :func:`apply_style` works without further translation. Refs
+    subsequent :func:`apply_style` works without further translation. The
+    rewrite spans every part that can carry such references — main body,
+    headers, footers, footnotes, endnotes, comments — and each target is
+    rewritten only through the ref tag that matches the resolved style's
+    type, so a paragraph style is never wired into a ``w:rStyle`` slot. Refs
     *between* styles in ``styles.xml`` (``basedOn``, ``next``, ``link``) are
     left untouched — this keeps the remap a non-destructive rewrite.
 
@@ -666,7 +688,9 @@ def remap_styles(
         if target_id in explicit:
             resolved[target_id] = explicit[target_id]
             continue
-        match = find_matching_style(doc, target_id)
+        match = find_matching_style(
+            doc, target_id, style_type=_BUILTIN_STYLES.get(target_id, {}).get("style_type")
+        )
         if match is not None:
             resolved[target_id] = match
             continue
@@ -676,11 +700,24 @@ def remap_styles(
             continue
         # Unresolved — omit from result.
 
-    body_root: Any = doc.part.element
+    # Rewrite body references across every part that can carry them — main
+    # body, headers, footers, footnotes, endnotes, comments (M12). Each
+    # target is rewritten only through the ref tag that matches the resolved
+    # style's type (M11): a paragraph style is reached by w:pStyle, a
+    # character style by w:rStyle, a table style by w:tblStyle. Pointing the
+    # wrong tag at a style is exactly what breaks Word.
+    type_to_tag = {"paragraph": "pStyle", "character": "rStyle", "table": "tblStyle"}
+    search_roots = _reference_search_roots(doc)
     for target_id, resolved_id in resolved.items():
         if target_id == resolved_id:
             continue
-        for tag in ("pStyle", "rStyle", "tblStyle"):
+        resolved_type = _style_type_of(styles_root, resolved_id)
+        tag = type_to_tag.get(resolved_type or "")
+        if tag is None:
+            # numbering (or unknown) styles aren't referenced via
+            # pStyle/rStyle/tblStyle — nothing to rewrite in the body.
+            continue
+        for body_root in search_roots:
             for ref in xpath(body_root, f"//w:{tag}[@w:val=$sid]", sid=target_id):
                 if isinstance(ref, etree._Element):
                     ref.set(qn("w:val"), resolved_id)
@@ -1109,13 +1146,51 @@ def _find_style_element(styles_root: etree._Element, style_id: str) -> etree._El
     return matches[0] if matches else None
 
 
+# Relationship types whose parts carry WordprocessingML body content that
+# can reference styles via pStyle / rStyle / tblStyle (M12).
+_BODY_BEARING_RELTYPES: tuple[str, ...] = (
+    RT.HEADER,
+    RT.FOOTER,
+    RT.FOOTNOTES,
+    RT.ENDNOTES,
+    RT.COMMENTS,
+)
+
+
+def _reference_search_roots(doc: Document) -> list[etree._Element]:
+    """Return every part element that can hold body-side style references.
+
+    The main document part plus every related header / footer / footnotes /
+    endnotes / comments part with a parsed ``.element``. A style referenced
+    only from a header would otherwise be missed — :func:`delete_style` would
+    succeed and break the header on next Word open.
+    """
+    roots: list[etree._Element] = [doc.part.element]
+    for rel in doc.part.rels.values():
+        if rel.is_external or rel.reltype not in _BODY_BEARING_RELTYPES:
+            continue
+        element = getattr(rel.target_part, "element", None)
+        if isinstance(element, etree._Element):
+            roots.append(element)
+    return roots
+
+
+def _style_type_of(styles_root: etree._Element, style_id: str) -> str | None:
+    """Return a defined style's ``w:type`` (defaulting to ``"paragraph"``)."""
+    style_el = _find_style_element(styles_root, style_id)
+    if style_el is None:
+        return None
+    return style_el.get(qn("w:type")) or "paragraph"
+
+
 def _find_references(doc: Document, style_id: str) -> list[etree._Element]:
     """Find references to ``style_id`` from the body and from other styles."""
     refs: list[etree._Element] = []
-    body_root = doc.part.element
-    # Body references: pStyle, rStyle, tblStyle.
-    for tag in ("pStyle", "rStyle", "tblStyle"):
-        refs.extend(xpath(body_root, f"//w:{tag}[@w:val=$sid]", sid=style_id))
+    # Body references: pStyle, rStyle, tblStyle — across every body-bearing
+    # part (main document, headers, footers, footnotes, endnotes, comments).
+    for body_root in _reference_search_roots(doc):
+        for tag in ("pStyle", "rStyle", "tblStyle"):
+            refs.extend(xpath(body_root, f"//w:{tag}[@w:val=$sid]", sid=style_id))
     # Style-to-style references in styles.xml. Don't count the deletion target
     # itself even if it has a basedOn pointing nowhere — we want OUTBOUND
     # references *to* this id from other styles.

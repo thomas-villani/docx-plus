@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 from docx import Document
 
+from docx_plus._testing.ooxml_asserts import assert_field_dirty, assert_field_not_dirty
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
+from docx_plus.fields import mark_fields_dirty
 from docx_plus.publishing import add_caption
 
 
@@ -187,3 +189,21 @@ def test_add_caption_explicit_empty_label_suppresses_run() -> None:
     add_caption(p, "", caption_type="Figure")
     visible_text = "".join((t.text or "") for t in xpath(p._p, ".//w:r/w:t"))
     assert visible_text == "1"
+
+
+# --------------------------------------------------------------------------
+# L20: add_caption must NOT auto-mark fields dirty.
+# --------------------------------------------------------------------------
+
+
+def test_add_caption_does_not_mark_fields_dirty() -> None:
+    doc = Document()
+    add_caption(doc.add_paragraph(), "Figure ")
+    assert_field_not_dirty(doc)
+
+
+def test_add_caption_then_mark_fields_dirty_sets_flag() -> None:
+    doc = Document()
+    add_caption(doc.add_paragraph(), "Figure ")
+    mark_fields_dirty(doc)
+    assert_field_dirty(doc)

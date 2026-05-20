@@ -19,8 +19,7 @@ Public surface:
 - :class:`CommentIdRegistry` — pre-share across an editing session for
   many inserts
 
-See SPEC §15 (deferred to v0.2) and ``notes-v0_1-scope.md §2.2`` for
-context.
+See SPEC §15 (the post-v0.1 roadmap) for where this capability was scoped.
 """
 
 from __future__ import annotations

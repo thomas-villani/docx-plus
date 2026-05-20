@@ -5,9 +5,10 @@ bookmark ids, and note ids (a comment with id ``5`` does not collide
 with a bookmark with id ``5``). This module ships a tiny subclass of
 :class:`~docx_plus.core.ids._IdRegistryBase` that seeds itself from the
 comment ids already present in ``comments.xml`` and from any orphaned
-``w:commentRangeStart`` markers still in the body. The latter matters
-because hand-edited or partially-deleted documents can leave body
-markers behind that should still block id reuse.
+body-side markers (``w:commentRangeStart``, ``w:commentRangeEnd``,
+``w:commentReference``) still in the body. The latter matters because
+hand-edited or partially-deleted documents can leave any one of those
+markers behind on its own, and it should still block id reuse.
 
 This module imports only from ``docx_plus.core`` (SPEC §9.1).
 """
@@ -42,8 +43,12 @@ class CommentIdRegistry(_IdRegistryBase):
 
         # Body-side anchors — protect against orphaned ranges left by other
         # tools that wrote the range markers but skipped the comment body.
+        # All three body-side elements carry the id, and any one of them can
+        # survive on its own after a partial hand-edit (e.g. rangeStart
+        # stripped but rangeEnd left behind), so all three must block reuse.
         body = doc.element.body
         self._collect_id_attrs(body, ".//w:commentRangeStart")
+        self._collect_id_attrs(body, ".//w:commentRangeEnd")
         self._collect_id_attrs(body, ".//w:commentReference")
 
 

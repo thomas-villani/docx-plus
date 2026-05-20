@@ -85,3 +85,30 @@ def test_enable_round_trip(tmp_path: Path) -> None:
     doc.save(str(out))
     reopened = Document(str(out))
     assert reopened.settings.element.find(qn("w:evenAndOddHeaders")) is not None
+
+
+def test_enable_collapses_duplicate_copies() -> None:
+    """M18: a malformed settings.xml with two copies is collapsed to one."""
+    from docx_plus.core.oxml import sub
+
+    doc = Document()
+    settings = doc.settings.element
+    sub(settings, "w:evenAndOddHeaders")
+    sub(settings, "w:evenAndOddHeaders")
+    assert len(xpath(settings, "./w:evenAndOddHeaders")) == 2
+
+    enable_distinct_even_odd_headers(doc)
+    assert len(xpath(settings, "./w:evenAndOddHeaders")) == 1
+
+
+def test_disable_removes_every_copy() -> None:
+    """M18: disable clears all duplicate copies, not just the first."""
+    from docx_plus.core.oxml import sub
+
+    doc = Document()
+    settings = doc.settings.element
+    sub(settings, "w:evenAndOddHeaders")
+    sub(settings, "w:evenAndOddHeaders")
+
+    disable_distinct_even_odd_headers(doc)
+    assert xpath(settings, "./w:evenAndOddHeaders") == []

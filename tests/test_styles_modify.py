@@ -972,3 +972,113 @@ def test_save_reopen_preserves_ensure_style_heading(tmp_path: Path) -> None:
     resolved = resolve_effective_formatting(p2)
     assert resolved.style_id == "Heading1"
     assert resolved.outline_level == 0
+
+
+# --------------------------------------------------------------------------
+# M11: style-type filtering guards against wrong-type collisions.
+# --------------------------------------------------------------------------
+
+
+def _strip_builtin(doc: Document, style_id: str) -> None:
+    styles_root = doc.styles.element
+    existing = styles_root.find(f"./{qn('w:style')}[@{qn('w:styleId')}={style_id!r}]")
+    if existing is not None:
+        styles_root.remove(existing)
+
+
+def test_find_matching_style_type_filter_skips_wrong_type() -> None:
+    """A character style named 'Heading 1' must not match a paragraph request."""
+    doc = Document()
+    _strip_builtin(doc, "Heading1")
+    # A character style whose NAME normalises to the paragraph target.
+    create_style(doc, "CharHeading", style_type="character", name="Heading 1")
+
+    # No filter: the char look-alike matches (legacy behaviour, preserved).
+    assert find_matching_style(doc, "Heading1") == "CharHeading"
+    # Paragraph filter: correctly skipped.
+    assert find_matching_style(doc, "Heading1", style_type="paragraph") is None
+    # Character filter: matches.
+    assert find_matching_style(doc, "Heading1", style_type="character") == "CharHeading"
+
+
+def test_find_matching_style_type_filter_rejects_wrong_type_exact_id() -> None:
+    """Even an exact-id match is skipped when its type is wrong."""
+    doc = Document()
+    create_style(doc, "MyMark", style_type="character")
+    assert find_matching_style(doc, "MyMark", style_type="character") == "MyMark"
+    assert find_matching_style(doc, "MyMark", style_type="paragraph") is None
+
+
+def test_ensure_style_match_existing_ignores_wrong_type_lookalike() -> None:
+    """match_existing won't bind a paragraph built-in to a character look-alike (M11)."""
+    doc = Document()
+    _strip_builtin(doc, "Heading1")
+    create_style(doc, "CharHeading", style_type="character", name="Heading 1")
+
+    proxy = ensure_style(doc, "Heading1", match_existing=True)
+    # The char look-alike was rejected; the paragraph built-in was materialised.
+    assert proxy.style_id == "Heading1"
+    info = next(s for s in list_styles(doc) if s.style_id == "Heading1")
+    assert info.style_type == "paragraph"
+
+
+def test_remap_styles_only_rewrites_matching_ref_tag() -> None:
+    """A paragraph target resolves through w:pStyle, never w:rStyle (M11)."""
+    doc = Document()
+    _strip_builtin(doc, "Heading1")
+    create_style(doc, "Heading 1")  # paragraph style (default)
+    # A run carries an rStyle that happens to share the target id — it must
+    # NOT be rewritten, because the resolved style is a paragraph style.
+    p = doc.add_paragraph()
+    run = p.add_run("x")
+    rpr = run._r.get_or_add_rPr()
+    sub(rpr, "w:rStyle", **{"w:val": "Heading1"})
+    # And a paragraph that legitimately references it via pStyle.
+    ppr = p._p.get_or_add_pPr()
+    sub(ppr, "w:pStyle", **{"w:val": "Heading1"})
+
+    remap_styles(doc, targets=["Heading1"])
+
+    assert p._p.find(qn("w:pPr")).find(qn("w:pStyle")).get(qn("w:val")) == "Heading 1"
+    # The rStyle was left untouched (paragraph style can't go in an rStyle slot).
+    assert rpr.find(qn("w:rStyle")).get(qn("w:val")) == "Heading1"
+
+
+# --------------------------------------------------------------------------
+# M12: references inside headers / footers count and are rewritten.
+# --------------------------------------------------------------------------
+
+
+def _styled_header_paragraph(doc: Document, style_id: str) -> object:
+    header = doc.sections[0].header
+    header.is_linked_to_previous = False
+    p = header.paragraphs[0]
+    ppr = p._p.get_or_add_pPr()
+    # The default header paragraph already has a pStyle="Header"; replace it
+    # so the paragraph references exactly the style under test.
+    for existing in ppr.findall(qn("w:pStyle")):
+        ppr.remove(existing)
+    sub(ppr, "w:pStyle", **{"w:val": style_id})
+    return p
+
+
+def test_delete_style_referenced_in_header_raises() -> None:
+    """A style used only in a header is still 'in use' (M12)."""
+    doc = Document()
+    create_style(doc, "HdrOnly")
+    _styled_header_paragraph(doc, "HdrOnly")
+    with pytest.raises(StyleInUseError):
+        delete_style(doc, "HdrOnly")
+
+
+def test_remap_styles_rewrites_header_refs() -> None:
+    """remap rewrites references inside headers, not just the main body (M12)."""
+    doc = Document()
+    _strip_builtin(doc, "Heading1")
+    create_style(doc, "Heading 1")
+    hp = _styled_header_paragraph(doc, "Heading1")
+
+    remap_styles(doc, targets=["Heading1"])
+
+    pstyle = hp._p.find(qn("w:pPr")).find(qn("w:pStyle"))  # type: ignore[attr-defined]
+    assert pstyle.get(qn("w:val")) == "Heading 1"

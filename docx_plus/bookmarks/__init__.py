@@ -16,7 +16,7 @@ Public surface:
 - :class:`BookmarkRef` — the write-side handle
 - :class:`BookmarkIdRegistry` — pre-share across an editing session
 
-See SPEC §15 (deferred to v0.2) and ``notes-v0_1-scope.md §2.3``.
+See SPEC §15 (the post-v0.1 roadmap) for where this capability was scoped.
 """
 
 from __future__ import annotations

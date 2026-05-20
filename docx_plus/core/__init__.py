@@ -11,18 +11,11 @@ explicit about where a symbol lives.
 """
 
 
-class DocxPlusError(Exception):
-    """Base class for all library-raised errors.
-
-    Every typed error in docx_plus subclasses this so callers can catch the
-    library's failures without catching unrelated ``ValueError``/``RuntimeError``
-    instances from python-docx or lxml.
-    """
-
-
-from docx_plus.core.ids import DuplicateIdError, IdRangeError, IdRegistry  # noqa: E402
-from docx_plus.core.ns import MC, NSMAP, W14, XML, A, InvalidNamespaceError, R, W, qn  # noqa: E402
-from docx_plus.core.oxml import (  # noqa: E402
+from docx_plus.core.errors import DocxPlusError
+from docx_plus.core.ids import DuplicateIdError, IdRangeError, IdRegistry
+from docx_plus.core.ns import MC, NSMAP, W14, XML, A, InvalidNamespaceError, R, W, qn
+from docx_plus.core.oxml import (
+    body_document_for,
     build_complex_field,
     el,
     insert_before_first_anchor,
@@ -30,7 +23,7 @@ from docx_plus.core.oxml import (  # noqa: E402
     sub,
     xpath,
 )
-from docx_plus.core.parts import (  # noqa: E402
+from docx_plus.core.parts import (
     COMMENTS_SPEC,
     ENDNOTES_SPEC,
     FOOTNOTES_SPEC,
@@ -55,6 +48,7 @@ __all__ = [
     "IdRegistry",
     "InvalidNamespaceError",
     "PartSpec",
+    "body_document_for",
     "build_complex_field",
     "el",
     "get_or_create_part",

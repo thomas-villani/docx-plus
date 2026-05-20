@@ -91,6 +91,20 @@ def test_set_line_numbering_rejects_unknown_restart() -> None:
         set_line_numbering(doc.sections[0], restart="bogus")  # type: ignore[arg-type]
 
 
+def test_set_line_numbering_rejects_negative_distance() -> None:
+    """L15: a negative distance is rejected at the API boundary."""
+    doc = Document()
+    with pytest.raises(ValueError, match="distance >= 0"):
+        set_line_numbering(doc.sections[0], distance=-1)
+
+
+def test_set_line_numbering_accepts_zero_distance() -> None:
+    doc = Document()
+    set_line_numbering(doc.sections[0], distance=0)
+    ln = doc.sections[0]._sectPr.find(qn("w:lnNumType"))
+    assert ln is not None and ln.get(qn("w:distance")) == "0"
+
+
 # --------------------------------------------------------------------------
 # Schema-strict insertion — lnNumType lands before its later siblings.
 # --------------------------------------------------------------------------
@@ -110,6 +124,43 @@ def test_set_line_numbering_lands_before_cols() -> None:
     ln_idx = next(i for i, c in enumerate(children) if c.tag == qn("w:lnNumType"))
     cols_idx = next(i for i, c in enumerate(children) if c.tag == qn("w:cols"))
     assert ln_idx < cols_idx
+
+
+def test_set_line_numbering_lands_before_cols_and_docGrid() -> None:
+    """L19: with both cols and docGrid present, lnNumType precedes both.
+
+    A fresh Document() already carries cols + docGrid in schema order, so
+    this exercises the multi-anchor case that would catch a misordered
+    ``_LATER_SIBLINGS`` (e.g. dropping ``w:cols``).
+    """
+    doc = Document()
+    sect_pr = doc.sections[0]._sectPr
+    assert sect_pr.find(qn("w:cols")) is not None
+    assert sect_pr.find(qn("w:docGrid")) is not None
+
+    set_line_numbering(doc.sections[0], count_by=1)
+
+    tags = [c.tag for c in sect_pr]
+    ln_idx = tags.index(qn("w:lnNumType"))
+    assert ln_idx < tags.index(qn("w:cols"))
+    assert ln_idx < tags.index(qn("w:docGrid"))
+
+
+def test_set_line_numbering_replaces_preexisting_element() -> None:
+    """L18: a pre-seeded lnNumType (as if loaded from Word) is replaced in place."""
+    doc = Document()
+    sect_pr = doc.sections[0]._sectPr
+    sect_pr.append(
+        el("w:lnNumType", **{"w:countBy": "1", "w:restart": "newPage", "w:start": "1"})
+    )
+
+    set_line_numbering(doc.sections[0], count_by=7, restart="continuous", start=3)
+
+    found = xpath(sect_pr, "./w:lnNumType")
+    assert len(found) == 1
+    assert found[0].get(qn("w:countBy")) == "7"
+    assert found[0].get(qn("w:restart")) == "continuous"
+    assert found[0].get(qn("w:start")) == "3"
 
 
 # --------------------------------------------------------------------------

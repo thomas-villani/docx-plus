@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from docx.section import Section
 
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import remove, sub
+from docx_plus.core.oxml import el, insert_before_first_anchor, remove
 
 if TYPE_CHECKING:
     from docx.oxml.section import CT_SectPr
@@ -28,6 +28,30 @@ if TYPE_CHECKING:
 SectionStartType = Literal[
     "nextPage", "continuous", "evenPage", "oddPage", "nextColumn"
 ]
+
+
+# Schema siblings later than `w:type` per ECMA-376 17.6.17 CT_SectPr. ``type``
+# follows the header/footer references and footnote/endnote properties, so it
+# must NOT be jammed to position 0 when those precede it.
+_TYPE_LATER_SIBLINGS: tuple[str, ...] = (
+    "w:pgSz",
+    "w:pgMar",
+    "w:paperSrc",
+    "w:pgBorders",
+    "w:lnNumType",
+    "w:pgNumType",
+    "w:cols",
+    "w:formProt",
+    "w:vAlign",
+    "w:noEndnote",
+    "w:titlePg",
+    "w:textDirection",
+    "w:bidi",
+    "w:rtlGutter",
+    "w:docGrid",
+    "w:printerSettings",
+    "w:sectPrChange",
+)
 
 
 def insert_section_break(
@@ -99,18 +123,19 @@ def insert_section_break(
 
 
 def _set_start_type(sect_pr: CT_SectPr, start_type: SectionStartType) -> None:
-    """Set ``<w:type w:val="...">`` on ``sect_pr``, replacing any existing one."""
+    """Set ``<w:type w:val="...">`` on ``sect_pr``, replacing any existing one.
+
+    Lands ``w:type`` in its ECMA-376 17.6.17 slot: after any
+    ``headerReference`` / ``footerReference`` / ``footnotePr`` /
+    ``endnotePr`` and before ``pgSz`` onward. The old "insert at position 0"
+    shortcut jammed ``w:type`` ahead of header/footer references on sections
+    that carry custom headers, producing schema-invalid output.
+    """
     existing = sect_pr.find(qn("w:type"))
     if existing is not None:
         remove(existing)
-    type_el = sub(sect_pr, "w:type", **{"w:val": start_type})
-    # CT_SectPr stores ``w:type`` in a specific schema slot; sub() appends,
-    # which may break ordering. Move ``w:type`` to schema position (first
-    # child of sectPr).
-    parent = type_el.getparent()
-    if parent is not None and len(parent) > 1:
-        parent.remove(type_el)
-        parent.insert(0, type_el)
+    type_el = el("w:type", **{"w:val": start_type})
+    insert_before_first_anchor(sect_pr, type_el, _TYPE_LATER_SIBLINGS)
 
 
 __all__ = ["SectionStartType", "insert_section_break"]

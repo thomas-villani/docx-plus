@@ -12,13 +12,27 @@ by :func:`load_theme` returning ``None`` (or a partially-populated scheme),
 not by raising. Callers — primarily the cascade resolver — fold that into a
 ``partial=True`` flag on the resolved formatting. SPEC §4 "Theme references".
 
+The same scheme also exposes the theme's *fonts* (``a:fontScheme``):
+:func:`resolve_theme_font` maps a WordprocessingML font-theme token
+(``w:asciiTheme="minorHAnsi"`` etc.) to the concrete typeface the theme
+defines (``"Calibri"``), so the cascade can report a real font name rather
+than the bare token.
+
+The ``w:color`` cascade element (ECMA-376 CT_Color) carries only
+``themeTint`` / ``themeShade``, so :func:`resolve_theme_color` applies just
+those two transforms. :func:`apply_lum_mod` / :func:`apply_lum_off`
+implement the DrawingML ``lumMod`` / ``lumOff`` transforms for callers that
+read theme colors *referenced from DrawingML* (shape fills, ``w14`` text
+effects), where those transforms do appear — they are deliberately not part
+of the ``w:color`` resolution path because that element cannot carry them.
+
 The module is read-only; writing themes is a v0.2 non-goal (SPEC §1).
 """
 
 from __future__ import annotations
 
 import colorsys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from lxml import etree
@@ -68,13 +82,22 @@ class ThemeError(DocxPlusError):
 
 @dataclass(frozen=True)
 class ThemeColors:
-    """Resolved theme color scheme: DrawingML key -> uppercase ``RRGGBB`` hex.
+    """Resolved theme color + font scheme.
 
-    Built by :func:`load_theme`. Use :meth:`base` to look up by Word's
-    ``ST_ThemeColor`` name (which is what appears in WordprocessingML).
+    Built by :func:`load_theme`. Use :meth:`base` to look up a color by
+    Word's ``ST_ThemeColor`` name and :meth:`font` to look up a typeface
+    by ``ST_Theme`` font token (both are what appear in WordprocessingML).
+
+    Attributes:
+        scheme: DrawingML color key (``"accent1"``, ``"dk1"``, …) ->
+            uppercase ``RRGGBB`` hex.
+        fonts: ``ST_Theme`` font token (``"minorHAnsi"``,
+            ``"majorEastAsia"``, …) -> concrete typeface name. Empty when
+            the theme has no ``a:fontScheme``.
     """
 
     scheme: dict[str, str]
+    fonts: dict[str, str] = field(default_factory=dict)
 
     def base(self, theme_name: str) -> str | None:
         """Return the unmodified hex color for a Word theme color name.
@@ -91,6 +114,21 @@ class ThemeColors:
         if key is None:
             return None
         return self.scheme.get(key)
+
+    def font(self, token: str) -> str | None:
+        """Return the concrete typeface for an ``ST_Theme`` font token.
+
+        Args:
+            token: A ``w:asciiTheme`` / ``w:hAnsiTheme`` /
+                ``w:eastAsiaTheme`` / ``w:cstheme`` value such as
+                ``"minorHAnsi"`` or ``"majorEastAsia"``.
+
+        Returns:
+            The typeface name from the theme's ``a:fontScheme`` (e.g.
+            ``"Calibri"``), or ``None`` if the token is unknown or the
+            scheme entry is empty / missing.
+        """
+        return self.fonts.get(token)
 
 
 def load_theme(doc: Document) -> ThemeColors | None:
@@ -114,7 +152,25 @@ def load_theme(doc: Document) -> ThemeColors | None:
         root = etree.fromstring(theme_xml)
     except etree.XMLSyntaxError:
         return None
-    return ThemeColors(scheme=_parse_clr_scheme(root))
+    return ThemeColors(scheme=_parse_clr_scheme(root), fonts=_parse_font_scheme(root))
+
+
+def resolve_theme_font(theme: ThemeColors | None, token: str) -> str | None:
+    """Resolve a WordprocessingML font-theme token to a concrete typeface.
+
+    Args:
+        theme: The document's theme, or ``None`` if no theme part is
+            attached. ``None`` always resolves to ``None``.
+        token: An ``ST_Theme`` value (e.g. ``"minorHAnsi"``,
+            ``"majorEastAsia"``).
+
+    Returns:
+        The typeface name (e.g. ``"Calibri"``), or ``None`` if the theme is
+        absent or the token has no entry in the font scheme.
+    """
+    if theme is None:
+        return None
+    return theme.font(token)
 
 
 def resolve_theme_color(
@@ -259,6 +315,48 @@ def _parse_clr_scheme(theme_root: etree._Element) -> dict[str, str]:
     return out
 
 
+def _parse_font_scheme(theme_root: etree._Element) -> dict[str, str]:
+    """Map ECMA-376 ``ST_Theme`` font tokens to concrete typeface names.
+
+    Reads ``a:themeElements/a:fontScheme``. Each of ``majorFont`` /
+    ``minorFont`` carries ``a:latin`` / ``a:ea`` / ``a:cs`` typefaces; the
+    WordprocessingML font-theme tokens map on top of those — ``*Ascii`` and
+    ``*HAnsi`` -> latin, ``*EastAsia`` -> ea, ``*Bidi`` -> cs (ECMA-376
+    20.1.4.1.24). Empty typefaces are omitted so an unresolved token surfaces
+    as ``None`` rather than an empty string.
+    """
+    out: dict[str, str] = {}
+    scheme_matches = xpath(theme_root, "./a:themeElements/a:fontScheme")
+    if not scheme_matches:
+        return out
+    scheme = scheme_matches[0]
+    if not isinstance(scheme, etree._Element):
+        return out
+    for font_tag, prefix in (("a:majorFont", "major"), ("a:minorFont", "minor")):
+        font_el = scheme.find(qn(font_tag))
+        if font_el is None:
+            continue
+        latin = _typeface(font_el.find(qn("a:latin")))
+        if latin is not None:
+            out[f"{prefix}Ascii"] = latin
+            out[f"{prefix}HAnsi"] = latin
+        ea = _typeface(font_el.find(qn("a:ea")))
+        if ea is not None:
+            out[f"{prefix}EastAsia"] = ea
+        cs = _typeface(font_el.find(qn("a:cs")))
+        if cs is not None:
+            out[f"{prefix}Bidi"] = cs
+    return out
+
+
+def _typeface(latin_or_ea_or_cs: etree._Element | None) -> str | None:
+    """Return a non-empty ``typeface`` attribute, or ``None``."""
+    if latin_or_ea_or_cs is None:
+        return None
+    typeface = latin_or_ea_or_cs.get("typeface")
+    return typeface or None
+
+
 def _extract_color(scheme_child: etree._Element) -> str | None:
     """Read the RRGGBB hex from a clrScheme child (e.g. ``a:accent1``)."""
     srgb = scheme_child.find(qn("a:srgbClr"))
@@ -310,4 +408,5 @@ __all__ = [
     "apply_theme_tint",
     "load_theme",
     "resolve_theme_color",
+    "resolve_theme_font",
 ]

@@ -6,6 +6,76 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — cascade & API (Session F of issues.md review)
+
+- **M10** — the style cascade now resolves theme **fonts**: `load_theme`
+  parses `a:fontScheme`, `ThemeColors` gained a `fonts` map + `font()`
+  accessor, and a new `resolve_theme_font(theme, token)` maps a `*Theme`
+  token (e.g. `minorHAnsi`) to its concrete typeface (e.g. `Cambria`).
+  `resolve_effective_formatting` returns a real `font_name` for
+  theme-bound fonts and only flags `partial` when a theme reference
+  genuinely fails to resolve.
+- **L17** — `clear_all_comments` gained a `remove_part=True` keyword that
+  tears down the comments part and its relationship entirely (the default
+  still leaves the now-empty part connected for reuse).
+- **M11** — `find_matching_style` gained an optional `style_type` filter so
+  a wrong-type look-alike (a *character* style named "Heading 1") can no
+  longer satisfy a request for the *paragraph* style; `ensure_style` and
+  `remap_styles` use it.
+- **N4** — `body_document_for(proxy, *, operation=...)` hoisted into
+  `core/oxml` (re-exported from `core`) as the shared proxy→`Document`
+  resolver for the `comments` and `notes` packages.
+
+### Fixed — correctness (Session F of issues.md review)
+
+- **M3** — the comment-id registry now also seeds from
+  `<w:commentRangeEnd>`, so a lone orphaned range-end still blocks id reuse.
+- **M6** — `delete_comment` / `clear_all_comments` now remove only the
+  `<w:commentReference>` marker and prune its run only when empty, instead
+  of dropping a whole `<w:r>` that may carry sibling text.
+- **M9 / M13** — `_resolve_color` no longer stores a bare theme name (not
+  valid hex) when the theme loaded but the name is unknown, and `partial`
+  is set only when a theme reference actually fails — a theme-less document
+  with no theme references now resolves `partial=False`.
+- **M12** — `delete_style` / `remap_styles` reference scanning now spans
+  headers, footers, footnotes, endnotes, and comments parts (not just the
+  main body), and `remap_styles` rewrites a target only through the ref tag
+  matching the resolved style's type.
+- **M5 / M7** — `Border` validates its `color` (ECMA-376 `ST_HexColor`);
+  `set_columns` and the mid-document section-break `<w:type>` now use
+  schema-strict insertion (`w:cols` before `w:docGrid`; `w:type` after
+  header/footer references).
+- **M18** — `mark_fields_dirty` and the even/odd-header helpers collapse
+  any duplicate `settings.xml` elements instead of acting on only the
+  first match.
+- **L1 / L15** — comment `w:date` now carries millisecond precision;
+  `set_line_numbering` rejects a negative `distance`.
+
+### Changed — internals, docs & tests (Session F of issues.md review)
+
+- **L11 / L13 / L14** — `xpath` caches compiled expressions; the `etree`
+  import style is uniform (module-level wherever referenced); `DocxPlusError`
+  moved to `core/errors.py`, removing the `# noqa: E402` import ordering.
+- **L5 / L6** — `_apply_cell_cascade` dropped its unused `doc` parameter and
+  `_classify_target` returns `(kind, element)`, removing three
+  `type: ignore[union-attr]`.
+- **M20** — the `notes-v0_*` internal-planning cross-references were
+  removed from the five capability `__init__` docstrings (and softened in
+  CHANGELOG / ARCHITECTURE), so a `pip download` carries no dangling links.
+- **M21 / M22 / N6 / N7 / N11** — `conftest` is the single canonical fixture
+  path (per-fixture lazy builders into a session tmp dir); `build_fixtures
+  main()` is a manual temp-dir helper; the smoke `EXAMPLES` list is derived
+  from the package; the LibreOffice render suite now covers all eight
+  docx-writing examples.
+- **M23** — `docs/TEST_GAPS.md` carries a status note marking its snapshot
+  historical (current: 717 tests / 34 files) and flagging the IMPORTANT
+  items as the v0.3 re-audit backlog.
+- **L2–L4, L8–L10, L16, L21, N2, N5, N8, N12** — docstring / comment
+  clarifications, a tidier ToF instruction builder, a real header-paragraph
+  fixture replacing an unexercised fake, a more precise frozen-dataclass
+  assertion, and reference-page reconciliation (`resolve_theme_font`,
+  `body_document_for`).
+
 ### Added — style writer parity (Session E of issues.md review)
 
 - **H17** — `create_style` / `modify_style` now accept the six toggle
@@ -185,7 +255,7 @@ extras, bookmarks with cross-references, and footnotes / endnotes —
 plus a `core/parts.py` foundation for separate OOXML parts. The
 release was extended in-place to also close every published
 "Deferred" bullet and add a publishing module (TOC, captions, Table
-of Figures); see `notes-v0_2-expansion-scope.md` at repo root.
+of Figures); see SPEC §15 for the scoped roadmap.
 
 ### Added — initial cycle
 

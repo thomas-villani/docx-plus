@@ -14,12 +14,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from lxml import etree
+
 from docx_plus.core.oxml import build_complex_field
 from docx_plus.publishing._validate import validate_seq_identifier
 
 if TYPE_CHECKING:
     from docx.text.paragraph import Paragraph
-    from lxml import etree
 
 
 def add_table_of_figures(
@@ -65,11 +66,13 @@ def add_table_of_figures(
     """
     validate_seq_identifier(caption_type, arg_name="caption_type")
 
-    instruction = f' TOC \\c "{caption_type}"'
+    # Assemble the switches as a list so the conditional `\h` reads at a
+    # glance (N2); `\z` hides tab/page-number leaders in the web view.
+    switches = [f'TOC \\c "{caption_type}"']
     if hyperlink:
-        instruction += " \\h"
-    instruction += " \\z"
-    instruction += " "
+        switches.append("\\h")
+    switches.append("\\z")
+    instruction = f" {' '.join(switches)} "
     return build_complex_field(paragraph._p, instruction, "")
 
 

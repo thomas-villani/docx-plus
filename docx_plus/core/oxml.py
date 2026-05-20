@@ -6,11 +6,15 @@ rather than calling ``lxml.etree`` directly. SPEC §9.2.
 
 from __future__ import annotations
 
-from typing import Any
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, cast
 
 from lxml import etree
 
 from docx_plus.core.ns import NSMAP, qn
+
+if TYPE_CHECKING:
+    from docx.document import Document
 
 
 def _resolve_attr_key(key: str) -> str:
@@ -85,11 +89,24 @@ def xpath(node: etree._Element, expr: str, **variables: Any) -> list[Any]:
         >>> # safe variable binding instead of f-string interpolation
         >>> # xpath(styles_root, "./w:style[@w:styleId=$sid]", sid=style_id)
     """
-    compiled = etree.XPath(expr, namespaces=NSMAP)
+    compiled = _compile_xpath(expr)
     result = compiled(node, **variables)
     if isinstance(result, list):
         return result
     return [result]
+
+
+@lru_cache(maxsize=512)
+def _compile_xpath(expr: str) -> etree.XPath:
+    """Compile (and cache) an :class:`lxml.etree.XPath` bound to :data:`NSMAP`.
+
+    The compiled object is reusable across calls with different context
+    nodes and ``$name`` variables, so caching on the expression string
+    alone is correct — ``NSMAP`` is a module constant. Registry seeding and
+    read paths call :func:`xpath` from hot loops with a small set of fixed
+    expressions, so the cache turns repeated compilation into a dict hit.
+    """
+    return etree.XPath(expr, namespaces=NSMAP)
 
 
 def remove(node: etree._Element) -> None:
@@ -190,7 +207,42 @@ def insert_before_first_anchor(
     parent.append(new_element)
 
 
+def body_document_for(proxy: Any, *, operation: str = "this operation") -> Document:
+    """Return the main-body :class:`~docx.document.Document` owning ``proxy``.
+
+    python-docx proxies (``Run``, ``Paragraph``, …) inherit ``.part`` from
+    ``Parented``. For a proxy in the main document body, ``part`` is the
+    ``DocumentPart``, which exposes a ``.document`` property. A header /
+    footer proxy is parented to a part that does not, so this raises a
+    clear :class:`ValueError` naming the operation that needs the body.
+
+    Shared by the ``comments`` and ``notes`` packages (a ``core`` utility,
+    so the duplication SPEC §9.1 would otherwise force is avoided).
+
+    Args:
+        proxy: A python-docx proxy exposing ``.part`` (e.g. ``Run``,
+            ``Paragraph``).
+        operation: Human-readable name of the caller, woven into the error
+            message when ``proxy`` is not body-parented.
+
+    Returns:
+        The owning :class:`~docx.document.Document`.
+
+    Raises:
+        ValueError: If ``proxy`` is not parented to the main document body.
+    """
+    part: Any = proxy.part
+    document = getattr(part, "document", None)
+    if document is None:
+        raise ValueError(
+            f"{operation} only supports the main document body; "
+            f"got a proxy parented to {type(part).__name__}"
+        )
+    return cast("Document", document)
+
+
 __all__ = [
+    "body_document_for",
     "build_complex_field",
     "el",
     "insert_before_first_anchor",

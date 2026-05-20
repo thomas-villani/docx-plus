@@ -1,8 +1,10 @@
 """Theme resolution edge cases: missing, malformed, or partial theme parts.
 
 SPEC §4 "Theme references": theme resolution failures must *not* raise. They
-set ``partial=True`` on the result, and unresolved theme names pass through
-as the value so debugging output remains useful.
+set ``partial=True`` on the result. When the theme part is entirely absent
+the unresolved name passes through as the value (so debugging output stays
+useful); when the theme loaded but the name is unknown, no value is stored
+(a bare name is not valid hex — see M9).
 """
 
 from __future__ import annotations
@@ -137,7 +139,9 @@ def test_resolver_marks_partial_for_unknown_theme_name() -> None:
 
     resolved = resolve_effective_formatting(p)
     assert resolved.partial is True
-    assert resolved.color_rgb == "madeup"
+    # M9: theme loaded but the name is unknown -> no value stored (a bare
+    # theme name is not valid hex). The result is still flagged partial.
+    assert resolved.color_rgb is None
 
 
 def test_resolver_not_partial_for_normal_color() -> None:
@@ -173,3 +177,63 @@ def test_color_val_auto_does_not_set_color() -> None:
 
     resolved = resolve_effective_formatting(p)
     assert resolved.color_rgb is None
+
+
+# --------------------------------------------------------------------------
+# M9 / M10 / M13: precise partial semantics.
+# --------------------------------------------------------------------------
+
+
+def test_resolver_theme_color_none_is_not_partial() -> None:
+    """M9: themeColor="none" is an explicit no-color, not a failed resolution."""
+    doc = Document()
+    styles_el = doc.styles.element
+    s = sub(styles_el, "w:style", **{"w:type": "paragraph", "w:styleId": "N"})
+    sub(s, "w:name", **{"w:val": "N"})
+    rpr = sub(s, "w:rPr")
+    sub(rpr, "w:color", **{"w:themeColor": "none"})
+
+    p = doc.add_paragraph()
+    ppr = p._p.get_or_add_pPr()
+    sub(ppr, "w:pStyle", **{"w:val": "N"})
+
+    resolved = resolve_effective_formatting(p)
+    assert resolved.color_rgb is None
+    assert resolved.partial is False
+
+
+def test_resolver_font_token_partial_when_theme_missing() -> None:
+    """M10: an unresolvable font token surfaces the token and flags partial."""
+    doc = Document()
+    _strip_theme(doc)
+    p = doc.add_paragraph("text")  # docDefaults uses w:asciiTheme="minorHAnsi"
+
+    resolved = resolve_effective_formatting(p)
+    assert resolved.font_name == "minorHAnsi"  # token surfaced for diagnostics
+    assert resolved.partial is True
+
+
+def test_resolver_not_partial_when_no_theme_refs_and_no_theme_part() -> None:
+    """M13: a theme-less doc with zero theme references resolves fully."""
+    from docx_plus.core.ns import qn
+
+    doc = Document()
+    _strip_theme(doc)
+
+    # Neutralise the default docDefaults font *token* so the cascade carries
+    # no theme reference at all — without this the (legitimately) missing
+    # theme would make font resolution partial.
+    rfonts_path = "/".join(
+        qn(t) for t in ("w:docDefaults", "w:rPrDefault", "w:rPr", "w:rFonts")
+    )
+    rfonts = doc.styles.element.find(rfonts_path)
+    assert rfonts is not None
+    for attr in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+        if rfonts.get(qn(attr)) is not None:
+            del rfonts.attrib[qn(attr)]
+    rfonts.set(qn("w:ascii"), "Arial")
+
+    p = doc.add_paragraph("text")
+    resolved = resolve_effective_formatting(p)
+    assert resolved.font_name == "Arial"
+    assert resolved.partial is False

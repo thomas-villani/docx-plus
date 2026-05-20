@@ -120,20 +120,44 @@ def test_insert_section_break_round_trip(tmp_path: Path) -> None:
     assert type_el.get(qn("w:val")) == "continuous"
 
 
+def test_insert_section_break_places_type_after_header_reference() -> None:
+    """M7: w:type must follow headerReference per ECMA-376 17.6.17.
+
+    The pre-fix code jammed w:type to position 0, ahead of any header
+    references the cloned sectPr carried — schema-invalid output.
+    """
+    import lxml.etree as ET
+
+    doc = Document()
+    # Give the section a header so its sectPr carries a headerReference.
+    header = doc.sections[0].header
+    header.is_linked_to_previous = False
+    header.paragraphs[0].add_run("H")
+
+    doc.add_paragraph("intro")
+    p = doc.add_paragraph("split")
+    doc.add_paragraph("after")
+    insert_section_break(p, start_type="continuous")
+
+    sect_pr = xpath(p._p, "./w:pPr/w:sectPr")[0]
+    locals_ = [ET.QName(c.tag).localname for c in sect_pr]
+    assert "headerReference" in locals_ and "type" in locals_
+    assert locals_.index("headerReference") < locals_.index("type")
+    # And w:type still precedes pgSz.
+    assert locals_.index("type") < locals_.index("pgSz")
+
+
 def test_insert_section_break_requires_body_parent() -> None:
-    """A standalone (detached) paragraph has no body — raise."""
-    from docx.oxml.parser import OxmlElement
-    from docx.oxml.text.paragraph import CT_P
+    """A paragraph outside <w:body> — here a real header paragraph — is rejected.
 
-    class FakePart:
-        pass
+    The header paragraph's element is parented to ``<w:hdr>``, not
+    ``<w:body>``, so the body-parent guard fires on a genuine non-body
+    proxy rather than a hand-built fake that the code never consults.
+    """
+    doc = Document()
+    header = doc.sections[0].header
+    header.is_linked_to_previous = False
+    header_paragraph = header.paragraphs[0]
 
-    detached_p = OxmlElement("w:p")
-    assert isinstance(detached_p, CT_P)
-    # Build a minimal Paragraph proxy. python-docx requires .part for proxies,
-    # but our error fires before that's consulted.
-    from docx.text.paragraph import Paragraph
-
-    fake = Paragraph(detached_p, FakePart())  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="main document body"):
-        insert_section_break(fake)
+        insert_section_break(header_paragraph)

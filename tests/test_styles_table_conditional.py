@@ -14,8 +14,10 @@ positions and confirm the right branch was applied.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
+import pytest
 from docx import Document
 
 from docx_plus.core.oxml import sub
@@ -91,11 +93,8 @@ def test_table_context_defaults_are_all_false() -> None:
 def test_table_context_is_frozen() -> None:
     """TableContext is immutable (frozen dataclass)."""
     ctx = TableContext(is_first_row=True)
-    try:
+    with pytest.raises(dataclasses.FrozenInstanceError):
         ctx.is_first_row = False  # type: ignore[misc]
-    except Exception:
-        return
-    raise AssertionError("expected TableContext to reject attribute assignment")
 
 
 # --------------------------------------------------------------------------

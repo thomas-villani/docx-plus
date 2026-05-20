@@ -861,8 +861,7 @@ For a frozen snapshot of where the suite has real holes, see
 ## §11 What's next
 
 v0.1 (Phases 1–6), the v0.2 cycle, and the v0.2 in-place expansion
-(see `notes-v0_2-expansion-scope.md` at repo root) are complete. The
-pieces deferred to v0.3+ are:
+(scoped in SPEC §15) are complete. The pieces deferred to v0.3+ are:
 
 - **Threaded comments** (w15 `parentCommentEx` for parent/child
   replies) and the **respond / resolve / reopen** ops that depend on

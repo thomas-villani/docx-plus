@@ -13,3 +13,4 @@ invariant 2.
         - remove
         - build_complex_field
         - insert_before_first_anchor
+        - body_document_for

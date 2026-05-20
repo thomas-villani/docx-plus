@@ -12,6 +12,22 @@ from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
 
 
+def test_docx_plus_error_reexport_identity() -> None:
+    """L14: DocxPlusError lives in core.errors and is re-exported by core.
+
+    Guards the import-cycle refactor: the package-level name and the
+    errors-module name must be the same object, and the id errors must
+    still subclass it.
+    """
+    from docx_plus.core import DocxPlusError as PackageError
+    from docx_plus.core.errors import DocxPlusError as ErrorsError
+    from docx_plus.core.ids import IdRangeError
+
+    assert PackageError is ErrorsError
+    assert issubclass(DuplicateIdError, PackageError)
+    assert issubclass(IdRangeError, PackageError)
+
+
 def test_registry_empty_on_fresh_doc(empty_docx_path: Path) -> None:
     doc = Document(str(empty_docx_path))
     reg = IdRegistry(doc)

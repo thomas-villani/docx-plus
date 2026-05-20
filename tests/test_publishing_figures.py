@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 from docx import Document
 
+from docx_plus._testing.ooxml_asserts import assert_field_dirty, assert_field_not_dirty
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
+from docx_plus.fields import mark_fields_dirty
 from docx_plus.publishing import add_caption, add_table_of_figures
 
 
@@ -116,3 +118,21 @@ def test_add_tof_rejects_bad_caption_type(bad_caption_type: str) -> None:
     doc = Document()
     with pytest.raises(ValueError, match="caption_type"):
         add_table_of_figures(doc.add_paragraph(), caption_type=bad_caption_type)
+
+
+# --------------------------------------------------------------------------
+# L20: add_table_of_figures must NOT auto-mark fields dirty.
+# --------------------------------------------------------------------------
+
+
+def test_add_tof_does_not_mark_fields_dirty() -> None:
+    doc = Document()
+    add_table_of_figures(doc.add_paragraph())
+    assert_field_not_dirty(doc)
+
+
+def test_add_tof_then_mark_fields_dirty_sets_flag() -> None:
+    doc = Document()
+    add_table_of_figures(doc.add_paragraph())
+    mark_fields_dirty(doc)
+    assert_field_dirty(doc)

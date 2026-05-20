@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from docx import Document
 
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el, xpath
+from docx_plus.core.oxml import el, sub, xpath
 from docx_plus.layout import Border, set_page_borders
 
 
@@ -94,6 +95,19 @@ def test_border_defaults() -> None:
     assert b.space == 24
 
 
+def test_border_rejects_invalid_color() -> None:
+    """M5: color must be 'auto' or a six-hex-digit RRGGBB string."""
+    for bad in ("red", "#FF0000", "FF00", "12345", "GGGGGG", ""):
+        with pytest.raises(ValueError, match="Border.color"):
+            Border(color=bad)
+
+
+def test_border_accepts_auto_and_hex_colors() -> None:
+    assert Border(color="auto").color == "auto"
+    assert Border(color="2F5496").color == "2F5496"
+    assert Border(color="ffffff").color == "ffffff"  # lowercase hex is valid
+
+
 # --------------------------------------------------------------------------
 # Replacement — second call overrides; all-None removes.
 # --------------------------------------------------------------------------
@@ -156,6 +170,40 @@ def test_set_page_borders_lands_before_lnNumType() -> None:
     pg_idx = next(i for i, c in enumerate(children) if c.tag == qn("w:pgBorders"))
     ln_idx = next(i for i, c in enumerate(children) if c.tag == qn("w:lnNumType"))
     assert pg_idx < ln_idx
+
+
+def test_set_page_borders_lands_before_cols_and_docGrid() -> None:
+    """L19: with both cols and docGrid present, pgBorders precedes both."""
+    doc = Document()
+    sect_pr = doc.sections[0]._sectPr
+    assert sect_pr.find(qn("w:cols")) is not None
+    assert sect_pr.find(qn("w:docGrid")) is not None
+
+    set_page_borders(doc.sections[0], top=Border())
+
+    tags = [c.tag for c in sect_pr]
+    pg_idx = tags.index(qn("w:pgBorders"))
+    assert pg_idx < tags.index(qn("w:cols"))
+    assert pg_idx < tags.index(qn("w:docGrid"))
+
+
+def test_set_page_borders_replaces_preexisting_element() -> None:
+    """L18: a pre-seeded pgBorders (as if loaded from Word) is replaced in place."""
+    doc = Document()
+    sect_pr = doc.sections[0]._sectPr
+    seeded = el("w:pgBorders", **{"w:offsetFrom": "text"})
+    sub(seeded, "w:top", **{"w:val": "dotted", "w:sz": "2", "w:color": "auto", "w:space": "1"})
+    sect_pr.append(seeded)
+
+    set_page_borders(doc.sections[0], top=Border(style="double", size=12, color="2F5496"))
+
+    found = xpath(sect_pr, "./w:pgBorders")
+    assert len(found) == 1
+    assert found[0].get(qn("w:offsetFrom")) == "page"
+    top = found[0].find(qn("w:top"))
+    assert top.get(qn("w:val")) == "double"
+    assert top.get(qn("w:sz")) == "12"
+    assert top.get(qn("w:color")) == "2F5496"
 
 
 # --------------------------------------------------------------------------

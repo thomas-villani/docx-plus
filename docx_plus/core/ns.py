@@ -6,7 +6,7 @@ All XML element construction in the library uses these constants and the
 
 from __future__ import annotations
 
-from docx_plus.core import DocxPlusError
+from docx_plus.core.errors import DocxPlusError
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
