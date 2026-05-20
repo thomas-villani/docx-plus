@@ -14,6 +14,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from docx_plus.core.oxml import build_complex_field, el, sub
+from docx_plus.publishing._validate import (
+    validate_numbering_picture,
+    validate_seq_identifier,
+)
 
 if TYPE_CHECKING:
     from docx.text.paragraph import Paragraph
@@ -22,7 +26,7 @@ if TYPE_CHECKING:
 
 def add_caption(
     paragraph: Paragraph,
-    label: str,
+    label: str | None = None,
     *,
     caption_type: str = "Figure",
     numbering: str = "ARABIC",
@@ -40,30 +44,52 @@ def add_caption(
             where the caption is appended. Typically a fresh paragraph
             beneath the figure / table being captioned.
         label: Leading text shown before the number, including any
-            trailing whitespace (e.g. ``"Figure "``). Empty string
-            suppresses the label run entirely.
+            trailing whitespace. When omitted (``None``, the default),
+            uses ``f"{caption_type} "`` — the common case. Pass an
+            empty string ``""`` to suppress the label run entirely
+            (e.g. when the surrounding paragraph already supplies it).
         caption_type: The ``SEQ`` field's name. Items sharing this name
             are numbered together (so all ``"Figure"`` captions number
             ``1, 2, 3, …``, independent of all ``"Table"`` captions).
             Must match the ``\c`` switch on any downstream Table of
-            Figures.
-        numbering: Word numbering format passed to ``\* <numbering>``.
-            Common values: ``"ARABIC"`` (default — ``1, 2, 3, …``),
-            ``"ROMAN"`` (``i, ii, iii, …``), ``"ALPHABETIC"``
-            (``A, B, C, …``).
+            Figures, and must conform to the SEQ identifier rule
+            (ASCII letter/underscore start, then letters/digits/
+            underscores).
+        numbering: Word numbering format token for the ``\* <picture>``
+            switch. Common values: ``"ARABIC"`` (default — ``1, 2, 3,
+            …``), ``"ROMAN"`` (``I, II, III, …``), ``"roman"``
+            (``i, ii, iii, …``), ``"ALPHABETIC"`` (``A, B, C, …``).
+            See ECMA-376 17.16.4.1 for the full token list.
 
     Returns:
         The ``<w:r>`` element wrapping the field's ``begin`` ``fldChar``.
+
+    Raises:
+        ValueError: If ``caption_type`` is empty or violates the SEQ
+            identifier rule, or if ``numbering`` is not a recognised
+            format token (issues.md H11, M16).
+
+    Note:
+        The caption's paragraph is *not* automatically restyled to
+        Word's built-in ``Caption`` paragraph style. Apply it yourself
+        if you want the conventional italic-grey rendering:
+        ``paragraph.style = doc.styles["Caption"]``.
 
     Example:
         >>> from docx import Document
         >>> from docx_plus.publishing import add_caption
         >>> doc = Document()
         >>> p = doc.add_paragraph()
-        >>> add_caption(p, "Figure ", caption_type="Figure")
-        >>> p.add_run(": Architecture overview")  # caption body text
+        >>> add_caption(p, caption_type="Figure")  # label defaults to "Figure "
+        >>> p.add_run(": Architecture overview")
         <docx.text.run.Run object at 0x...>
     """
+    validate_seq_identifier(caption_type, arg_name="caption_type")
+    validate_numbering_picture(numbering)
+
+    if label is None:
+        label = f"{caption_type} "
+
     if label:
         label_run = el("w:r")
         label_t = sub(label_run, "w:t", **{"xml:space": "preserve"})

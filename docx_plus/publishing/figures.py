@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from docx_plus.core.oxml import build_complex_field
+from docx_plus.publishing._validate import validate_seq_identifier
 
 if TYPE_CHECKING:
     from docx.text.paragraph import Paragraph
@@ -39,12 +40,18 @@ def add_table_of_figures(
             where the field is appended.
         caption_type: ``SEQ`` name to match — must equal the
             ``caption_type`` passed to
-            :func:`docx_plus.publishing.add_caption`.
+            :func:`docx_plus.publishing.add_caption`. Must conform to
+            the SEQ identifier rule (ASCII letter/underscore start,
+            then letters/digits/underscores).
         hyperlink: When ``True`` (default), entries become clickable
             hyperlinks via the ``\h`` switch.
 
     Returns:
         The ``<w:r>`` element wrapping the field's ``begin`` ``fldChar``.
+
+    Raises:
+        ValueError: If ``caption_type`` is empty or violates the SEQ
+            identifier rule (issues.md H11).
 
     Example:
         >>> from docx import Document
@@ -56,6 +63,8 @@ def add_table_of_figures(
         >>> # ... captions added elsewhere via add_caption(..., caption_type="Figure")
         >>> mark_fields_dirty(doc)
     """
+    validate_seq_identifier(caption_type, arg_name="caption_type")
+
     instruction = f' TOC \\c "{caption_type}"'
     if hyperlink:
         instruction += " \\h"

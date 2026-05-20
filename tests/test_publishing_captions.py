@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from docx import Document
 
 from docx_plus.core.ns import qn
@@ -132,3 +133,57 @@ def test_add_caption_round_trip(tmp_path: Path) -> None:
     body = reopened.element.body
     instructions = _instruction_texts(body)
     assert any("SEQ Figure" in i for i in instructions)
+
+
+# --------------------------------------------------------------------------
+# Validation — H11 (identifier + numbering picture) and M15 (label default).
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_caption_type",
+    [
+        "",                       # empty
+        "1Figure",                # starts with digit
+        "Figure 1",               # contains space
+        'Figure" \\f "evil',      # injection attempt — terminates identifier
+        "Figure,evil",            # contains comma
+    ],
+)
+def test_add_caption_rejects_bad_caption_type(bad_caption_type: str) -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    with pytest.raises(ValueError, match="caption_type"):
+        add_caption(p, caption_type=bad_caption_type)
+
+
+@pytest.mark.parametrize(
+    "bad_numbering",
+    ["", "lower roman", "junk", "ARABIC "],
+)
+def test_add_caption_rejects_bad_numbering(bad_numbering: str) -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    with pytest.raises(ValueError, match="numbering"):
+        add_caption(p, caption_type="Figure", numbering=bad_numbering)
+
+
+def test_add_caption_label_defaults_to_caption_type_plus_space() -> None:
+    """M15: omitting ``label`` falls back to ``f'{caption_type} '``."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_caption(p, caption_type="Table")
+    assert "Table " in _label_texts(p._p)
+
+
+def test_add_caption_explicit_empty_label_suppresses_run() -> None:
+    """Passing ``""`` (vs ``None``) still suppresses the label run.
+
+    With label suppressed, the only visible <w:t> is the SEQ field's
+    result text "1" (mirrors test_add_caption_empty_label_suppresses_run).
+    """
+    doc = Document()
+    p = doc.add_paragraph()
+    add_caption(p, "", caption_type="Figure")
+    visible_text = "".join((t.text or "") for t in xpath(p._p, ".//w:r/w:t"))
+    assert visible_text == "1"

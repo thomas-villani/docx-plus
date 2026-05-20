@@ -37,19 +37,19 @@ def build_publishing_document(out_path: Path) -> Path:
     doc.add_heading("Architecture", level=1)
     doc.add_paragraph("High-level diagram below.")
     cap1 = doc.add_paragraph()
-    add_caption(cap1, "Figure ", caption_type="Figure")
+    add_caption(cap1, caption_type="Figure")
     cap1.add_run(": System architecture overview.")
 
     doc.add_heading("Data flow", level=2)
     doc.add_paragraph("Step-by-step trace.")
     cap2 = doc.add_paragraph()
-    add_caption(cap2, "Figure ", caption_type="Figure")
+    add_caption(cap2, caption_type="Figure")
     cap2.add_run(": Request lifecycle.")
 
     doc.add_heading("Deployment topology", level=2)
     doc.add_paragraph("Production layout.")
     cap3 = doc.add_paragraph()
-    add_caption(cap3, "Figure ", caption_type="Figure")
+    add_caption(cap3, caption_type="Figure")
     cap3.add_run(": Regional rollout map.")
 
     # ----- Table of Figures at the end -----

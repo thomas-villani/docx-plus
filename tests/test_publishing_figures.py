@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from docx import Document
 
 from docx_plus.core.ns import qn
@@ -100,3 +101,18 @@ def test_tof_caption_type_matches_caption_seq_name(tmp_path: Path) -> None:
     seq_count = sum(1 for i in instructions if i and "SEQ Figure" in i)
     assert tof_count == 1
     assert seq_count == 3
+
+
+# --------------------------------------------------------------------------
+# Validation — H11 (identifier injection at caption_type).
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_caption_type",
+    ["", "1Bad", "has space", 'Figure" \\o "1-9'],
+)
+def test_add_tof_rejects_bad_caption_type(bad_caption_type: str) -> None:
+    doc = Document()
+    with pytest.raises(ValueError, match="caption_type"):
+        add_table_of_figures(doc.add_paragraph(), caption_type=bad_caption_type)

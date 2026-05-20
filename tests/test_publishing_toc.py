@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from docx import Document
 
 from docx_plus.core.ns import qn
@@ -105,3 +106,69 @@ def test_add_toc_round_trip(tmp_path: Path) -> None:
     text = instr_runs[0].text
     assert 'TOC \\o "1-4"' in text
     assert "\\n" in text
+
+
+# --------------------------------------------------------------------------
+# Validation — H12 (levels range) and H13 (additional_styles).
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_levels",
+    [
+        (3, 1),       # reversed
+        (0, 3),       # below 1
+        (1, 10),      # above 9
+        (-1, 3),      # negative
+        (1,),         # wrong arity (1-tuple)
+        (1, 2, 3),    # wrong arity (3-tuple)
+        "1-3",        # not a tuple
+        5,            # bare int
+        (1.0, 3.0),   # non-int
+    ],
+)
+def test_add_toc_rejects_bad_levels(bad_levels) -> None:
+    doc = Document()
+    with pytest.raises(ValueError, match="levels"):
+        add_toc(doc.add_paragraph(), levels=bad_levels)
+
+
+def test_add_toc_additional_styles_emits_t_switch() -> None:
+    """H13: ``additional_styles`` plumbs to ``\\t "Style1,1,Style2,2"``."""
+    doc = Document()
+    p = doc.add_paragraph()
+    add_toc(p, levels=(1, 2), additional_styles=[("Caption", 4), ("Quote", 5)])
+    instructions = xpath(p._p, ".//w:instrText")
+    assert len(instructions) == 1
+    text = instructions[0].text
+    assert 'TOC \\o "1-2"' in text
+    assert '\\t "Caption,4,Quote,5"' in text
+
+
+@pytest.mark.parametrize(
+    "bad_styles",
+    [
+        [("Caption",)],                   # arity 1
+        [("Caption", 4, "extra")],        # arity 3
+        [("Caption", 0)],                 # level below 1
+        [("Caption", 10)],                # level above 9
+        [("", 4)],                        # empty style name
+        [('Caption" \\o "1-9', 4)],       # double-quote injection
+        [("Cap,tion", 4)],                # comma in name
+        [(123, 4)],                       # non-str name
+        [("Caption", "4")],               # non-int level
+        "not iterable as pairs",          # bare str
+    ],
+)
+def test_add_toc_rejects_bad_additional_styles(bad_styles) -> None:
+    doc = Document()
+    with pytest.raises(ValueError, match="additional_styles"):
+        add_toc(doc.add_paragraph(), additional_styles=bad_styles)
+
+
+def test_add_toc_additional_styles_none_omits_t_switch() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    add_toc(p)  # additional_styles default is None
+    instructions = xpath(p._p, ".//w:instrText")
+    assert "\\t" not in instructions[0].text

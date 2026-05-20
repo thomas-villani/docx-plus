@@ -16,9 +16,11 @@ commit messages and PR titles so we can cross-reference here.
 - **Session B — schema / part wiring — DONE.** C1, C3, H6, H7, H8
   resolved (5 new tests; mypy strict + ruff clean).
 - **Session C — error taxonomy + interleaving — DONE.** C4, H9, H10,
-  M1, M2 resolved (7 new tests; 579 total pass; mypy strict + ruff
-  clean).
-- Sessions D–F pending.
+  M1, M2 resolved (7 new tests; mypy strict + ruff clean).
+- **Session D — publishing API hardening — DONE.** H11, H12, H13,
+  M14, M15, M16 resolved (37 new tests; 616 total pass; mypy strict +
+  ruff clean).
+- Sessions E–F pending.
 
 ## Stats
 
@@ -176,6 +178,7 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Replace local function with `from docx_plus.core.oxml import insert_before_first_anchor`; drop the private copy.
 
 ### H11: Field-instruction injection via unsanitised string interpolation
+- **Status:** ✅ RESOLVED (Session D) — new `docx_plus/publishing/_validate.py` holds shared validators. `add_caption` and `add_table_of_figures` validate `caption_type` against the SEQ identifier rule; `add_caption` validates `numbering` against the ECMA-376 17.16.4.1 token frozenset. All inject-vector inputs (`'Figure" \o "1-9'`, `"Figure,evil"`, empties, leading digits) now raise `ValueError` at function entry. Closes M16 in the same pass.
 - **Subsystem:** publishing
 - **Location:** `docx_plus/publishing/captions.py:73`, `docx_plus/publishing/figures.py:59`, `docx_plus/publishing/toc.py:50`
 - **Description:** Every public helper interpolates user input directly into the OOXML field-instruction string with zero validation or escaping:
@@ -185,12 +188,14 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Validate eagerly. `caption_type` must match Word's SEQ-identifier rule (`[A-Za-z][A-Za-z0-9_]*`); `numbering` must be in a frozen set of `\*` format-picture tokens (`ARABIC`, `ROMAN`, `Roman`, `ALPHABETIC`, `alphabetic`, `CardText`, `DollarText`, `Hex`, `Ordinal`, `OrdText`). Raise `ValueError` (resolve with C4) on mismatch.
 
 ### H12: No validation on `add_toc(levels=…)` — silently produces broken TOCs
+- **Status:** ✅ RESOLVED (Session D) — `validate_outline_levels` rejects non-tuples, wrong arity, non-ints, bools, out-of-range and reversed ranges. 9 parametrized bad-input cases in tests.
 - **Subsystem:** publishing
 - **Location:** `docx_plus/publishing/toc.py:62-63`
 - **Description:** `(3, 1)` (reversed), `(0, 5)` (zero), `(1, 10)` (Word only has 9 levels), `(-1, 3)`, `(1,)`, `()`, or a bare int all flow through `lo, hi = levels` unchecked. `(3, 1)` yields `\o "3-1"` which Word treats as an empty range; `(1,)` raises `ValueError: not enough values to unpack` deep inside the helper with no context. None surface the user-facing problem.
 - **Suggestion:** Validate at entry: tuple of length 2, both ints, `1 <= lo <= hi <= 9` (Word's outline-level domain). Raise a typed `ValueError`/`DocxPlusError` naming the bad value.
 
 ### H13: `omit_styles` / `\t` switch promised in plan but not implemented
+- **Status:** ✅ RESOLVED (Session D) — implemented as `additional_styles: Sequence[tuple[str, int]] | None = None` (renamed from the plan's misleading `omit_styles` — the `\t` switch *adds* styles to the TOC, doesn't omit). Emits `\t "Style1,1,Style2,2"`. Validation in `validate_additional_styles` rejects bad pairs (including style names with `,` or `"` that would terminate the switch).
 - **Subsystem:** publishing
 - **Location:** `docx_plus/publishing/toc.py:23-29`
 - **Description:** The v0.2 expansion plan listed an `omit_styles=None` parameter for `add_toc` plumbed to the `\t` switch (ECMA-376 17.16.5.61: `\t "<style>,<level>,…"` lets the TOC pull from arbitrary style/level pairs instead of the implicit `Heading1..N` set). The shipped implementation has no such parameter.
@@ -309,18 +314,21 @@ items. Everything else can ship in v0.2.1 if needed.
 - **Suggestion:** Only set `acc.partial = True` inside `_resolve_color` / `_resolve_font_theme` when a theme reference actually fails to resolve. Drop the upfront set. Add a regression test.
 
 ### M14: `add_caption` does not apply the `Caption` paragraph style
+- **Status:** ✅ RESOLVED (Session D, doc-only) — the docstring now explicitly notes the omission with a one-liner showing the caller-side recipe (`paragraph.style = doc.styles["Caption"]`). Auto-applying was rejected as too opinionated (forces a built-in dependency at every call site).
 - **Subsystem:** publishing
 - **Location:** `docx_plus/publishing/captions.py:67-74`, `docx_plus/examples/publishing_layout.py:39-53`
 - **Description:** Word's Insert → Caption UI applies the built-in `Caption` paragraph style. This affects rendering (italic, smaller font, centered, etc., per the theme). The helper leaves the paragraph in whatever style it was created with. Captions still appear in the Table of Figures (which keys off SEQ name, not paragraph style) but render as ordinary body text — surprising for users expecting "Word-equivalent" output.
 - **Suggestion:** Either auto-apply `Caption` style (perhaps gated on `apply_caption_style=True` default) or document the omission in the docstring and `ARCHITECTURE.md §7.10`. Update the example.
 
 ### M15: Example API smell — `add_caption(p, "Figure ", caption_type="Figure")` repeats label
+- **Status:** ✅ RESOLVED (Session D) — `label` is now `str | None = None` with `None` defaulting to `f"{caption_type} "`. Pass `""` to suppress the label run explicitly. `docx_plus/examples/publishing_layout.py` updated to use the shorter form.
 - **Subsystem:** publishing API
 - **Location:** `docx_plus/examples/publishing_layout.py:40, 46, 52`; `docx_plus/publishing/captions.py:23-29`
 - **Description:** Every realistic call repeats the caption-type word in both the label and the keyword. The example demonstrates the duplication three times.
 - **Suggestion:** Default `label` to `f"{caption_type} "` when omitted: `def add_caption(paragraph, label: str | None = None, *, caption_type="Figure", ...)`. Keep the explicit-label path for `"Table A.", "Schedule "`. The example then collapses to `add_caption(cap1, caption_type="Figure")`.
 
 ### M16: Empty `caption_type` / `numbering` produces malformed SEQ
+- **Status:** ✅ RESOLVED (Session D) — covered by H11's validation (empty `caption_type` fails the identifier regex; empty `numbering` is not a member of the picture frozenset). Both raise `ValueError` at function entry.
 - **Subsystem:** publishing
 - **Location:** `docx_plus/publishing/captions.py:73`, `docx_plus/publishing/figures.py:59`
 - **Description:** `add_caption(p, "Figure ", caption_type="")` produces ` SEQ  \* ARABIC `. `add_caption(..., numbering="")` produces ` SEQ Figure \*  ` — a `\*` switch with no picture argument, silently dropped by Word. `numbering="lower roman"` (with space) yields `\* lower roman` → Word parses as `\* lower` with garbage trailing.

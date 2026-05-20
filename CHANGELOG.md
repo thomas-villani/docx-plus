@@ -6,6 +6,42 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — publishing hardening (Session D of issues.md review)
+
+- **H13** — `add_toc` gained an optional `additional_styles` keyword:
+  a sequence of `(style_name, level)` pairs that get appended to the
+  TOC via the ECMA-376 17.16.5.61 `\t` switch. Originally listed in
+  the v0.2 expansion plan but not implemented in the initial cycle.
+- **M15** — `add_caption`'s `label` is now optional; omitting it
+  defaults to `f"{caption_type} "` (the universal case). The library
+  example now uses the shorter `add_caption(p, caption_type="Figure")`
+  form. Pass `""` to suppress the label run explicitly.
+
+### Fixed — publishing input validation (Session D of issues.md review)
+
+- **H11 / M16** — `add_caption(caption_type=)` and
+  `add_table_of_figures(caption_type=)` now validate against the SEQ
+  identifier rule (ASCII letter/underscore start, then letters /
+  digits / underscores). `add_caption(numbering=)` validates against
+  the ECMA-376 17.16.4.1 format-picture token set. Each rejection
+  raises `ValueError` with a clear message. Closes a real injection
+  vector where a malicious `caption_type` like `'Figure" \o "1-9'`
+  could inject additional switches into the `TOC \c` instruction.
+- **H12** — `add_toc(levels=)` is now validated as a two-int tuple in
+  the 1..9 outline range with `lo <= hi`. Reversed, out-of-range,
+  wrong-arity, and non-int inputs now raise `ValueError` with a
+  clear message at function entry instead of producing silently
+  malformed TOCs.
+- **M14** — `add_caption`'s docstring now explicitly notes that the
+  caption paragraph is *not* automatically restyled to Word's
+  built-in `Caption` paragraph style. Auto-applying the style was
+  rejected as too opinionated; callers who want it should write
+  `paragraph.style = doc.styles["Caption"]`.
+
+New module `docx_plus/publishing/_validate.py` holds the shared
+validation helpers (`validate_seq_identifier`, `validate_numbering_picture`,
+`validate_outline_levels`, `validate_additional_styles`).
+
 ### Fixed — error taxonomy + cascade interleaving (Session C of issues.md review)
 
 - **C4** — SPEC §9.7 and §16 amended to formally bless the raw
