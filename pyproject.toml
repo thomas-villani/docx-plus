@@ -1,6 +1,6 @@
 [project]
 name = "docx_plus"
-version = "0.2.0"
+version = "0.2.1"
 description = "OOXML-level extensions for python-docx: style cascade, controls, fields, comments, layout, bookmarks, notes, publishing."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "MIT" }
@@ -129,7 +129,7 @@ exclude_lines = [
 # `bump-my-version bump {major|minor|patch}` updates the two version
 # sources below, then commits and tags. CHANGELOG.md is maintained by hand.
 # Run with --dry-run -v first to preview; the tree must be clean to bump.
-current_version = "0.2.0"
+current_version = "0.2.1"
 parse = '(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)'
 serialize = ["{major}.{minor}.{patch}"]
 allow_dirty = false
