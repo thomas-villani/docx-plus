@@ -367,6 +367,10 @@ Full docs (rendered by [MkDocs](https://www.mkdocs.org) +
 - [API Index](https://thomas-villani.github.io/docx-plus/API/) —
   hand-curated index of every public symbol with links to the
   auto-generated reference
+- **Agent skill** for LLM coding agents:
+  [`skills/docx-plus/`](skills/docx-plus/SKILL.md) — point Claude Code (or any
+  agent) at it to generate `docx_plus` automation. Overview at
+  [docs/SKILLS](https://thomas-villani.github.io/docx-plus/SKILLS/)
 - [Test Gaps](https://thomas-villani.github.io/docx-plus/TEST_GAPS/) —
   honest accounting of where the test suite has real holes (snapshot
   at end of Phase 5)
