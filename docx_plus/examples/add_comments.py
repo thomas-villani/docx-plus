@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"# round-tripped {len(comments)} comments:")
     for c in comments:
         text = c.anchored_text or "(unanchored)"
-        print(f"#   [{c.author}] '{text}' → {c.text!r}")
+        print(f"#   [{c.author}] '{text}' -> {c.text!r}")
     return 0
 
 

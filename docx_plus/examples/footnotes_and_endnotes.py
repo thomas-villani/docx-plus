@@ -61,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     reopened = Document(str(written))
     fns = read_footnotes(reopened)
     ens = read_endnotes(reopened)
-    print(f"# footnotes: {len(fns)} — {[f.text for f in fns]}")
-    print(f"# endnotes:  {len(ens)} — {[e.text for e in ens]}")
+    print(f"# footnotes: {len(fns)} -- {[f.text for f in fns]}")
+    print(f"# endnotes:  {len(ens)} -- {[e.text for e in ens]}")
     return 0
 
 
