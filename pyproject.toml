@@ -124,3 +124,28 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "@overload",
 ]
+
+[tool.bumpversion]
+# `bump-my-version bump {major|minor|patch}` updates the two version
+# sources below, then commits and tags. CHANGELOG.md is maintained by hand.
+# Run with --dry-run -v first to preview; the tree must be clean to bump.
+current_version = "0.2.0"
+parse = '(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)'
+serialize = ["{major}.{minor}.{patch}"]
+allow_dirty = false
+commit = true
+message = "chore(release): bump version {current_version} -> {new_version}"
+tag = true
+tag_name = "v{new_version}"
+tag_message = "chore(release): v{new_version}"
+sign_tags = false
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "docx_plus/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'

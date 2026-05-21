@@ -4,6 +4,29 @@ All notable changes to `docx_plus` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Post-0.2.0 maintenance: agent-facing docs and a Windows console fix. No
+library API changes.
+
+### Added
+
+- **Agent `SKILL.md`** — a repo-level skill manifest so coding agents can
+  discover the `docx_plus` surface at a glance, surfaced through a new
+  `SKILLS` page in the docs nav (which also restored a link-clean
+  `mkdocs build --strict`).
+
+### Fixed
+
+- **Examples under cp1252** — the runnable examples now print ASCII to
+  stdout, so `python -m docx_plus.examples.<name>` runs on a default
+  Windows console (cp1252) without raising `UnicodeEncodeError`.
+
+### Changed
+
+- **Release docs** — the README and docs index now mark v0.2.0 as
+  released.
+
 ## [0.2.0] — 2026-05-20
 
 Second cycle. Four new capability modules — anchored comments, layout
@@ -448,5 +471,6 @@ first-class API, anchored comments, footnotes / endnotes, bookmarks
 and cross-references, table cell shading / borders, theme writing,
 password-protected forms, content-control binding to Custom XML Parts.
 
+[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/thomas-villani/docx-plus/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/thomas-villani/docx-plus/releases/tag/v0.1.0
