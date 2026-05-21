@@ -42,6 +42,9 @@ Status: **v0.2.0 released** — published on
 - Want the full reference? **[API Index](API.md)** lists every public
   symbol; **[Reference](reference/core-ns.md)** has per-module pages
   with full signatures and docstrings.
+- Driving the library from an LLM coding agent? See the **[Agent
+  Skill](SKILLS.md)** — point Claude Code (or any agent) at it to generate
+  docx_plus automation without hand-feeding the API.
 - Auditing the project? See the **[Test Gaps](TEST_GAPS.md)** snapshot.
 
 ## Quickstart
