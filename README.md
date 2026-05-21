@@ -35,10 +35,10 @@ can't reach.
   table captions (`add_caption`), Table of Figures
   (`add_table_of_figures`) (v0.2).
 
-> **Status:** v0.1.0 is published on
-> [PyPI](https://pypi.org/project/docx-plus/); v0.2.0 (this branch) is
-> complete and awaiting release. Read [`SPEC.md`](SPEC.md) for the API
-> contract and [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the build plan.
+> **Status:** v0.2.0 is the current release, published on
+> [PyPI](https://pypi.org/project/docx-plus/). Read [`SPEC.md`](SPEC.md) for
+> the API contract and [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the
+> build plan.
 
 ## Install (development)
 
