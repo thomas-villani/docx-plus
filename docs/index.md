@@ -5,7 +5,7 @@ the library every python-docx power user ends up writing badly: hardened
 helpers for OOXML operations that sit just past python-docx's
 abstraction boundary.
 
-Status: **v0.2.0 released** — published on
+Status: **v0.3.0 released** — published 2026-06-15 on
 [PyPI](https://pypi.org/project/docx-plus/).
 
 ## Capabilities
@@ -34,6 +34,12 @@ Status: **v0.2.0 released** — published on
   in ECMA-376 17.7.6.5 precedence order.
 - **Publishing** (v0.2) — Table of Contents, figure / table captions
   via `SEQ`, and a downstream Table of Figures.
+- **Tracked changes** (v0.3) — mark runs as insertions / deletions,
+  read revisions, accept / reject, and toggle track-changes mode.
+  (Module: `docx_plus/revisions/`.)
+- **Command line** (v0.3) — a `docx-plus` console command —
+  `inspect`, `restyle`, `controls` — over the library.
+  (Module: `docx_plus/cli/`.)
 
 ## Where to start
 
@@ -243,3 +249,5 @@ See [`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
 | 6 | Polish (examples, smoke tests, CI doc build) | ✓ complete |
 | v0.2 | Comments, layout, bookmarks/cross-refs, notes, `core/parts` | ✓ complete |
 | v0.2 expansion | Toggle props, in-place edits, line numbering, page borders, conditional table styles, `publishing/` | ✓ complete |
+| v0.3 | Tracked changes — mark / read / accept / reject, track-changes toggle (`revisions/`) | ✓ shipped (v0.3) |
+| v0.3 | CLI — `docx-plus` console command: `inspect`, `restyle`, `controls` (`cli/`) | ✓ shipped (v0.3) |

@@ -33,17 +33,19 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Public surface at v0.2
+## Public surface at v0.3
 
 v0.1's six phases, the initial v0.2 cycle (comments, layout, bookmarks
-/ cross-references, footnotes / endnotes), and the v0.2 in-place
+/ cross-references, footnotes / endnotes), the v0.2 in-place
 expansion (toggle props, in-place comment / note edits, line numbering,
-page borders, conditional table-style formatting, publishing module)
-are all complete. Nine runnable example scripts in
+page borders, conditional table-style formatting, publishing module),
+and the v0.3 cycle (tracked changes, the `docx-plus` CLI) are all
+complete. Ten runnable example scripts in
 `docx_plus/examples/` demonstrate the surface: `inspect_document.py`,
 `restyle_existing.py`, `build_form.py`, `populate_form.py`,
 `add_comments.py`, `multi_column_layout.py`, `bookmarks_and_xrefs.py`,
-`footnotes_and_endnotes.py`, `publishing_layout.py`. Start there if you
+`footnotes_and_endnotes.py`, `publishing_layout.py`,
+`track_changes.py`. Start there if you
 want to see the library in motion before reading the index.
 
 ### `docx_plus` (top-level package)
@@ -51,7 +53,7 @@ want to see the library in motion before reading the index.
 | Symbol | Kind | Notes |
 |---|---|---|
 | `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §9](ARCHITECTURE.md#9-error-hierarchy) |
-| `__version__` | str | `"0.2.0"` |
+| `__version__` | str | `"0.3.0"` |
 
 ### `docx_plus.core`
 
@@ -300,6 +302,42 @@ next open. Architecture walkthrough in
 | `add_toc(paragraph, *, levels=(1, 3), hyperlink=True, page_numbers=True)` | function | Append a `TOC` complex field. Instruction string matches Word's default ("Insert → Table of Contents") with `\o`, `\h`, `\z`, `\u`, optional `\n` switches |
 | `add_caption(paragraph, label, *, caption_type="Figure", numbering="ARABIC")` | function | Label text run + `SEQ <caption_type> \* <numbering>` complex field. `caption_type` must match the `\c` switch on a downstream Table of Figures |
 | `add_table_of_figures(paragraph, *, caption_type="Figure", hyperlink=True)` | function | Append a `TOC \c "<caption_type>"` complex field that collects matching captions |
+
+### `docx_plus.revisions`
+
+Tracked changes — read, author, and resolve OOXML revision marks
+(`w:ins` / `w:del` / move wrappers / property-change markers).
+python-docx cannot read or write tracked changes at all; this module
+fills the gap. Scoped in `ROADMAP.md` §1 at the repo root.
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `enable_track_changes(doc)` | function | Write `<w:trackChanges/>` into `settings.xml` so Word records every subsequent user edit as a revision. Idempotent (normalises a pre-existing element to "on", collapses duplicates) |
+| `disable_track_changes(doc)` | function | Remove every `<w:trackChanges/>`. Idempotent. Existing body revision marks are untouched |
+| `mark_insertion(target, *, author="", date=None, id_registry=None)` | function | Wrap existing run(s) in `<w:ins>`. `date=None` stamps current UTC (ms precision). Returns `RevisionRef` |
+| `mark_deletion(target, *, author="", date=None, id_registry=None)` | function | Wrap existing run(s) in `<w:del>` and retag each `<w:t>` to `<w:delText>`. Returns `RevisionRef` |
+| `read_revisions(doc)` | function | Enumerate every revision in document order, each paired with its metadata and affected text. Returns `list[TrackedChange]` |
+| `accept_revision(doc, revision_id)` | function | Accept the revision(s) carrying `revision_id`, keeping the recorded edit. Raises `RevisionNotFoundError` if absent |
+| `reject_revision(doc, revision_id)` | function | Reject the revision(s) carrying `revision_id`, restoring the prior state. Raises `RevisionNotFoundError` if absent |
+| `accept_all_revisions(doc)` | function | Accept every tracked change. Idempotent; resolves innermost-first |
+| `reject_all_revisions(doc)` | function | Reject every tracked change. Idempotent; resolves innermost-first |
+| `RevisionRef` | dataclass (frozen) | Write-side handle: `revision_id`, `body_element` (the `<w:ins>` / `<w:del>` element) |
+| `TrackedChange` | dataclass (frozen) | Read-side result: `revision_id`, `revision_type`, `author`, `timestamp`, `text`, `paragraph_index` |
+| `RevisionIdRegistry(doc)` | class | Per-document revision-id allocator. All revision types share one `w:id` namespace; seeds from every revision-bearing element in the body |
+| `RevisionType` | type alias | `Literal["insertion", "deletion", "move_from", "move_to", "format_run", "format_paragraph", "paragraph_mark_insertion", "paragraph_mark_deletion"]` |
+| `RevisionTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` — same target shapes as `add_comment`; a range must lie within one paragraph |
+| `RevisionNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `accept_revision` / `reject_revision` on a missing id |
+
+### `docx_plus.cli`
+
+The `docx-plus` command-line interface — a thin shell over the library
+(each subcommand wraps one tested function). Full reference, including
+every subcommand and flag, lives in [`cli.md`](cli.md).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `main(argv=None)` | function | Console entry point (`docx-plus = "docx_plus.cli:main"`; also `python -m docx_plus.cli`). Returns `0` on success, `1` on a handled library/CLI error, `2` when no command was given |
+| `build_parser()` | function | Construct the top-level `argparse.ArgumentParser` with every subcommand registered |
 
 ---
 

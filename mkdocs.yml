@@ -34,6 +34,7 @@ nav:
   - CLI: cli.md
   - Agent Skill: SKILLS.md
   - Reference:
+      - docx_plus.core.errors: reference/core-errors.md
       - docx_plus.core.ns: reference/core-ns.md
       - docx_plus.core.oxml: reference/core-oxml.md
       - docx_plus.core.ids: reference/core-ids.md

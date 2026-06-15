@@ -35,6 +35,9 @@ docx-plus inspect report.docx --json          # structured records
 Wraps `resolve_effective_formatting`. JSON record per paragraph: `index`,
 `text`, `style_id`, `style_name`, `partial`, `fields` (only the cascade-set
 fields), and — with `--provenance` — a `provenance` map of `field -> layer`.
+The `index` is **1-based** (paragraphs are numbered from 1), which differs from
+the 0-based `paragraph_index` used by the library's `read_*` functions
+(`read_revisions`, `read_comments`, etc.).
 
 ## `restyle` — style remapping
 
@@ -61,6 +64,6 @@ docx-plus controls clear filled.docx --tag name --in-place
 ```
 
 Wraps `read_controls` / `set_control_value` / `clear_control`. `set` reads the
-control's type and **coerces the command-line string**: `true/false/1/0/yes/no`
+control's type and **coerces the command-line string**: `true/false/1/0/yes/no/on/off`
 for checkboxes, an ISO 8601 string for dates, plain text otherwise. An
 un-coercible value or unknown tag is a clean `error: ...` (exit 1).

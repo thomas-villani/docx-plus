@@ -24,6 +24,8 @@ it pulls in on demand.
 | [`reference/publishing.md`](https://github.com/thomas-villani/docx-plus/blob/main/skills/docx-plus/reference/publishing.md) | TOC, captions, table of figures, footnotes, endnotes, bookmarks, cross-references, fields |
 | [`reference/layout.md`](https://github.com/thomas-villani/docx-plus/blob/main/skills/docx-plus/reference/layout.md) | Columns, section breaks, even/odd headers, line numbering, page borders |
 | [`reference/comments.md`](https://github.com/thomas-villani/docx-plus/blob/main/skills/docx-plus/reference/comments.md) | Anchored comments (add / edit / delete / read) |
+| [`reference/revisions.md`](https://github.com/thomas-villani/docx-plus/blob/main/skills/docx-plus/reference/revisions.md) | Tracked changes (mark / read / accept / reject); track-changes toggle |
+| [`reference/cli.md`](https://github.com/thomas-villani/docx-plus/blob/main/skills/docx-plus/reference/cli.md) | The `docx-plus` command line (inspect / restyle / controls) |
 
 ## Using it
 
@@ -38,7 +40,7 @@ it pulls in on demand.
 ## Accuracy
 
 Every code snippet in the skill imports only public symbols and is verified to
-run end to end against the current release (v0.2.0). The skill mirrors the same
+run end to end against the current release (v0.3.0). The skill mirrors the same
 public surface documented in the [API Index](API.md) and the per-module
 [Reference](reference/core-ns.md) pages — it's the agent-facing complement to
 those human-facing docs, not a separate source of truth.

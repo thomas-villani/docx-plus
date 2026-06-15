@@ -1,9 +1,10 @@
 # docx_plus — Architecture
 
 Present-tense reference for how `docx_plus` is laid out and why. This
-document describes what currently exists at the end of v0.2 (Phase 6
-plus the v0.2 cycle: comments, layout, bookmarks / cross-references,
-footnotes / endnotes). The contract that constrains it is `SPEC.md`;
+document describes what currently exists at the end of v0.3 (Phase 6,
+the v0.2 cycle: comments, layout, bookmarks / cross-references,
+footnotes / endnotes, and the v0.3 work: tracked changes plus the
+`docx-plus` CLI). The contract that constrains it is `SPEC.md`;
 the meta-guidance on how it was built and how to extend it is
 `IMPLEMENTATION.md`. Read this when you need to understand the
 library's shape; read those when you need to decide what to add or how.
@@ -73,11 +74,27 @@ docx_plus/
 │   │                        # FootnoteRef, EndnoteRef, NoteNotFoundError
 │   ├── read.py              # read_footnotes, read_endnotes, NoteContent
 │   └── registry.py          # FootnoteIdRegistry, EndnoteIdRegistry
+├── revisions/               # tracked changes (w:ins / w:del) — v0.3
+│   ├── __init__.py          # re-exports the public surface
+│   ├── mark.py              # mark_insertion, mark_deletion, RevisionRef,
+│   │                        # RevisionTarget, RevisionNotFoundError
+│   ├── read.py              # read_revisions, TrackedChange, RevisionType
+│   ├── accept.py            # accept_revision, reject_revision,
+│   │                        # accept_all_revisions, reject_all_revisions
+│   ├── settings.py          # enable_track_changes, disable_track_changes
+│   └── registry.py          # RevisionIdRegistry
 ├── publishing/              # long-document publishing — v0.2
 │   ├── __init__.py          # re-exports the public surface
 │   ├── toc.py               # add_toc
 │   ├── captions.py          # add_caption
 │   └── figures.py           # add_table_of_figures
+├── cli/                     # docx-plus console entry point — v0.3
+│   ├── __init__.py          # build_parser, main (console_scripts entry point)
+│   ├── __main__.py          # python -m docx_plus.cli shim
+│   ├── inspect.py           # inspect subcommand — effective formatting dump
+│   ├── restyle.py           # restyle subcommand — remap_styles onto canonical ids
+│   ├── controls.py          # controls subcommand — list / set / clear control values
+│   └── _io.py               # CliError + shared load/save/output helpers
 ├── examples/                # runnable demo scripts
 │   ├── inspect_document.py, restyle_existing.py, build_form.py, populate_form.py
 │   ├── add_comments.py, multi_column_layout.py, bookmarks_and_xrefs.py,
@@ -708,15 +725,91 @@ data-binding subsystem (also v0.3).
 
 ---
 
+## §7.11 Tracked changes
+
+`revisions/` closes a gap python-docx cannot reach at all: it neither
+reads nor writes tracked changes. The capability works entirely in
+inline revision elements (`<w:ins>`, `<w:del>` with `<w:delText>`, the
+`<w:moveFrom>` / `<w:moveTo>` move wrappers, and the property-change
+markers) — none of which need a separate part, unlike comments or
+notes.
+
+`revisions/mark.py:mark_insertion(target, ...)` wraps existing run(s)
+in `<w:ins w:id w:author w:date>`, leaving each `<w:t>` untouched.
+`mark_deletion(target, ...)` wraps the span in `<w:del>` and retags
+every `<w:t>` in it to `<w:delText>` (the element Word uses for deleted
+run text). Both take the same target shapes as comments — a `Run`, a
+`Paragraph` (its first-to-last run span), or a `(start_run, end_run)`
+tuple within one paragraph — and return a `RevisionRef` carrying the
+assigned id and the wrapper element. `date=None` stamps the current
+UTC time at millisecond precision.
+
+`read_revisions(doc)` walks the body and returns one `TrackedChange`
+per revision element in document order, dispatching on element tag to
+classify each as one of the `RevisionType` literals (insertion,
+deletion, move source/destination, run- or paragraph-property change,
+paragraph-mark insertion/deletion). Each result pairs the affected
+text with its `paragraph_index`. Move *range markers* are not reported
+as separate entries — the wrapper that carries the moved text is.
+
+`accept_revision(doc, id)` and `reject_revision(doc, id)` resolve a
+single revision into final text — accepting an insertion unwraps it,
+accepting a deletion removes it, and rejecting does the inverse — with
+`accept_all_revisions` / `reject_all_revisions` as the bulk forms.
+A missing id raises `RevisionNotFoundError`.
+
+`enable_track_changes(doc)` / `disable_track_changes(doc)` toggle the
+document-wide `<w:trackChanges>` flag in `settings.xml`, the switch
+that makes Word record subsequent edits as revisions.
+
+`RevisionIdRegistry` owns the shared revision-id namespace, disjoint
+from the SDT, comment, bookmark, and note namespaces (§8 invariant 3).
+`mark_*` accept an `id_registry` to share across an editing session, or
+build one scoped to the call from the target's document.
+
+---
+
+## §7.12 The `docx-plus` CLI
+
+`cli/` is the console entry point registered in `pyproject.toml` as
+`docx-plus = "docx_plus.cli:main"` (and runnable as
+`python -m docx_plus.cli`). It is a thin argparse shell over the
+library: `build_parser()` registers one subparser per subcommand, and
+`main(argv)` dispatches to the matching handler, returning `0` on
+success, `1` for a handled `DocxPlusError` (printed to stderr), and `2`
+when no command is given.
+
+Three subcommands, each wrapping one tested library function:
+
+- `inspect` — dump effective per-paragraph formatting
+  (`styles.resolve_effective_formatting`).
+- `restyle` — remap styles onto canonical ids (`styles.remap_styles`).
+- `controls` — list / set / clear content-control values
+  (`controls`).
+
+Read commands take `--json`; mutating commands require `-o/--output`
+(or an explicit `--in-place`) so the input is never overwritten by
+accident. Shared load/save plumbing and the `CliError` type live in
+`cli/_io.py`.
+
+The CLI is the **one** layer that legitimately imports across
+capabilities — it composes `styles/` and `controls/` by design — and is
+the documented exception to the §8 no-cross-imports invariant.
+
+---
+
 ## §8 Invariants
 
 These are the architectural commitments. Each is enforced by a test.
 
 1. **No imports between capability modules.** `styles/`, `controls/`,
-   `fields/`, `protection/` may import from `core/` only — never from each
-   other. Enforced by `tests/test_import_invariant.py`, which walks the
-   AST of every `.py` file in each capability directory and asserts no
-   import names another capability.
+   `fields/`, `protection/` (and the v0.2 / v0.3 capabilities) may import
+   from `core/` only — never from each other. Enforced by
+   `tests/test_import_invariant.py`, which walks the AST of every `.py`
+   file in each capability directory and asserts no import names another
+   capability. The one deliberate exception is `cli/` (§7.12): it is the
+   composition layer and imports across capabilities by design, so it is
+   excluded from the invariant.
 
 2. **All XML element construction goes through `core/oxml.py`.** No bare
    `lxml.etree.SubElement` or `OxmlElement` calls in capability modules.
@@ -822,14 +915,17 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **631 tests** at the v0.2.0 release:
-  v0.1's surface (319 tests) plus the v0.2 cycle — `core/parts` (13),
-  `comments/` (35), `layout/` (47), `bookmarks/` + cross-refs (26),
-  `notes/` (34), `styles/` table conditional (13), `publishing/` (23)
-  — plus example smoke tests for the new demos, plus the regression
-  coverage added by the pre-publication code/docs review (cascade
-  correctness, schema/part wiring, error taxonomy, publishing
-  validation, and the six newly-writable run toggles).
+  I/O beyond reading fixtures. **803 tests** at the v0.3.0 release.
+  Of these, 631 were collected at v0.2.0: v0.1's surface (319 tests)
+  plus the v0.2 cycle — `core/parts` (13), `comments/` (35),
+  `layout/` (47), `bookmarks/` + cross-refs (26), `notes/` (34),
+  `styles/` table conditional (13), `publishing/` (23) — plus example
+  smoke tests for the new demos, plus the regression coverage added by
+  the pre-publication code/docs review (cascade correctness, schema/part
+  wiring, error taxonomy, publishing validation, and the six
+  newly-writable run toggles). v0.3 added the balance: `revisions/`
+  (mark / read / accept-reject / settings / registry) and the `cli/`
+  subcommands.
 - **Layer 2 — round-trip tests.** Build → save → reopen with
   `python-docx` → assert. The high-value class for OOXML
   correctness (`IMPLEMENTATION.md §8`). Phase 5 added round-trips for
@@ -861,9 +957,11 @@ For a frozen snapshot of where the suite has real holes, see
 ## §11 What's next
 
 v0.1 (Phases 1–6), the v0.2 cycle, and the v0.2 in-place expansion are
-complete (released through `v0.2.1`).
+complete (released through `v0.2.1`). v0.3 then shipped its two headline
+targets: **tracked changes (read/write)** in `revisions/` (§7.11) and the
+**`docx-plus` CLI** in `cli/` (§7.12).
 
-The authoritative roadmap for everything deferred to v0.3+ — targeted
-work, bounded backlog, and dependency-gated items — lives in `ROADMAP.md`
-at the repo root. v0.3 targets **tracked changes (read/write)** and the
-**`docx-plus` CLI** first.
+The authoritative roadmap for everything deferred to the post-v0.3
+backlog — targeted work, bounded backlog, and dependency-gated items
+(threaded comments, bibliography / CXML data binding, …) — lives in
+`ROADMAP.md` at the repo root.
