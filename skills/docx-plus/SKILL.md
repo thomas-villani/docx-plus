@@ -4,7 +4,8 @@ description: >-
   Use when generating or editing Microsoft Word (.docx) files in Python and you
   need OOXML features beyond what python-docx exposes: footnotes, endnotes,
   table of contents, captions / table of figures, fillable forms (content
-  controls: text / dropdown / date / checkbox), anchored comments, style-cascade
+  controls: text / dropdown / date / checkbox), anchored comments, tracked
+  changes (insertions / deletions, accept / reject), style-cascade
   inspection and Word-native style creation / modification, bookmarks and
   cross-references, multi-column layout, page borders, line numbering,
   page-number and date fields, and document protection. docx_plus composes with
@@ -90,6 +91,7 @@ copy-pasteable guide to that module's public API.
 | Table of contents, figure/table captions, table of figures, footnotes, endnotes, bookmarks, cross-references, page-number/date/generic fields | `publishing`, `notes`, `bookmarks`, `fields` | `reference/publishing.md`   |
 | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders | `layout`         | `reference/layout.md`       |
 | Anchored review comments that "show in document" correctly   | `comments`        | `reference/comments.md`     |
+| Track changes: mark insertions / deletions, read revisions, accept / reject | `revisions`       | `reference/revisions.md`    |
 
 ## Two patterns worth memorizing
 
@@ -135,6 +137,8 @@ doc.save("out.docx")
 - `reference/layout.md` — columns, section breaks, even/odd headers, line
   numbering, page borders.
 - `reference/comments.md` — anchored comments (add / edit / delete / read).
+- `reference/revisions.md` — tracked changes: enable/disable track-changes mode,
+  mark insertions / deletions, read revisions, accept / reject.
 
 For exhaustive signatures and the error taxonomy, the rendered docs are at
 <https://thomas-villani.github.io/docx-plus/> and the in-repo index is

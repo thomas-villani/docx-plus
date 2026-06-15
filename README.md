@@ -19,6 +19,9 @@ can't reach.
   tracked-changes mode at the document level.
 - **Anchored comments** (v0.2): the body-side range markers
   python-docx skips, so "show in document" actually works.
+- **Tracked changes** (v0.3): mark runs as insertions / deletions, read
+  every revision with its author / timestamp / text, and accept or reject
+  them — the inline `w:ins` / `w:del` revision marks python-docx can't reach.
 - **Layout**: multi-column sections, mid-document section breaks,
   distinct even/odd headers (v0.2).
 - **Bookmarks + cross-references**: paired body markers plus
@@ -330,14 +333,14 @@ v0.2 ships the feature modules listed at the top of this README, plus
 the in-place expansion (line numbering, page borders, conditional
 table-style formatting, comment / note editing, and the publishing
 module).
-The [`v0.3 deferred list`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/)
-(SPEC §15) tracks what comes after — w15 threaded comments
-(respond / resolve / reopen), `STYLEREF` / sequence-field
-cross-references, a CLI (`restyle` / `inspect` / `controls`),
-content-control data binding to Custom XML Parts, bibliography
-(citations + `BIBLIOGRAPHY` field), tracked changes, glossary
-placeholder text, and password-protected forms. Open an issue if
-your use case needs any of these.
+[`ROADMAP.md`](ROADMAP.md) tracks what comes after. v0.3 targets
+**tracked changes** (read/write revision marks) and a **`docx-plus`
+CLI** (`restyle` / `inspect` / `controls`) first; the backlog also
+holds `STYLEREF` / sequence-field cross-references, w15 threaded
+comments (respond / resolve / reopen), content-control data binding to
+Custom XML Parts, bibliography (citations + `BIBLIOGRAPHY` field),
+glossary placeholder text, and password-protected forms. Open an issue
+if your use case needs any of these.
 
 <details>
 <summary>Build history (for contributors)</summary>

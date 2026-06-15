@@ -1,5 +1,5 @@
 site_name: docx_plus
-site_description: OOXML-level extensions for python-docx — style cascade, controls, fields, comments, layout, bookmarks, notes, publishing.
+site_description: OOXML-level extensions for python-docx — style cascade, controls, fields, comments, tracked changes, layout, bookmarks, notes, publishing.
 site_author: Tom Villani, PhD
 
 docs_dir: docs
@@ -48,6 +48,11 @@ nav:
       - docx_plus.comments.anchor: reference/comments-anchor.md
       - docx_plus.comments.read: reference/comments-read.md
       - docx_plus.comments.registry: reference/comments-registry.md
+      - docx_plus.revisions.settings: reference/revisions-settings.md
+      - docx_plus.revisions.mark: reference/revisions-mark.md
+      - docx_plus.revisions.read: reference/revisions-read.md
+      - docx_plus.revisions.accept: reference/revisions-accept.md
+      - docx_plus.revisions.registry: reference/revisions-registry.md
       - docx_plus.layout.columns: reference/layout-columns.md
       - docx_plus.layout.breaks: reference/layout-breaks.md
       - docx_plus.layout.settings: reference/layout-settings.md
