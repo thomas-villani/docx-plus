@@ -24,6 +24,7 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`. Shipped capability modules:
 | `notes/` | Footnotes + endnotes — add / edit / read |
 | `publishing/` | TOC, captions, table of figures |
 | `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
+| `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3) |
 
 Suite at last gate: 717 tests (709 pass, 8 LibreOffice-skipped); `mypy
 --strict`, `ruff`, and `mkdocs build --strict` all clean.
@@ -59,17 +60,29 @@ Deferred to the backlog: authoring move pairs and property-change markers
 (both need a diff engine), and true paragraph merge/split on accept/reject
 of paragraph-mark revisions (currently a non-corrupting fallback).
 
-### 2. CLI — `docx-plus`
+### 2. CLI — `docx-plus` — shipped (v0.3)
 
-A command-line surface over the existing library:
+A command-line surface over the existing library, landed in the `cli/`
+module and exposed via the `docx-plus` console entry point (also
+runnable as `python -m docx_plus.cli`). Built on stdlib `argparse`, so
+no new runtime dependency.
 
-- `restyle` — style remapping (wraps `styles.remap_styles`).
-- `inspect` — dump effective formatting (wraps the cascade resolver).
-- `controls` — list / set content-control values.
+Shipped:
 
-Landing a core CLI also reopens the **packaging decision for the agent
-`SKILL.md`** (currently repo-level only, deliberately kept out of the
-wheel) — revisit bundling it once a console entry point exists.
+- `inspect` — dump effective formatting per paragraph (wraps the cascade
+  resolver); `--provenance` and `--json`.
+- `restyle` — style remapping (wraps `styles.remap_styles`);
+  `--target` / `--map` / `--create-missing`.
+- `controls` — `list` / `set` / `clear` content-control values, coercing
+  the command-line string to the control's type.
+
+Read commands take `--json`; mutating commands require `-o/--output`
+(or an explicit `--in-place`) so the input is never overwritten by
+accident.
+
+Still open: a console entry point now exists, so the deferred
+**packaging decision for the agent `SKILL.md`** (currently repo-level
+only, kept out of the wheel) can be revisited — left for a later cycle.
 
 ## v0.3+ backlog — bounded, unscheduled
 

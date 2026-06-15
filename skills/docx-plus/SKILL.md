@@ -8,7 +8,9 @@ description: >-
   changes (insertions / deletions, accept / reject), style-cascade
   inspection and Word-native style creation / modification, bookmarks and
   cross-references, multi-column layout, page borders, line numbering,
-  page-number and date fields, and document protection. docx_plus composes with
+  page-number and date fields, and document protection. Also ships a `docx-plus`
+  command-line interface (inspect formatting, remap styles, edit content-control
+  values) for driving the library from a shell or CI. docx_plus composes with
   python-docx — you keep your own Document object and call docx_plus for the
   operations python-docx can't reach.
 ---
@@ -92,6 +94,7 @@ copy-pasteable guide to that module's public API.
 | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders | `layout`         | `reference/layout.md`       |
 | Anchored review comments that "show in document" correctly   | `comments`        | `reference/comments.md`     |
 | Track changes: mark insertions / deletions, read revisions, accept / reject | `revisions`       | `reference/revisions.md`    |
+| Drive the library from a shell / CI: inspect formatting, remap styles, edit control values | `cli` (`docx-plus`) | `reference/cli.md`          |
 
 ## Two patterns worth memorizing
 
@@ -139,6 +142,8 @@ doc.save("out.docx")
 - `reference/comments.md` — anchored comments (add / edit / delete / read).
 - `reference/revisions.md` — tracked changes: enable/disable track-changes mode,
   mark insertions / deletions, read revisions, accept / reject.
+- `reference/cli.md` — the `docx-plus` console command (`inspect` / `restyle` /
+  `controls`) for driving the library from a shell or CI.
 
 For exhaustive signatures and the error taxonomy, the rendered docs are at
 <https://thomas-villani.github.io/docx-plus/> and the in-repo index is

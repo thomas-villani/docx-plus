@@ -31,6 +31,7 @@ nav:
   - Home: index.md
   - Architecture: ARCHITECTURE.md
   - API Index: API.md
+  - CLI: cli.md
   - Agent Skill: SKILLS.md
   - Reference:
       - docx_plus.core.ns: reference/core-ns.md
