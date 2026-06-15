@@ -1,0 +1,27 @@
+# Pre-commit hooks mirroring the CI lint job (.github/workflows/ci.yml).
+#
+# Local hooks call `uv run ruff` rather than pinning a separate ruff via
+# astral-sh/ruff-pre-commit, so the hook, CI, and the project's dev
+# dependency all resolve to the SAME ruff — no version drift, which is the
+# whole point of catching `ruff format` before it reaches CI.
+#
+# One-time setup (after `uv sync --extra dev`):
+#     uv run pre-commit install
+#
+# Run against everything on demand:
+#     uv run pre-commit run --all-files
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
