@@ -48,8 +48,14 @@ can't reach.
 ```bash
 git clone https://github.com/thomas-villani/docx-plus.git
 cd docx-plus
-uv sync --extra dev      # or: pip install -e ".[dev]"
+uv sync --extra dev          # or: pip install -e ".[dev]"
+uv run pre-commit install    # run ruff check + ruff format on every commit
 ```
+
+The pre-commit hooks mirror the CI lint gate (`ruff check` and
+`ruff format`), so formatting issues are caught locally instead of on CI.
+Run them against the whole tree any time with
+`uv run pre-commit run --all-files`.
 
 ## 60-second quickstart
 

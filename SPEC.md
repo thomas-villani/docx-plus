@@ -873,8 +873,11 @@ The library is "done" when all of these pass:
 
 - All tests pass (`pytest`)
 - `mypy --strict docx_plus/` passes
-- `ruff check docx_plus/` passes (config: default rules + `D` docstring rules
-  on public API, ignore on tests)
+- `ruff check docx_plus/ tests/` passes (config: default rules + `D` docstring
+  rules on public API, ignore on tests)
+- `ruff format --check docx_plus/ tests/` passes (formatting is a separate CI
+  gate from `ruff check`; the local pre-commit hook runs both — see below)
+- `mkdocs build --strict` passes (enforced by the docs workflow)
 - Coverage ≥ 90% on `core/`, `styles/`, `controls/`
 - All four `examples/` scripts run without error
 - Layer 3 smoke tests pass on a runner with LibreOffice installed
@@ -884,6 +887,12 @@ The library is "done" when all of these pass:
 
 A PR that lights up CI on all of these is mergeable. A PR that doesn't is
 not, regardless of how good the code looks.
+
+**Run the lint gate locally before pushing.** `.pre-commit-config.yaml`
+wires `ruff check` and `ruff format` as local hooks that shell out to
+`uv run ruff`, so they use the exact ruff CI resolves — no version drift.
+Install once with `uv run pre-commit install`; thereafter both run on every
+commit. To check everything on demand: `uv run pre-commit run --all-files`.
 
 ---
 
@@ -896,7 +905,7 @@ not, regardless of how good the code looks.
 - **Runtime deps**: `python-docx>=1.0.0`, `lxml>=4.9` (transitive via
   python-docx but pin explicitly).
 - **Dev deps**: `pytest`, `pytest-cov`, `mypy`, `ruff`,
-  `mkdocs-material`, `mkdocstrings`, `lxml-stubs`.
+  `mkdocs-material`, `mkdocstrings`, `lxml-stubs`, `pre-commit`.
 - **Build system**: `hatchling` via `pyproject.toml`. No `setup.py`.
 - **Typing marker**: `docx_plus/py.typed` is shipped (PEP 561) so
   downstream `mypy` users see the type hints.
