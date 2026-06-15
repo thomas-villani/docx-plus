@@ -5,7 +5,7 @@ Composes with python-docx rather than replacing it: callers keep their
 `Document` object and use `docx_plus` for the operations python-docx
 can't reach.
 
-**Capabilities** (v0.1, v0.2, and v0.2 in-place expansion):
+**Capabilities** (v0.1 through v0.3):
 
 - **Style cascade**: read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
@@ -41,7 +41,7 @@ can't reach.
   library — `inspect` (effective formatting), `restyle` (style
   remapping), and `controls` (list / set / clear control values).
 
-> **Status:** v0.2.0 is the current release, published on
+> **Status:** v0.3.0 is the current release, published on 2026-06-15 to
 > [PyPI](https://pypi.org/project/docx-plus/). Read [`SPEC.md`](SPEC.md) for
 > the API contract and [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the
 > build plan.
@@ -348,9 +348,11 @@ $ docx-plus controls list form.docx --json       # every content control
 $ docx-plus controls set form.docx --tag name --value "Ada Lovelace" -o filled.docx
 ```
 
-Read commands (`inspect`, `controls list`) take `--json`; mutating
-commands (`restyle`, `controls set` / `clear`) require `-o/--output` (or
-`--in-place`) so the source is never overwritten by accident. Full
+Read commands (`inspect`, `controls list`) take `--json`; so does
+`restyle`, which emits its resolved target→style-id mapping as JSON.
+Mutating commands (`restyle`, `controls set` / `clear`) require
+`-o/--output` (or `--in-place`) so the source is never overwritten by
+accident. Full
 reference: [`docs/cli.md`](https://thomas-villani.github.io/docx-plus/cli/).
 
 ## What's next
@@ -358,7 +360,7 @@ reference: [`docs/cli.md`](https://thomas-villani.github.io/docx-plus/cli/).
 v0.2 ships the feature modules listed at the top of this README, plus
 the in-place expansion (line numbering, page borders, conditional
 table-style formatting, comment / note editing, and the publishing
-module). v0.3 adds **tracked changes** (read/write revision marks) and
+module). v0.3 added **tracked changes** (read/write revision marks) and
 the **`docx-plus` CLI** (`inspect` / `restyle` / `controls`).
 [`ROADMAP.md`](ROADMAP.md) tracks what comes after: the backlog
 holds `STYLEREF` / sequence-field cross-references, w15 threaded
@@ -378,6 +380,8 @@ if your use case needs any of these.
   `bookmarks/`, `notes/`, plus the in-place expansion (toggle
   properties, in-place edit verbs, line numbering, page borders,
   conditional table styles, and the `publishing/` module).
+- **v0.3.0** — complete: tracked changes (`revisions/`) and the
+  `docx-plus` command line (`cli/`).
 
 The per-phase log with dates lives in `IMPLEMENTATION.md` §12.
 

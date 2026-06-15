@@ -25,6 +25,7 @@ The Phase 3.5 remap surface — `find_matching_style`, `remap_styles`, and
         - list_styles
         - StyleProxy
         - StyleInfo
+        - InvalidColorError
         - StyleExistsError
         - StyleNotFoundError
         - StyleInUseError
