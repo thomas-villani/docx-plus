@@ -112,31 +112,23 @@ def read_revisions(doc: Document) -> list[TrackedChange]:
 # ---------------------------------------------------------------------------
 
 
-def _read_ins(
-    elem: etree._Element, paragraphs: list[etree._Element]
-) -> TrackedChange | None:
+def _read_ins(elem: etree._Element, paragraphs: list[etree._Element]) -> TrackedChange | None:
     rtype: RevisionType = "paragraph_mark_insertion" if _is_property_mark(elem) else "insertion"
     text = "" if rtype == "paragraph_mark_insertion" else _collect_text(elem, (".//w:t",))
     return _build(elem, rtype, text, paragraphs)
 
 
-def _read_del(
-    elem: etree._Element, paragraphs: list[etree._Element]
-) -> TrackedChange | None:
+def _read_del(elem: etree._Element, paragraphs: list[etree._Element]) -> TrackedChange | None:
     rtype: RevisionType = "paragraph_mark_deletion" if _is_property_mark(elem) else "deletion"
     text = "" if rtype == "paragraph_mark_deletion" else _collect_text(elem, (".//w:delText",))
     return _build(elem, rtype, text, paragraphs)
 
 
-def _read_move_from(
-    elem: etree._Element, paragraphs: list[etree._Element]
-) -> TrackedChange | None:
+def _read_move_from(elem: etree._Element, paragraphs: list[etree._Element]) -> TrackedChange | None:
     return _build(elem, "move_from", _collect_text(elem, (".//w:t", ".//w:delText")), paragraphs)
 
 
-def _read_move_to(
-    elem: etree._Element, paragraphs: list[etree._Element]
-) -> TrackedChange | None:
+def _read_move_to(elem: etree._Element, paragraphs: list[etree._Element]) -> TrackedChange | None:
     return _build(elem, "move_to", _collect_text(elem, (".//w:t", ".//w:delText")), paragraphs)
 
 

@@ -222,8 +222,7 @@ def _normalize_target(target: RevisionTarget) -> tuple[list[etree._Element], Doc
         return _sibling_span(first._r, second._r), doc
 
     raise TypeError(
-        f"mark revision target must be Run, Paragraph, or (Run, Run); "
-        f"got {type(target).__name__}"
+        f"mark revision target must be Run, Paragraph, or (Run, Run); got {type(target).__name__}"
     )
 
 
@@ -240,8 +239,7 @@ def _sibling_span(first: etree._Element, last: etree._Element) -> list[etree._El
     parent = first.getparent()
     if parent is None or last.getparent() is not parent:
         raise ValueError(
-            "revision range must lie within a single paragraph "
-            "(w:ins/w:del cannot span paragraphs)"
+            "revision range must lie within a single paragraph (w:ins/w:del cannot span paragraphs)"
         )
 
     children = list(parent)
