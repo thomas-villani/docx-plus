@@ -860,42 +860,10 @@ For a frozen snapshot of where the suite has real holes, see
 
 ## §11 What's next
 
-v0.1 (Phases 1–6), the v0.2 cycle, and the v0.2 in-place expansion
-(scoped in SPEC §15) are complete. The pieces deferred to v0.3+ are:
+v0.1 (Phases 1–6), the v0.2 cycle, and the v0.2 in-place expansion are
+complete (released through `v0.2.1`).
 
-- **Threaded comments** (w15 `parentCommentEx` for parent/child
-  replies) and the **respond / resolve / reopen** ops that depend on
-  them. Adds a `w15` namespace dependency and a separate
-  `commentsExtended.xml` part.
-- **Cross-references to non-bookmark targets** — `STYLEREF` for
-  heading-text references, sequence fields for caption / figure
-  numbering. Reuses the same complex-field plumbing; the work is the
-  instruction grammar.
-- **CLI** — `docx-plus restyle` for style remapping plus `inspect`
-  (dump effective formatting) and `controls` (list / set values)
-  subcommands.
-- **Custom XML Parts data binding** — wires repeating-section content
-  controls to a custom XML data source. The plumbing in
-  `core/parts.py` already supports separate parts; the binding adds
-  relationship types and `<w:dataBinding>` children on SDTs.
-- **Bibliography** — sources stored in a Custom XML Part, `<w:sdt>`
-  citations referencing them, a `BIBLIOGRAPHY` field rendering the
-  list. Rides on the CXML data-binding subsystem above.
-- **Tracked changes** — read/write API for the OOXML revision marks
-  (`w:ins`, `w:del`, `w:moveFromRangeStart`, etc.). Significant scope.
-- **Glossary placeholder text** — the "formal" placeholder mechanism
-  for SDTs (vs. the inline `w:placeholder` text the controls module
-  already supports).
-- **Password-protected forms** — legacy hash algorithm, paired with
-  `protect_document`.
-- **Theme writing** — `styles/theme.py` reads themes today; writing
-  rounds out the surface.
-- **A high-level "restyle" planner** — inverse of the inspector, takes
-  a target `ResolvedFormatting` and computes the minimal cascade
-  modification to reach it.
-- **Sections / headers / footers first-class API** — wraps the
-  python-docx primitives behind a docx_plus-native surface.
-
-Everything in this list is enumerated in `SPEC.md §15`. The roadmap
-order is driven by `notes-*.md` discussion artifacts at the repo
-root, which capture user-flagged wants and inform priority.
+The authoritative roadmap for everything deferred to v0.3+ — targeted
+work, bounded backlog, and dependency-gated items — lives in `ROADMAP.md`
+at the repo root. v0.3 targets **tracked changes (read/write)** and the
+**`docx-plus` CLI** first.

@@ -911,9 +911,9 @@ not, regardless of how good the code looks.
 The original v0.1-era list of what comes after v0.1. **This list is
 historical** — it predates the v0.2 cycle and the v0.2 in-place
 expansion, so it mixes items that have since shipped with items still
-deferred. The authoritative current roadmap is
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §11; the annotations
-below reconcile this list with what actually shipped at v0.2.0.
+deferred. The authoritative current roadmap is [`ROADMAP.md`](ROADMAP.md)
+at the repo root; the annotations below reconcile this list with what
+actually shipped at v0.2.0.
 
 (*Note*: `find_matching_style` and `remap_styles`, originally drafted as
 v0.2 work, **landed in v0.1** as Phase 3.5. See §5 for their public API.)
