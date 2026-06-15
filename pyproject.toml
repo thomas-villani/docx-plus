@@ -32,6 +32,9 @@ Documentation = "https://thomas-villani.github.io/docx-plus/"
 Repository = "https://github.com/thomas-villani/docx-plus"
 Issues = "https://github.com/thomas-villani/docx-plus/issues"
 
+[project.scripts]
+docx-plus = "docx_plus.cli:main"
+
 [project.optional-dependencies]
 # Single source of truth for dev deps. `uv sync --extra dev` and
 # `pip install -e ".[dev]"` both resolve to this list; the older

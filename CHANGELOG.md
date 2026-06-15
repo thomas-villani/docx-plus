@@ -8,6 +8,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Command-line interface (`docx-plus`)** — a console entry point over
+  the library, built on stdlib `argparse` (no new runtime deps).
+  `docx-plus inspect FILE` dumps the effective formatting of every
+  paragraph (with `--provenance` and `--json`); `docx-plus restyle FILE
+  --target ... -o OUT` wraps `remap_styles`; `docx-plus controls
+  {list,set,clear}` reads and edits content-control values, coercing the
+  command-line string to the control's type (`bool` for checkboxes,
+  `datetime` for dates). Read commands take `--json`; mutating commands
+  require `-o/--output` (or an explicit `--in-place`) so the input is
+  never overwritten by accident. Runnable as `docx-plus` or `python -m
+  docx_plus.cli`; documented in `docs/cli.md` and the `cli` agent-skill
+  reference. (The agent `SKILL.md` stays repo-level only for now;
+  bundling it in the wheel is deferred.)
 - **Tracked changes (`revisions/`)** — the OOXML revision marks
   python-docx cannot reach. `mark_insertion` / `mark_deletion` wrap
   existing runs in inline `w:ins` / `w:del` (deletions retag `w:t` to

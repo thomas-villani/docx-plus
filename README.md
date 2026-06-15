@@ -37,6 +37,9 @@ can't reach.
 - **Publishing primitives**: Table of Contents (`add_toc`), figure /
   table captions (`add_caption`), Table of Figures
   (`add_table_of_figures`) (v0.2).
+- **Command line** (v0.3): a `docx-plus` console command over the
+  library — `inspect` (effective formatting), `restyle` (style
+  remapping), and `controls` (list / set / clear control values).
 
 > **Status:** v0.2.0 is the current release, published on
 > [PyPI](https://pypi.org/project/docx-plus/). Read [`SPEC.md`](SPEC.md) for
@@ -333,15 +336,31 @@ mark_fields_dirty(doc)  # Word populates TOC / SEQ / ToF on open
 doc.save("paper.docx")
 ```
 
+## Command line
+
+`docx-plus` installs a console command (also `python -m docx_plus.cli`)
+for inspecting and editing documents from a shell:
+
+```console
+$ docx-plus inspect report.docx --provenance     # effective formatting per paragraph
+$ docx-plus restyle draft.docx --target Heading1 --target Title -o clean.docx
+$ docx-plus controls list form.docx --json       # every content control
+$ docx-plus controls set form.docx --tag name --value "Ada Lovelace" -o filled.docx
+```
+
+Read commands (`inspect`, `controls list`) take `--json`; mutating
+commands (`restyle`, `controls set` / `clear`) require `-o/--output` (or
+`--in-place`) so the source is never overwritten by accident. Full
+reference: [`docs/cli.md`](https://thomas-villani.github.io/docx-plus/cli/).
+
 ## What's next
 
 v0.2 ships the feature modules listed at the top of this README, plus
 the in-place expansion (line numbering, page borders, conditional
 table-style formatting, comment / note editing, and the publishing
-module).
-[`ROADMAP.md`](ROADMAP.md) tracks what comes after. v0.3 targets
-**tracked changes** (read/write revision marks) and a **`docx-plus`
-CLI** (`restyle` / `inspect` / `controls`) first; the backlog also
+module). v0.3 adds **tracked changes** (read/write revision marks) and
+the **`docx-plus` CLI** (`inspect` / `restyle` / `controls`).
+[`ROADMAP.md`](ROADMAP.md) tracks what comes after: the backlog
 holds `STYLEREF` / sequence-field cross-references, w15 threaded
 comments (respond / resolve / reopen), content-control data binding to
 Custom XML Parts, bibliography (citations + `BIBLIOGRAPHY` field),
