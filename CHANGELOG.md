@@ -4,6 +4,25 @@ All notable changes to `docx_plus` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Tracked changes (`revisions/`)** — the OOXML revision marks
+  python-docx cannot reach. `mark_insertion` / `mark_deletion` wrap
+  existing runs in inline `w:ins` / `w:del` (deletions retag `w:t` to
+  `w:delText`); `read_revisions` enumerates every revision type — run-level
+  insertions/deletions, move wrappers, run/paragraph property changes, and
+  paragraph-mark insertions/deletions — with id, author, timestamp, type,
+  and affected text. `accept_revision` / `reject_revision` and the
+  `accept_all_revisions` / `reject_all_revisions` bulk forms resolve
+  insertions and deletions fully, with safe non-structural transforms for
+  move and property-change marks. `enable_track_changes` /
+  `disable_track_changes` toggle the document-wide `w:trackChanges` flag in
+  `settings.xml`. `RevisionIdRegistry` tracks the single shared revision id
+  namespace. A new `docx_plus/examples/track_changes.py` and the
+  `revisions` agent-skill reference round out the surface.
+
 ## [0.2.1] - 2026-05-21
 
 Post-0.2.0 maintenance: agent-facing docs and a Windows console fix. No

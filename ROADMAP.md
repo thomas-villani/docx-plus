@@ -23,6 +23,7 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`. Shipped capability modules:
 | `bookmarks/` | Bookmarks + `REF` / `PAGEREF` cross-references |
 | `notes/` | Footnotes + endnotes — add / edit / read |
 | `publishing/` | TOC, captions, table of figures |
+| `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
 
 Suite at last gate: 717 tests (709 pass, 8 LibreOffice-skipped); `mypy
 --strict`, `ruff`, and `mkdocs build --strict` all clean.
@@ -31,18 +32,32 @@ Suite at last gate: 717 tests (709 pass, 8 LibreOffice-skipped); `mypy
 
 Prioritized for the next cycle.
 
-### 1. Tracked changes (read/write)
+### 1. Tracked changes (read/write) — shipped (v0.3)
 
-Read/write API for OOXML revision marks — `w:ins`, `w:del`,
-`w:moveFromRangeStart` / `w:moveToRangeStart`, and friends. The canonical
-"`python-docx` can't do this" gap and the highest-value remaining surface.
-Largest single scope on the roadmap; expect it to anchor the cycle.
+Read/write API for OOXML revision marks, landed in the `revisions/`
+module. The canonical "`python-docx` can't do this" gap.
 
-- New `revisions/` (or `changes/`) module.
-- Read first (enumerate revisions, author, timestamp, anchored text),
-  then write (wrap insertions/deletions, accept/reject).
-- Reuses the separate-parts and range-anchoring patterns proven in
-  `comments/`.
+Shipped:
+
+- **Read** — `read_revisions` enumerates every revision type (`w:ins`,
+  `w:del`, move wrappers, `w:rPrChange` / `w:pPrChange`, paragraph-mark
+  insertions / deletions) with id, author, timestamp, type, and text.
+- **Write** — `mark_insertion` / `mark_deletion` wrap existing runs;
+  `enable_track_changes` / `disable_track_changes` toggle the
+  `settings.xml` flag.
+- **Accept / reject** — `accept_revision` / `reject_revision` and the
+  `accept_all` / `reject_all` bulk forms resolve insertions and deletions
+  fully, with safe non-structural transforms for move and property-change
+  marks.
+
+Reused the range/target-normalization pattern from `comments/`, the
+`_IdRegistryBase` subclass pattern, and the `settings.xml`-touch pattern
+from `fields/update.py`. (Revision marks live inline in `document.xml`, so
+no separate part was needed.)
+
+Deferred to the backlog: authoring move pairs and property-change markers
+(both need a diff engine), and true paragraph merge/split on accept/reject
+of paragraph-mark revisions (currently a non-corrupting fallback).
 
 ### 2. CLI — `docx-plus`
 

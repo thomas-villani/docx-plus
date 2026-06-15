@@ -19,6 +19,9 @@ can't reach.
   tracked-changes mode at the document level.
 - **Anchored comments** (v0.2): the body-side range markers
   python-docx skips, so "show in document" actually works.
+- **Tracked changes** (v0.3): mark runs as insertions / deletions, read
+  every revision with its author / timestamp / text, and accept or reject
+  them — the inline `w:ins` / `w:del` revision marks python-docx can't reach.
 - **Layout**: multi-column sections, mid-document section breaks,
   distinct even/odd headers (v0.2).
 - **Bookmarks + cross-references**: paired body markers plus
