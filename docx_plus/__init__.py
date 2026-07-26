@@ -6,4 +6,4 @@ See ``SPEC.md`` at the project root for the public API contract.
 from docx_plus.core import DocxPlusError
 
 __all__ = ["DocxPlusError"]
-__version__ = "0.3.0"
+__version__ = "0.4.0"
