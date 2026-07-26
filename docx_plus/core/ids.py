@@ -10,14 +10,22 @@ and refactors the shared ``next``/``reserve``/``issued`` mechanics into
 subclass that overrides :meth:`_seed_from_document` with the right
 discovery query.
 
+:class:`ParaIdRegistry` is the one registry not backed by ``w:id``: it
+mints ``w14:paraId`` values, which are hex-rendered and unique across the
+whole *package* rather than within a single part. It reuses the same
+31-bit allocator because that happens to be exactly the range Word
+accepts for a ``paraId``.
+
 SPEC §3, IMPLEMENTATION.md §7.
 """
 
 from __future__ import annotations
 
 import secrets
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.opc.part import XmlPart
 from lxml import etree
 
 from docx_plus.core.errors import DocxPlusError
@@ -102,6 +110,23 @@ class _IdRegistryBase:
             except ValueError:
                 continue
 
+    def _collect_hex_id_attrs(self, root: etree._Element, expr: str, attr: str) -> None:
+        """Base-16 sibling of :meth:`_collect_id_attrs`.
+
+        ``w14:paraId`` and friends are 8-hex-digit strings rather than
+        decimal integers, but they share the same 31-bit uniqueness
+        space, so they seed the same ``_issued`` set once parsed.
+        """
+        qattr = qn(attr)
+        for elem in xpath(root, expr):
+            raw = elem.get(qattr)
+            if raw is None:
+                continue
+            try:
+                self._issued.add(int(raw, 16))
+            except ValueError:
+                continue
+
     def next(self) -> int:
         """Issue a fresh 31-bit positive integer not previously seen.
 
@@ -167,4 +192,45 @@ class IdRegistry(_IdRegistryBase):
             self._collect_ids(settings_element, ".//w:sdt/w:sdtPr/w:id")
 
 
-__all__ = ["DuplicateIdError", "IdRangeError", "IdRegistry"]
+class ParaIdRegistry(_IdRegistryBase):
+    """Tracks issued ``w14:paraId`` values for one document-edit session.
+
+    ``w14:paraId`` identifies a paragraph across the whole package rather
+    than within one part: threaded comments key their parent/child links
+    off the ``paraId`` of a comment body's last paragraph
+    (``w15:commentEx``), so a collision between a body paragraph and a
+    comment paragraph would corrupt the thread graph. The registry
+    therefore seeds from the document body *and* every part that can
+    carry paragraphs with a ``paraId`` — comments, footnotes, endnotes.
+
+    Word writes ``paraId`` as 8 uppercase hex digits and treats
+    ``00000000`` and anything at or above ``0x80000000`` as invalid. That
+    is exactly the ``[1, 2**31 - 1]`` range :meth:`next` already mints
+    from, so this subclass only adds the hex rendering
+    (:meth:`next_hex`) and the seeding query.
+    """
+
+    _SEED_PART_RELATIONSHIPS = (RT.COMMENTS, RT.FOOTNOTES, RT.ENDNOTES)
+
+    def _seed_from_document(self, doc: Document) -> None:
+        self._collect_hex_id_attrs(doc.element.body, ".//w:p", "w14:paraId")
+
+        document_part = doc.part
+        for reltype in self._SEED_PART_RELATIONSHIPS:
+            try:
+                part = cast("XmlPart", document_part.part_related_by(reltype))
+            except KeyError:
+                continue
+            self._collect_hex_id_attrs(part.element, ".//w:p", "w14:paraId")
+
+    def next_hex(self) -> str:
+        """Issue a fresh ``paraId`` as 8 uppercase hex digits.
+
+        Returns:
+            A new ``paraId`` string such as ``"3F2A19C4"``, guaranteed
+            distinct from every value seen on this registry.
+        """
+        return f"{self.next():08X}"
+
+
+__all__ = ["DuplicateIdError", "IdRangeError", "IdRegistry", "ParaIdRegistry"]

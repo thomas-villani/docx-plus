@@ -13,20 +13,22 @@ usage: docx-plus [-h] [--version] <command> ...
   inspect   dump the effective formatting of each paragraph
   restyle   remap a document's styles onto canonical style ids
   controls  list, set, or clear content-control values
+  comments  list comment threads, or resolve / reopen them
 ```
 
 Two conventions hold across every command:
 
-- **Read commands take `--json`.** `inspect` and `controls list` default to
-  human-readable text; `--json` emits structured output for piping into `jq` or
-  another tool.
-- **Mutating commands never overwrite the input by accident.** `restyle` and
-  `controls set` / `clear` require an explicit `-o/--output` path, or the
-  `--in-place` flag to opt into overwriting the source file.
+- **Read commands take `--json`.** `inspect`, `controls list`, and
+  `comments list` default to human-readable text; `--json` emits structured
+  output for piping into `jq` or another tool.
+- **Mutating commands never overwrite the input by accident.** `restyle`,
+  `controls set` / `clear`, and `comments resolve` / `reopen` require an
+  explicit `-o/--output` path, or the `--in-place` flag to opt into
+  overwriting the source file.
 
 Exit codes: `0` on success, `1` for a handled error (bad path, missing output,
-un-coercible value, unknown control tag), `2` for a usage error or when no
-command is given.
+un-coercible value, unknown control tag, unknown comment id), `2` for a usage
+error or when no command is given.
 
 ## `inspect`
 
@@ -101,3 +103,32 @@ cleared 'name'; wrote filled.docx
   value or unknown tag is a clean error.
 - `controls clear FILE --tag T -o OUT` — reset the control to its placeholder
   state.
+
+## `comments`
+
+List comment threads, or triage them by resolving and reopening, wrapping
+[`read_threads` / `resolve_comment` / `reopen_comment`](reference/comments-threads.md).
+
+```console
+$ docx-plus comments list draft.docx
+[1] Alice [resolved]: Where does the six-week figure come from?
+    on paragraph 1: 'a six-week schedule'
+  [2] Bob: From the Q2 capacity model.
+      on paragraph 1: 'a six-week schedule'
+[3] Carol: These need refreshing before we circulate.
+    on paragraph 2: 'Budget figures are carried over from last quarter.'
+
+$ docx-plus comments list draft.docx --unresolved --json | jq '.[].author'
+"Carol"
+
+$ docx-plus comments resolve draft.docx 3 -o triaged.docx
+resolved the thread containing comment 3; wrote triaged.docx
+```
+
+- `comments list FILE [--unresolved] [--json]` — every thread, replies indented
+  under their root, with the anchored text each is attached to. A comment with
+  no anchor in the document body is flagged as orphaned. `--unresolved` hides
+  threads that are already closed.
+- `comments resolve FILE ID -o OUT` / `comments reopen FILE ID -o OUT` — toggle
+  a thread's resolved state. Resolution is thread-wide in Word, so naming any
+  comment in a thread moves the whole thread; an unknown id is a clean error.

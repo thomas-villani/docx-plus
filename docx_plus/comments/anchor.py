@@ -13,8 +13,15 @@ body markers and appends a matching ``w:comment`` body to
 
 :func:`delete_comment` removes everything :func:`add_comment` wrote.
 
-This module imports only from ``docx_plus.core`` and the sibling
-``docx_plus.comments.registry`` (SPEC §9.1).
+Every comment written here is also registered as an unresolved thread
+root in ``commentsExtended.xml`` — see
+:mod:`docx_plus.comments._extended` for why that part exists and
+:mod:`docx_plus.comments.threads` for the reply / resolve surface built
+on top of it.
+
+This module imports only from ``docx_plus.core`` and the siblings
+``docx_plus.comments.registry`` / ``docx_plus.comments._extended``
+(SPEC §9.1).
 """
 
 from __future__ import annotations
@@ -29,8 +36,10 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from lxml import etree
 
+from docx_plus.comments import _extended
 from docx_plus.comments.registry import CommentIdRegistry
 from docx_plus.core import DocxPlusError
+from docx_plus.core.ids import ParaIdRegistry
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import body_document_for, el, remove, sub, xpath
 from docx_plus.core.parts import COMMENTS_SPEC, get_or_create_part
@@ -73,6 +82,7 @@ def add_comment(
     author: str = "",
     initials: str | None = None,
     id_registry: CommentIdRegistry | None = None,
+    para_id_registry: ParaIdRegistry | None = None,
 ) -> CommentRef:
     """Anchor a comment to a run, paragraph, or run range.
 
@@ -80,6 +90,14 @@ def add_comment(
     (``w:commentRangeStart``, ``w:commentRangeEnd``, the
     ``CommentReference`` marker run) plus the comment body entry in
     ``comments.xml``. The comments part is created on first use.
+
+    The comment is also registered as an unresolved thread root: its body
+    paragraphs are stamped with ``w14:paraId`` and a matching
+    ``<w15:commentEx>`` entry is written to ``commentsExtended.xml``
+    (created on first use). This is what Word writes for every comment
+    it authors, and it is what makes the comment immediately usable with
+    :func:`~docx_plus.comments.reply_to_comment` and
+    :func:`~docx_plus.comments.resolve_comment`.
 
     Args:
         target: Where the comment anchors.
@@ -106,6 +124,10 @@ def add_comment(
             session (useful when inserting many comments). A fresh
             :class:`CommentIdRegistry` is constructed from the target's
             document if not supplied.
+        para_id_registry: Pre-existing ``w14:paraId`` allocator, shared
+            for the same reason as ``id_registry``. A fresh
+            :class:`~docx_plus.core.ids.ParaIdRegistry` is constructed
+            from the target's document if not supplied.
 
     Returns:
         A :class:`CommentRef` with the assigned comment id and a handle
@@ -142,6 +164,11 @@ def add_comment(
     body = _build_comment_body(comment_id, text, author, initials)
     comments_root.append(body)
 
+    if para_id_registry is None:
+        para_id_registry = ParaIdRegistry(doc)
+    key = _extended.stamp_para_ids(body, para_id_registry)
+    _extended.upsert_comment_ex(doc, key, done=False)
+
     return CommentRef(comment_id=comment_id, body_element=body)
 
 
@@ -153,7 +180,9 @@ def edit_comment(doc: Document, comment_id: int, text: str) -> None:
     ``<w:comment>`` element's attributes (``w:author``, ``w:date``,
     ``w:initials``) are preserved — only the body content changes. The
     body-side range markers and reference run are also untouched, so the
-    comment stays anchored to the same text range.
+    comment stays anchored to the same text range, and the comment's
+    ``w14:paraId`` is carried onto the rebuilt paragraph so its position
+    in the thread and its resolved state survive the edit.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to mutate.
@@ -178,6 +207,12 @@ def edit_comment(doc: Document, comment_id: int, text: str) -> None:
         raise CommentNotFoundError(comment_id)
 
     comment_el = matches[0]
+    # Capture the thread key before the body is rebuilt. ``commentsExtended.xml``
+    # references a comment by the ``w14:paraId`` of its last paragraph, so
+    # replacing that paragraph with a freshly built one would orphan the
+    # comment's thread entry — replies would detach and a resolved thread
+    # would silently reopen. Re-stamping the same value keeps the link.
+    key = _extended.thread_key(comment_el)
     # Strip ALL block-level children — ECMA-376 17.13.4.2 (`CT_Comment`)
     # extends `EG_BlockLevelElts`, so a comment authored in Word may
     # legally contain `<w:tbl>`, `<w:sdt>`, `<w:customXml>`, etc. in
@@ -187,7 +222,10 @@ def edit_comment(doc: Document, comment_id: int, text: str) -> None:
     # element itself, not on its children, so removal is safe.
     for child in list(comment_el):
         remove(child)
-    comment_el.append(_build_comment_paragraph(text))
+    paragraph = _build_comment_paragraph(text)
+    if key:
+        paragraph.set(qn("w14:paraId"), key)
+    comment_el.append(paragraph)
 
 
 def clear_all_comments(doc: Document, *, remove_part: bool = False) -> None:
@@ -196,18 +234,20 @@ def clear_all_comments(doc: Document, *, remove_part: bool = False) -> None:
     Single-pass: walks the document body once removing every
     ``<w:commentRangeStart>``, ``<w:commentRangeEnd>``, and
     ``<w:commentReference>`` marker regardless of id, then walks
-    ``comments.xml`` once removing every ``<w:comment>`` entry.
-    Idempotent: a document with no comments is a no-op.
+    ``comments.xml`` once removing every ``<w:comment>`` entry, then
+    ``commentsExtended.xml`` once removing every ``<w15:commentEx>``
+    thread entry. Idempotent: a document with no comments is a no-op.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to scrub.
-        remove_part: When ``False`` (default) the now-empty comments part
-            is left in place so a subsequent :func:`add_comment` reuses it
-            without re-creating the relationship. When ``True`` the part
-            and its relationship are torn down entirely, so the saved
-            document carries no comments part at all — useful when a
-            consumer dislikes an empty-but-related comments part, and the
-            cleaner state for a document that is done with comments.
+        remove_part: When ``False`` (default) the now-empty comments and
+            commentsExtended parts are left in place so a subsequent
+            :func:`add_comment` reuses them without re-creating the
+            relationships. When ``True`` both parts and their
+            relationships are torn down entirely, so the saved document
+            carries no comment parts at all — useful when a consumer
+            dislikes an empty-but-related part, and the cleaner state for
+            a document that is done with comments.
     """
     body = doc.element.body
 
@@ -220,6 +260,8 @@ def clear_all_comments(doc: Document, *, remove_part: bool = False) -> None:
 
     for ref in xpath(body, ".//w:commentReference"):
         _remove_reference_marker(ref)
+
+    _extended.clear_comments_ex(doc, remove_part=remove_part)
 
     try:
         comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))
@@ -235,22 +277,42 @@ def clear_all_comments(doc: Document, *, remove_part: bool = False) -> None:
         remove(comment_el)
 
 
-def delete_comment(doc: Document, comment_id: int) -> None:
+def delete_comment(doc: Document, comment_id: int, *, include_replies: bool = True) -> None:
     """Remove all traces of a comment from the document.
 
-    Removes:
+    Removes, for the comment and (by default) every reply beneath it:
 
     - The ``<w:comment>`` body in ``comments.xml``
     - Every ``<w:commentRangeStart>`` and ``<w:commentRangeEnd>`` marker
       in the document body
     - The reference run hosting ``<w:commentReference>``
+    - The ``<w15:commentEx>`` thread entry in ``commentsExtended.xml``
 
     Idempotent: deleting a comment id that doesn't exist is a no-op.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to mutate.
         comment_id: The ``w:id`` value of the comment to remove.
+        include_replies: When ``True`` (default), deleting a comment also
+            deletes every reply in its subtree — what Word does when you
+            delete a thread root, and what keeps the thread graph from
+            retaining entries whose parent is gone. When ``False`` the
+            replies survive; each one whose parent was deleted becomes a
+            thread root of its own, since a ``paraIdParent`` that no
+            comment owns reads as no parent at all.
     """
+    targets = [comment_id]
+    if include_replies:
+        state = _extended.thread_state(doc)
+        targets.extend(_extended.descendant_ids(state, comment_id))
+    keys, _ = _extended.key_maps(doc)
+
+    for target in targets:
+        _delete_one_comment(doc, target, keys.get(target, ""))
+
+
+def _delete_one_comment(doc: Document, comment_id: int, para_id: str) -> None:
+    """Remove a single comment's body, anchors, and thread entry."""
     cid = str(comment_id)
     body = doc.element.body
 
@@ -263,6 +325,8 @@ def delete_comment(doc: Document, comment_id: int) -> None:
 
     for ref in xpath(body, ".//w:commentReference[@w:id=$cid]", cid=cid):
         _remove_reference_marker(ref)
+
+    _extended.drop_comment_ex(doc, para_id)
 
     try:
         comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))

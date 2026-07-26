@@ -15,6 +15,7 @@ import pytest
 from docx import Document
 
 from docx_plus.cli import main
+from docx_plus.comments import add_comment, reply_to_comment, resolve_comment
 from docx_plus.controls import FormBuilder
 from docx_plus.styles import apply_style, ensure_style
 
@@ -45,6 +46,24 @@ def form_doc(tmp_path: Path) -> Path:
     fb.add_checkbox(p, tag="subscribed")
     path = tmp_path / "form.docx"
     fb.save(str(path))
+    return path
+
+
+@pytest.fixture
+def commented_doc(tmp_path: Path) -> Path:
+    """Two threads: a resolved one with a reply, and an open one."""
+    doc = Document()
+    first = doc.add_paragraph("First point.")
+    second = doc.add_paragraph("Second point.")
+
+    root = add_comment(first, "Needs a citation.", author="Alice", initials="A")
+    reply_to_comment(doc, root.comment_id, "Added one.", author="Bob", initials="B")
+    resolve_comment(doc, root.comment_id)
+
+    add_comment(second, "Still unclear.", author="Carol", initials="C")
+
+    path = tmp_path / "commented.docx"
+    doc.save(str(path))
     return path
 
 
@@ -305,6 +324,113 @@ def test_controls_clear(form_doc: Path, tmp_path: Path) -> None:
 def test_controls_set_requires_output(form_doc: Path, capsys: pytest.CaptureFixture[str]) -> None:
     code = main(["controls", "set", str(form_doc), "--tag", "name", "--value", "Ada"])
     assert code == 1
+    assert "specify -o/--output or --in-place" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# comments
+# --------------------------------------------------------------------------
+
+
+def test_comments_list_text(commented_doc: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["comments", "list", str(commented_doc)]) == 0
+    out = capsys.readouterr().out
+    assert "Alice [resolved]: Needs a citation." in out
+    assert "Bob: Added one." in out
+    assert "Carol: Still unclear." in out
+    assert "on paragraph 0: 'First point.'" in out
+
+
+def test_comments_list_nests_replies_under_their_root(
+    commented_doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    main(["comments", "list", str(commented_doc)])
+    lines = capsys.readouterr().out.splitlines()
+    root_line = next(i for i, line in enumerate(lines) if "Needs a citation." in line)
+    reply_line = next(i for i, line in enumerate(lines) if "Bob: Added one." in line)
+    assert reply_line > root_line
+    assert lines[reply_line].startswith("  [")
+    assert not lines[root_line].startswith(" ")
+
+
+def test_comments_list_json(commented_doc: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["comments", "list", str(commented_doc), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload) == 2
+    resolved = next(thread for thread in payload if thread["resolved"])
+    assert resolved["author"] == "Alice"
+    assert [reply["author"] for reply in resolved["replies"]] == ["Bob"]
+
+
+def test_comments_list_unresolved_filter(
+    commented_doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["comments", "list", str(commented_doc), "--unresolved", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [thread["author"] for thread in payload] == ["Carol"]
+
+
+def test_comments_list_flags_an_orphaned_comment(
+    commented_doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from docx_plus.core.oxml import xpath
+
+    doc = Document(str(commented_doc))
+    for expr in (".//w:commentRangeStart", ".//w:commentRangeEnd"):
+        for marker in xpath(doc.element.body, expr):
+            marker.getparent().remove(marker)
+    doc.save(str(commented_doc))
+
+    assert main(["comments", "list", str(commented_doc)]) == 0
+    assert "(orphaned - no anchor in the document body)" in capsys.readouterr().out
+
+
+def test_comments_list_on_document_without_comments(
+    styled_doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["comments", "list", str(styled_doc)]) == 0
+    assert "(no comments)" in capsys.readouterr().out
+
+
+def test_comments_resolve(commented_doc: Path, tmp_path: Path) -> None:
+    from docx_plus.comments import read_threads
+
+    out = tmp_path / "resolved.docx"
+    open_id = next(
+        thread.root.comment_id
+        for thread in read_threads(Document(str(commented_doc)))
+        if not thread.resolved
+    )
+    assert main(["comments", "resolve", str(commented_doc), str(open_id), "-o", str(out)]) == 0
+    assert all(thread.resolved for thread in read_threads(Document(str(out))))
+
+
+def test_comments_reopen_in_place(commented_doc: Path) -> None:
+    from docx_plus.comments import read_threads
+
+    resolved_id = next(
+        thread.root.comment_id
+        for thread in read_threads(Document(str(commented_doc)))
+        if thread.resolved
+    )
+    code = main(["comments", "reopen", str(commented_doc), str(resolved_id), "--in-place"])
+    assert code == 0
+    assert not any(thread.resolved for thread in read_threads(Document(str(commented_doc))))
+
+
+def test_comments_resolve_unknown_id(
+    commented_doc: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "nope.docx"
+    assert main(["comments", "resolve", str(commented_doc), "999999", "-o", str(out)]) == 1
+    assert "CommentNotFoundError" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_comments_resolve_requires_output(
+    commented_doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["comments", "resolve", str(commented_doc), "1"]) == 1
     assert "specify -o/--output or --in-place" in capsys.readouterr().err
 
 

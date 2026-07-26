@@ -8,6 +8,8 @@ may not exist in a fresh document:
 - ``/word/comments.xml`` (relationship :data:`RT.COMMENTS`)
 - ``/word/footnotes.xml`` (relationship :data:`RT.FOOTNOTES`)
 - ``/word/endnotes.xml`` (relationship :data:`RT.ENDNOTES`)
+- ``/word/commentsExtended.xml`` (relationship
+  :data:`RT_COMMENTS_EXTENDED`) — comment threading, added in v0.4
 
 This module provides a single :func:`get_or_create_part` helper that the
 ``comments`` and ``notes`` packages use to look up an existing part or
@@ -16,10 +18,10 @@ fabricate a fresh one with an empty default root.
 python-docx already registers ``CommentsPart`` with
 ``PartFactory.part_type_for[CT.WML_COMMENTS]`` so existing comments parts
 deserialize with a parsed ``.element``. It does *not* register
-footnote / endnote part classes, so this module installs minimal
-:class:`~docx.opc.part.XmlPart` subclasses for those content types at
-import time. Without that registration a round-tripped document with
-existing footnotes would surface them as raw blobs.
+footnote / endnote / commentsExtended part classes, so this module
+installs minimal :class:`~docx.opc.part.XmlPart` subclasses for those
+content types at import time. Without that registration a round-tripped
+document with existing footnotes would surface them as raw blobs.
 
 SPEC §2 lists the part / relationship plumbing as a v0.2 responsibility.
 """
@@ -52,8 +54,8 @@ if TYPE_CHECKING:
 
 
 # NOTE: ``tests/test_core_parts.py`` imports these private classes by name to
-# assert ``PartFactory.part_type_for`` is wired to them. If either is renamed
-# or inlined, update that test in the same change (L10).
+# assert ``PartFactory.part_type_for`` is wired to them. If any of them is
+# renamed or inlined, update that test in the same change (L10).
 class _FootnotesPart(XmlPart):
     """Internal :class:`XmlPart` subclass for ``/word/footnotes.xml``."""
 
@@ -62,8 +64,23 @@ class _EndnotesPart(XmlPart):
     """Internal :class:`XmlPart` subclass for ``/word/endnotes.xml``."""
 
 
+class _CommentsExtendedPart(XmlPart):
+    """Internal :class:`XmlPart` subclass for ``/word/commentsExtended.xml``."""
+
+
+# The commentsExtended content / relationship types are Microsoft extensions
+# introduced with Word 2013's threaded comments. python-docx's ``CT`` and
+# ``RT`` enums predate them and carry no member, so the URIs live here as
+# plain constants.
+CT_COMMENTS_EXTENDED = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"
+)
+RT_COMMENTS_EXTENDED = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
+
+
 PartFactory.part_type_for.setdefault(CT.WML_FOOTNOTES, _FootnotesPart)
 PartFactory.part_type_for.setdefault(CT.WML_ENDNOTES, _EndnotesPart)
+PartFactory.part_type_for.setdefault(CT_COMMENTS_EXTENDED, _CommentsExtendedPart)
 
 
 # ---------------------------------------------------------------------------
@@ -93,12 +110,42 @@ class PartSpec:
 
 
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml"
+_W15_NS = "http://schemas.microsoft.com/office/word/2012/wordml"
+_MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
 
 def _empty_root(local_name: str) -> bytes:
     return (
         b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         b"<w:" + local_name.encode() + b' xmlns:w="' + _W_NS.encode() + b'"/>'
+    )
+
+
+def _comments_root() -> bytes:
+    """Return a fresh ``comments.xml`` root declaring the ``w14`` extension.
+
+    Threaded comments stamp ``w14:paraId`` onto every comment body
+    paragraph (see :mod:`docx_plus.comments`), so the root has to declare
+    that prefix. ``mc:Ignorable="w14"`` is the Markup Compatibility
+    contract that lets a consumer which does not understand the 2010
+    extensions drop the attribute instead of rejecting the part — the
+    same declaration Word itself writes.
+    """
+    return (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        b'<w:comments xmlns:w="' + _W_NS.encode() + b'"'
+        b' xmlns:w14="' + _W14_NS.encode() + b'"'
+        b' xmlns:mc="' + _MC_NS.encode() + b'"'
+        b' mc:Ignorable="w14"/>'
+    )
+
+
+def _comments_extended_root() -> bytes:
+    """Return a fresh, empty ``commentsExtended.xml`` root."""
+    return (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        b'<w15:commentsEx xmlns:w15="' + _W15_NS.encode() + b'"/>'
     )
 
 
@@ -137,7 +184,14 @@ COMMENTS_SPEC = PartSpec(
     partname="/word/comments.xml",
     content_type=CT.WML_COMMENTS,
     relationship_type=RT.COMMENTS,
-    root_xml=_empty_root("comments"),
+    root_xml=_comments_root(),
+)
+
+COMMENTS_EXTENDED_SPEC = PartSpec(
+    partname="/word/commentsExtended.xml",
+    content_type=CT_COMMENTS_EXTENDED,
+    relationship_type=RT_COMMENTS_EXTENDED,
+    root_xml=_comments_extended_root(),
 )
 
 FOOTNOTES_SPEC = PartSpec(
@@ -202,9 +256,12 @@ def get_or_create_part(doc: Document, spec: PartSpec) -> tuple[XmlPart, etree._E
 
 
 __all__ = [
+    "COMMENTS_EXTENDED_SPEC",
     "COMMENTS_SPEC",
+    "CT_COMMENTS_EXTENDED",
     "ENDNOTES_SPEC",
     "FOOTNOTES_SPEC",
     "PartSpec",
+    "RT_COMMENTS_EXTENDED",
     "get_or_create_part",
 ]

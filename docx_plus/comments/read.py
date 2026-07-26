@@ -3,9 +3,13 @@
 Inverse of :func:`docx_plus.comments.add_comment`: walks the comments
 part and pairs each ``<w:comment>`` with the body-side range it anchors,
 extracting the comment text *and* the document text the comment is
-attached to.
+attached to, plus its position in the thread graph.
 
-This module imports only from ``docx_plus.core`` (SPEC §9.1).
+For the nested view — roots with their replies grouped — see
+:func:`docx_plus.comments.read_threads`.
+
+This module imports only from ``docx_plus.core`` and the sibling
+``docx_plus.comments._extended`` (SPEC §9.1).
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.opc.part import XmlPart
 from lxml import etree
 
+from docx_plus.comments import _extended
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
 
@@ -46,6 +51,12 @@ class AnchoredComment:
         paragraph_index: Zero-based index (within
             ``doc.paragraphs``) of the paragraph that contains the
             ``commentRangeStart`` marker. ``-1`` for orphaned comments.
+        parent_id: ``comment_id`` of the comment this one replies to, or
+            ``None`` for a thread root. Always ``None`` in a document
+            with no ``commentsExtended.xml`` part, since there is then no
+            threading information to read.
+        resolved: Whether the comment's thread is marked resolved
+            (``w15:done``). ``False`` when the extended part is absent.
     """
 
     comment_id: int
@@ -55,6 +66,8 @@ class AnchoredComment:
     text: str
     anchored_text: str
     paragraph_index: int
+    parent_id: int | None = None
+    resolved: bool = False
 
 
 def read_comments(doc: Document) -> list[AnchoredComment]:
@@ -80,6 +93,7 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
     comments_root = comments_part.element
     body = doc.element.body
     paragraph_elements = list(xpath(body, ".//w:p"))
+    thread_state = _extended.thread_state(doc)
 
     result: list[AnchoredComment] = []
     for comment_el in xpath(comments_root, "./w:comment"):
@@ -98,6 +112,7 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
         text = _comment_body_text(comment_el)
 
         anchored_text, paragraph_index = _anchor_lookup(body, paragraph_elements, str(cid))
+        parent_id, resolved = thread_state.get(cid, (None, False))
 
         result.append(
             AnchoredComment(
@@ -108,6 +123,8 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
                 text=text,
                 anchored_text=anchored_text,
                 paragraph_index=paragraph_index,
+                parent_id=parent_id,
+                resolved=resolved,
             )
         )
     return result

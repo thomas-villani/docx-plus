@@ -14,9 +14,13 @@ from docx.parts.comments import CommentsPart
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
 from docx_plus.core.parts import (
+    COMMENTS_EXTENDED_SPEC,
     COMMENTS_SPEC,
+    CT_COMMENTS_EXTENDED,
     ENDNOTES_SPEC,
     FOOTNOTES_SPEC,
+    RT_COMMENTS_EXTENDED,
+    _CommentsExtendedPart,
     _EndnotesPart,
     _FootnotesPart,
     get_or_create_part,
@@ -41,6 +45,10 @@ def test_comments_part_class_still_python_docx_default() -> None:
     assert PartFactory.part_type_for[CT.WML_COMMENTS] is CommentsPart
 
 
+def test_comments_extended_part_class_registered() -> None:
+    assert PartFactory.part_type_for[CT_COMMENTS_EXTENDED] is _CommentsExtendedPart
+
+
 # --------------------------------------------------------------------------
 # Create paths: fresh document has none of the optional parts.
 # --------------------------------------------------------------------------
@@ -54,6 +62,45 @@ def test_get_or_create_comments_creates_when_absent() -> None:
     assert part.partname == "/word/comments.xml"
     assert root.tag == qn("w:comments")
     assert len(list(root)) == 0  # empty comments root
+
+
+def test_comments_root_declares_w14_for_para_id_stamping() -> None:
+    # Threaded comments write ``w14:paraId`` onto comment body paragraphs,
+    # so the fabricated root has to declare the prefix and mark it ignorable.
+    _, root = get_or_create_part(Document(), COMMENTS_SPEC)
+    assert root.nsmap["w14"] == "http://schemas.microsoft.com/office/word/2010/wordml"
+    assert root.get(qn("mc:Ignorable")) == "w14"
+
+
+def test_get_or_create_comments_extended_creates_when_absent() -> None:
+    doc = Document()
+    part, root = get_or_create_part(doc, COMMENTS_EXTENDED_SPEC)
+    assert isinstance(part, _CommentsExtendedPart)
+    assert part.content_type == CT_COMMENTS_EXTENDED
+    assert part.partname == "/word/commentsExtended.xml"
+    assert root.tag == qn("w15:commentsEx")
+    assert len(list(root)) == 0
+
+
+def test_comments_extended_relationship_is_wired_from_the_document_part() -> None:
+    doc = Document()
+    part, _ = get_or_create_part(doc, COMMENTS_EXTENDED_SPEC)
+    assert doc.part.part_related_by(RT_COMMENTS_EXTENDED) is part
+
+
+def test_comments_extended_part_round_trip(tmp_path: Path) -> None:
+    doc = Document()
+    _, root = get_or_create_part(doc, COMMENTS_EXTENDED_SPEC)
+    sub(root, "w15:commentEx", **{"w15:paraId": "0000002A", "w15:done": "1"})
+
+    path = tmp_path / "extended.docx"
+    doc.save(path)
+    reloaded = Document(path)
+
+    part = reloaded.part.part_related_by(RT_COMMENTS_EXTENDED)
+    assert isinstance(part, _CommentsExtendedPart)
+    entries = part.element.findall(qn("w15:commentEx"))
+    assert [entry.get(qn("w15:paraId")) for entry in entries] == ["0000002A"]
 
 
 def test_get_or_create_footnotes_creates_when_absent() -> None:

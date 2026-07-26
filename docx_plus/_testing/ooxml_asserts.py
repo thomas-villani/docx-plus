@@ -6,8 +6,9 @@ phases introduce call sites (SPEC §10).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from lxml import etree
 
 from docx_plus.controls.read import ControlType, _classify_sdt
@@ -16,6 +17,7 @@ from docx_plus.core.oxml import xpath
 
 if TYPE_CHECKING:
     from docx.document import Document
+    from docx.opc.part import XmlPart
 
 
 def assert_ids_unique(doc: Document) -> None:
@@ -39,6 +41,43 @@ def assert_ids_unique(doc: Document) -> None:
         seen[value] = seen.get(value, 0) + 1
     duplicates = {v: count for v, count in seen.items() if count > 1}
     assert not duplicates, f"duplicate SDT w:id values: {duplicates}"
+
+
+def assert_para_ids_unique(doc: Document) -> None:
+    """Assert every ``w14:paraId`` in the package appears exactly once.
+
+    Unlike ``w:id``, a ``paraId`` is unique across the whole package
+    rather than within a single part — threaded comments key their
+    parent/child links off it, so a body paragraph colliding with a
+    comment paragraph would corrupt the thread graph. This checks the
+    document body and every part that can carry stamped paragraphs.
+
+    Args:
+        doc: python-docx Document to inspect.
+
+    Raises:
+        AssertionError: If any ``paraId`` appears more than once.
+    """
+    attr = qn("w14:paraId")
+    seen: dict[str, int] = {}
+
+    roots = [doc.element.body]
+    for reltype in (RT.COMMENTS, RT.FOOTNOTES, RT.ENDNOTES):
+        try:
+            part = cast("XmlPart", doc.part.part_related_by(reltype))
+        except KeyError:
+            continue
+        roots.append(part.element)
+
+    for root in roots:
+        for paragraph in xpath(root, ".//w:p"):
+            raw = paragraph.get(attr)
+            if raw is None:
+                continue
+            seen[raw] = seen.get(raw, 0) + 1
+
+    duplicates = {value: count for value, count in seen.items() if count > 1}
+    assert not duplicates, f"duplicate w14:paraId values: {duplicates}"
 
 
 def assert_style_defined(doc: Document, style_id: str) -> None:
@@ -161,6 +200,7 @@ __all__ = [
     "assert_field_dirty",
     "assert_field_not_dirty",
     "assert_ids_unique",
+    "assert_para_ids_unique",
     "assert_protected",
     "assert_style_defined",
     "count_controls",

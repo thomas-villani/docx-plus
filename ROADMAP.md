@@ -8,9 +8,10 @@ things `python-docx` can't. Every item below either fills a documented
 `python-docx` gap or rounds out a surface already started here. Ideas that
 don't fit that charter are routed to sibling projects, not absorbed.
 
-## Current state — v0.2.1 (released 2026-05-21)
+## Current state — v0.3.0 released; v0.4 on `main`, unreleased
 
-Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`. Shipped capability modules:
+Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15). Shipped
+capability modules:
 
 | Module | Surface |
 |---|---|
@@ -18,20 +19,54 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`. Shipped capability modules:
 | `controls/` | Content controls — `FormBuilder`, read / set / clear values |
 | `fields/` | Simple + complex fields, `mark_fields_dirty` |
 | `protection/` | `protect_document` |
-| `comments/` | Anchored comments — add / edit / delete / clear, over runs, paragraphs, run ranges |
+| `comments/` | Anchored comments — add / edit / delete / clear, over runs, paragraphs, run ranges; threads — reply, resolve / reopen, nested read (v0.4) |
 | `layout/` | Columns, mid-document section breaks, even/odd headers, line numbering, page borders |
 | `bookmarks/` | Bookmarks + `REF` / `PAGEREF` cross-references |
 | `notes/` | Footnotes + endnotes — add / edit / read |
 | `publishing/` | TOC, captions, table of figures |
 | `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
-| `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3) |
+| `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4) |
 
-Suite at last gate: 717 tests (709 pass, 8 LibreOffice-skipped); `mypy
---strict`, `ruff`, and `mkdocs build --strict` all clean.
+Suite at last gate: 891 tests (881 pass, 10 LibreOffice-skipped), 94%
+coverage; `mypy --strict`, `ruff`, and `mkdocs build --strict` all clean.
 
-## v0.3 — targeted next
+## v0.4 — landed, unreleased
 
-Prioritized for the next cycle.
+### Threaded comments — shipped
+
+The reply / resolve model Word has used since 2013, and the second half
+of the collaboration story `revisions/` opened in v0.3. Landed in
+`comments/threads.py` over a new `comments/_extended.py`.
+
+Shipped:
+
+- **Replies** — `reply_to_comment` parents a new comment to an existing
+  one via `w15:paraIdParent` and mirrors the parent's body-side anchor
+  range, which is what makes Word render a thread as a single balloon.
+- **Resolve / reopen** — `resolve_comment` / `reopen_comment` toggle
+  `w15:done` across the whole thread, matching Word's thread-wide
+  Resolve button.
+- **Nested read** — `read_threads` returns `CommentThread` (root,
+  replies, resolved); `read_comments` results gained `parent_id` and
+  `resolved`.
+- **Eager metadata** — `add_comment` now stamps `w14:paraId` and writes
+  an unresolved `<w15:commentEx>` entry, so every comment is
+  thread-ready. `edit_comment` preserves that stamp; `delete_comment`
+  cascades to replies by default.
+- **CLI** — `docx-plus comments list / resolve / reopen`.
+
+New plumbing: `COMMENTS_EXTENDED_SPEC` (fourth separate part),
+`ParaIdRegistry` (the first *package*-wide id namespace), the `w15`
+namespace, and a `BUILD_NSMAP` / `NSMAP` split so the extension prefix
+stays out of `document.xml`.
+
+Deferred to the backlog: `commentsIds.xml` (`w16cid` durable ids, which
+Word regenerates) and `people.xml` (`w15:people` author presence,
+cosmetic only).
+
+## v0.3 — shipped
+
+Delivered in the v0.3 cycle.
 
 ### 1. Tracked changes (read/write) — shipped (v0.3)
 
@@ -84,24 +119,28 @@ Still open: a console entry point now exists, so the deferred
 **packaging decision for the agent `SKILL.md`** (currently repo-level
 only, kept out of the wheel) can be revisited — left for a later cycle.
 
-## v0.3+ backlog — bounded, unscheduled
+## Backlog — bounded, unscheduled
 
 Each reuses existing plumbing; pull into a cycle as priority dictates.
 
 - **Cross-references to non-bookmark targets** — `STYLEREF` for
-  heading-text references and sequence (`SEQ`) fields for caption / figure
-  numbering. Reuses the complex-field plumbing; the work is the
-  instruction grammar. (`bookmarks/` or a new `crossref/`.)
-- **Threaded comments + resolve / reopen** — `w15 parentCommentEx` for
-  parent/child replies plus the respond / resolve / reopen ops. Adds a
-  `w15` namespace dependency and a separate `commentsExtended.xml` part.
-  Completes the comments story. (`comments/`.)
+  heading-text references, plus references *to* an existing caption
+  ("see Figure 3"). Smaller than it first looks: `SEQ` authoring already
+  shipped in `publishing/captions.py`, so what is left is the instruction
+  grammar over the existing complex-field plumbing. (`bookmarks/` or a
+  new `crossref/`.)
+- **Comment durable ids + author presence** — `commentsIds.xml`
+  (`w16cid` durable ids for comment permalinks) and `people.xml`
+  (`w15:people` presence info). Neither is needed for threading or
+  resolution — Word regenerates the first and the second is cosmetic —
+  so both were split out of the v0.4 cycle. (`comments/`.)
 - **Glossary placeholder text** — the "formal" placeholder mechanism for
   SDTs, vs. the inline `w:placeholder` text `controls/` already supports.
 - **Password-protected forms** — legacy hash algorithm, paired with
   `protect_document`. (`protection/`.)
+- **linter** -- can use some of the ideas from `wordlive` to build a linter/regularizer for docx files.
 
-## v0.3+ backlog — larger or dependency-gated
+## Backlog — larger or dependency-gated
 
 - **Custom XML Parts data binding** — wires repeating-section content
   controls to a custom XML data source: new relationship types and

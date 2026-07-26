@@ -13,6 +13,8 @@ Commands:
   (:func:`docx_plus.styles.remap_styles`).
 - ``controls`` — list / set / clear content-control values
   (:mod:`docx_plus.controls`).
+- ``comments`` — list comment threads, resolve / reopen them
+  (:mod:`docx_plus.comments`).
 
 Read commands take ``--json``; mutating commands require ``-o/--output`` (or an
 explicit ``--in-place``) so the input is never overwritten by accident.
@@ -24,7 +26,7 @@ import argparse
 import sys
 
 from docx_plus import __version__
-from docx_plus.cli import controls, inspect, restyle
+from docx_plus.cli import comments, controls, inspect, restyle
 from docx_plus.cli._io import CliError
 from docx_plus.core import DocxPlusError
 
@@ -37,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"docx-plus {__version__}")
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
-    for module in (inspect, restyle, controls):
+    for module in (inspect, restyle, controls, comments):
         module.register(subparsers)
     return parser
 

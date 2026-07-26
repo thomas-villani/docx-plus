@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from docx_plus.core.ns import MC, NSMAP, W14, XML, A, R, W, qn
+from docx_plus.core.ns import BUILD_NSMAP, MC, NSMAP, W14, W15, XML, A, R, W, qn
 
 
 def test_qn_main_namespace() -> None:
     assert qn("w:tag") == f"{{{W}}}tag"
+
+
+def test_qn_w15_namespace() -> None:
+    assert qn("w15:commentEx") == f"{{{W15}}}commentEx"
 
 
 def test_qn_w14_namespace() -> None:
@@ -43,4 +47,12 @@ def test_qn_rejects_unknown_prefix() -> None:
 
 
 def test_nsmap_keys() -> None:
-    assert set(NSMAP) == {"w", "w14", "r", "mc", "a", "xml"}
+    assert set(NSMAP) == {"w", "w14", "w15", "r", "mc", "a", "xml"}
+
+
+def test_build_nsmap_omits_extension_prefixes() -> None:
+    # BUILD_NSMAP is what ``el`` declares on main-document elements. w15
+    # lives only in commentsExtended.xml, so declaring it here would put a
+    # stray xmlns:w15 on every element the library writes into document.xml.
+    assert set(BUILD_NSMAP) == set(NSMAP) - {"w15"}
+    assert all(BUILD_NSMAP[prefix] == NSMAP[prefix] for prefix in BUILD_NSMAP)
