@@ -181,6 +181,69 @@ def test_reply_range_end_follows_the_parent_reference_run() -> None:
     assert order == ["r", "commentRangeEnd", "r", "commentRangeEnd", "r"]
 
 
+def _reference_order(doc):
+    """Comment ids in the order their reference marks appear in the body."""
+    return [ref.get(qn("w:id")) for ref in xpath(doc.element.body, ".//w:commentReference")]
+
+
+def test_replies_are_appended_in_conversation_order() -> None:
+    # Word sorts a thread's balloons by where each reference mark sits in the
+    # body, so marker order IS display order. Verified against Word 2016 via
+    # wordlive: inserting each reply next to the parent's pair instead renders
+    # the thread backwards.
+    doc, root = _threaded_doc()
+    first = reply_to_comment(doc, root.comment_id, "First reply.")
+    second = reply_to_comment(doc, root.comment_id, "Second reply.")
+    third = reply_to_comment(doc, root.comment_id, "Third reply.")
+
+    assert _reference_order(doc) == [
+        str(root.comment_id),
+        str(first.comment_id),
+        str(second.comment_id),
+        str(third.comment_id),
+    ]
+
+
+def test_range_starts_are_appended_in_conversation_order() -> None:
+    doc, root = _threaded_doc()
+    first = reply_to_comment(doc, root.comment_id, "First reply.")
+    second = reply_to_comment(doc, root.comment_id, "Second reply.")
+
+    starts = [start.get(qn("w:id")) for start in xpath(doc.element.body, ".//w:commentRangeStart")]
+    assert starts == [str(root.comment_id), str(first.comment_id), str(second.comment_id)]
+
+
+def test_replies_to_a_reply_also_append_in_conversation_order() -> None:
+    doc, root = _threaded_doc()
+    first = reply_to_comment(doc, root.comment_id, "First reply.")
+    nested = reply_to_comment(doc, first.comment_id, "Reply to the reply.")
+
+    assert _reference_order(doc) == [
+        str(root.comment_id),
+        str(first.comment_id),
+        str(nested.comment_id),
+    ]
+
+
+def test_a_sibling_thread_does_not_shift_this_thread_ordering() -> None:
+    # Two threads on adjacent paragraphs: appending to one must not walk past
+    # the other's markers, or the reply would anchor to the wrong span.
+    doc = Document()
+    first_para = doc.add_paragraph("First point.")
+    second_para = doc.add_paragraph("Second point.")
+    alpha = add_comment(first_para, "On the first.")
+    beta = add_comment(second_para, "On the second.")
+
+    alpha_reply = reply_to_comment(doc, alpha.comment_id, "Reply on the first.")
+    beta_reply = reply_to_comment(doc, beta.comment_id, "Reply on the second.")
+
+    comments = {comment.comment_id: comment for comment in read_comments(doc)}
+    assert comments[alpha_reply.comment_id].anchored_text == "First point."
+    assert comments[beta_reply.comment_id].anchored_text == "Second point."
+    assert comments[alpha_reply.comment_id].paragraph_index == 0
+    assert comments[beta_reply.comment_id].paragraph_index == 1
+
+
 def test_multiple_replies_all_parent_to_the_named_comment() -> None:
     doc, root = _threaded_doc()
     first = reply_to_comment(doc, root.comment_id, "Yes.")
