@@ -604,11 +604,18 @@ Three properties of Microsoft's design shape the implementation:
    footnotes / endnotes parts. Word's legal range for a `paraId` —
    nonzero and below `0x80000000` — is exactly the existing 31-bit
    allocator range, so only the hex rendering is new.
-2. **A reply shares its parent's anchor range.** `_mirror_anchors` nests
-   the markers the way Word does: the reply's `commentRangeStart` just
-   inside the parent's, its `commentRangeEnd` and reference run after the
-   parent's reference run. A parent with no anchors (an orphaned comment)
-   leaves the reply orphaned too rather than inventing a range.
+2. **A reply shares its parent's anchor range, and marker order is
+   display order.** `_mirror_anchors` nests the markers the way Word
+   does — every member's `commentRangeStart` before the text, each
+   `commentRangeEnd` + reference-run pair after it. Word sorts a thread's
+   balloons by where each *reference mark* sits in the body, not by date
+   or by position in `comments.xml`, so a new reply's markers append
+   after every marker the thread already owns. Inserting them beside the
+   parent's pair instead renders each thread in reverse chronological
+   order — a defect caught only by opening the output in Word, and pinned
+   now by `test_replies_are_appended_in_conversation_order`. A parent
+   with no anchors (an orphaned comment) leaves the reply orphaned too
+   rather than inventing a range.
 3. **Resolution is thread-wide.** Word's Resolve button greys out root
    and replies together, so `resolve_comment` sets `w15:done` across the
    whole thread no matter which member you name.

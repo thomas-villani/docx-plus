@@ -36,7 +36,8 @@ from docx_plus.comments.anchor import (
 from docx_plus.comments.read import AnchoredComment, read_comments
 from docx_plus.comments.registry import CommentIdRegistry
 from docx_plus.core.ids import ParaIdRegistry
-from docx_plus.core.oxml import el, xpath
+from docx_plus.core.ns import qn
+from docx_plus.core.oxml import el
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -251,54 +252,91 @@ def _mirror_anchors(doc: Document, parent_id: int, reply_id: int) -> None:
     """Give ``reply_id`` the same body-side range as ``parent_id``.
 
     Word nests the markers rather than duplicating the span side by side:
-    the reply's ``commentRangeStart`` sits just inside the parent's, and
-    its ``commentRangeEnd`` plus reference run follow the parent's
-    reference run. Written out, a two-comment thread over "Hello" is::
+    every member's ``commentRangeStart`` precedes the text, and each
+    ``commentRangeEnd`` + reference-run pair follows it. Written out, a
+    root with two replies over "Hello" is::
 
         <w:commentRangeStart w:id="1"/>
         <w:commentRangeStart w:id="2"/>
+        <w:commentRangeStart w:id="3"/>
         <w:r><w:t>Hello</w:t></w:r>
         <w:commentRangeEnd w:id="1"/>
         <w:r><w:commentReference w:id="1"/></w:r>
         <w:commentRangeEnd w:id="2"/>
         <w:r><w:commentReference w:id="2"/></w:r>
+        <w:commentRangeEnd w:id="3"/>
+        <w:r><w:commentReference w:id="3"/></w:r>
+
+    **Marker order is display order.** Word sorts a thread's balloons by
+    where each reference mark sits in the body, not by the comment's date
+    or its position in ``comments.xml``. So a new reply's markers go
+    *after* every marker the thread already owns — appending to the
+    conversation. Inserting them next to the parent's pair instead would
+    render each thread in reverse chronological order.
 
     A parent with no anchors (an orphaned comment) leaves the reply
     orphaned too — documented on :func:`reply_to_comment`.
     """
     body = doc.element.body
-    parent_cid = str(parent_id)
     reply_cid = str(reply_id)
+    thread_cids = _thread_cids(doc, parent_id)
 
-    starts = xpath(body, ".//w:commentRangeStart[@w:id=$cid]", cid=parent_cid)
-    ends = xpath(body, ".//w:commentRangeEnd[@w:id=$cid]", cid=parent_cid)
-    if not starts or not ends:
+    last_start = _last_marker(body, thread_cids, qn("w:commentRangeStart"))
+    last_end = _last_marker(body, thread_cids, qn("w:commentRangeEnd"))
+    if last_start is None or last_end is None:
         return
 
-    starts[0].addnext(el("w:commentRangeStart", **{"w:id": reply_cid}))
+    last_start.addnext(el("w:commentRangeStart", **{"w:id": reply_cid}))
 
     reply_end = el("w:commentRangeEnd", **{"w:id": reply_cid})
-    _last_marker_after(body, ends[0], parent_cid).addnext(reply_end)
+    _trailing_reference_run(body, thread_cids, last_end).addnext(reply_end)
     reply_end.addnext(_build_reference_run(reply_id))
 
 
-def _last_marker_after(
-    body: etree._Element,
-    parent_end: etree._Element,
-    parent_cid: str,
-) -> etree._Element:
-    """Return the node the reply's ``commentRangeEnd`` should follow.
+def _thread_cids(doc: Document, member_id: int) -> set[str]:
+    """Return every comment id in ``member_id``'s thread, as marker strings."""
+    state = _extended.thread_state(doc)
+    root_id = _extended.root_id_of(state, member_id)
+    return {str(cid) for cid in (root_id, *_extended.descendant_ids(state, root_id))}
 
-    That is the parent's reference run when one exists — keeping the
-    parent's end/reference pair adjacent, the way Word writes it — and
-    the parent's ``commentRangeEnd`` otherwise (a range whose reference
-    marker was stripped by another tool).
+
+def _last_marker(
+    body: etree._Element,
+    thread_cids: set[str],
+    tag: str,
+) -> etree._Element | None:
+    """Return the last ``tag`` marker in document order owned by the thread."""
+    id_attr = qn("w:id")
+    found: etree._Element | None = None
+    for elem in body.iter(tag):
+        if elem.get(id_attr) in thread_cids:
+            found = elem
+    return found
+
+
+def _trailing_reference_run(
+    body: etree._Element,
+    thread_cids: set[str],
+    last_end: etree._Element,
+) -> etree._Element:
+    """Return the node a new reply's ``commentRangeEnd`` should follow.
+
+    That is the run hosting the thread's last reference marker, which
+    keeps each member's end/reference pair adjacent the way Word writes
+    them. Falls back to the thread's last ``commentRangeEnd`` when no
+    reference run survives — a range another tool stripped the marker
+    from.
     """
-    refs = xpath(body, ".//w:commentReference[@w:id=$cid]", cid=parent_cid)
-    if not refs:
-        return parent_end
-    run = refs[0].getparent()
-    return run if run is not None else parent_end
+    id_attr = qn("w:id")
+    run_tag = qn("w:r")
+    found: etree._Element | None = None
+    for ref in body.iter(qn("w:commentReference")):
+        if ref.get(id_attr) not in thread_cids:
+            continue
+        run = ref.getparent()
+        if run is not None and run.tag == run_tag:
+            found = run
+    return found if found is not None else last_end
 
 
 __all__ = [
