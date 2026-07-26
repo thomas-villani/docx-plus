@@ -12,7 +12,15 @@ explicit about where a symbol lives.
 
 from docx_plus.core.borders import Border, border_attrs
 from docx_plus.core.errors import DocxPlusError
-from docx_plus.core.ids import DuplicateIdError, IdRangeError, IdRegistry, ParaIdRegistry
+from docx_plus.core.ids import (
+    BookmarkIdRegistry,
+    BookmarkNameRegistry,
+    DuplicateBookmarkNameError,
+    DuplicateIdError,
+    IdRangeError,
+    IdRegistry,
+    ParaIdRegistry,
+)
 from docx_plus.core.ns import (
     MC,
     NSMAP,
@@ -35,6 +43,7 @@ from docx_plus.core.oxml import (
     ordered_insert,
     remove,
     sub,
+    validate_bookmark_name,
     xpath,
 )
 from docx_plus.core.parts import (
@@ -78,8 +87,11 @@ __all__ = [
     "W15",
     "W16CID",
     "XML",
+    "BookmarkIdRegistry",
+    "BookmarkNameRegistry",
     "Border",
     "DocxPlusError",
+    "DuplicateBookmarkNameError",
     "DuplicateIdError",
     "IdRangeError",
     "IdRegistry",
@@ -97,5 +109,6 @@ __all__ = [
     "qn",
     "remove",
     "sub",
+    "validate_bookmark_name",
     "xpath",
 ]

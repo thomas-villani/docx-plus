@@ -31,11 +31,26 @@ add_page_number_field(p, field="NUMPAGES")     # also: "SECTIONPAGES"
 # A date that updates on open (vs CREATEDATE, frozen):
 add_date_field(doc.add_paragraph(), format="MMMM d, yyyy", auto_update=True)
 
-# Any other complex field (MERGEFIELD, STYLEREF, ...):
+# A running header showing the current chapter (STYLEREF re-resolves per page):
+from docx_plus.fields import add_style_reference
+header = doc.sections[0].header.paragraphs[0]
+header.add_run("Chapter: ")
+add_style_reference(header, style="Heading 1")   # style NAME, with the space
+
+# Any other complex field (MERGEFIELD, ...):
 add_field(doc.add_paragraph(), instruction=r'MERGEFIELD FirstName \* MERGEFORMAT')
 
 mark_fields_dirty(doc)   # set updateFields=true so Word recalculates on open
 ```
+
+- `add_style_reference(paragraph, *, style, search_from_bottom=False,
+  number=None, position=False, suppress_non_delimiters=False,
+  preserve_formatting=True)` — `STYLEREF`, the only cross-reference needing no
+  bookmark. **`style` is the style *name* as Word shows it** (`"Heading 1"`,
+  with the space), not the `w:styleId` — the one place in this library that
+  differs, because that is what the field instruction takes. An `int` is an
+  outline level (1–9) instead. `search_from_bottom` (`\l`) takes the last match
+  on the page rather than the first.
 
 - `add_page_number_field(paragraph, *, field="PAGE", format=None)` — `field` is
   `"PAGE"` / `"NUMPAGES"` / `"SECTIONPAGES"`. `format` is a field switch like
@@ -87,7 +102,8 @@ add_table_of_figures(doc.add_paragraph(), caption_type="Figure")
 mark_fields_dirty(doc)   # populates SEQ numbers and the ToF
 ```
 
-- `add_caption(paragraph, label=None, *, caption_type="Figure", numbering="ARABIC")`
+- `add_caption(paragraph, label=None, *, caption_type="Figure", numbering="ARABIC",
+  bookmark_name=None, bookmark_id_registry=None)`
   — `label` defaults to `f"{caption_type} "`; pass `""` to suppress the label
   run. `numbering` is a Word picture token (`"ARABIC"`, `"ROMAN"`, `"roman"`,
   `"ALPHABETIC"`, …). `caption_type` must be a valid SEQ identifier (letter/
@@ -161,13 +177,53 @@ for b in read_bookmarks(doc):
 - `add_bookmark(target, name, *, id_registry=None)` — `target` is a `Run`,
   `Paragraph`, or `(start_run, end_run)` tuple. `name` must match
   `[A-Za-z_][A-Za-z0-9_]{0,39}`.
-- `add_cross_reference(paragraph, *, bookmark, kind="text", hyperlink=True)` —
-  `kind` is `"text"` or `"page"`; `\h` (clickable) added by default.
+- `add_cross_reference(paragraph, *, bookmark, kind="text", hyperlink=True,
+  number=None, position=False, suppress_non_delimiters=False,
+  numeric_format=None, preserve_formatting=False)` — `kind` is `"text"` (`REF`)
+  or `"page"` (`PAGEREF`); `\h` (clickable) added by default. `number` is
+  `"plain"` / `"relative"` / `"full"` for the target's paragraph *number*;
+  `position=True` resolves to `"above"` / `"below"`. The `REF`-only switches
+  raise if paired with `kind="page"`.
 - `delete_bookmark(doc, name)` — removes every bookmark of that name
   (idempotent).
 - `read_bookmarks(doc) -> list[BookmarkInfo]` (`bookmark_id`, `name`,
   `anchored_text`, `paragraph_index`).
 - Batch inserts: share a `BookmarkIdRegistry(doc)` via `id_registry=`.
+- `BookmarkNameRegistry(doc)` guards duplicate names (a duplicate makes a `REF`
+  ambiguous) and mints hidden anchors with `next_ref_name()` — Word's `_Ref` +
+  9-digit form, which stays out of Word's Bookmark dialog.
+
+## "See Figure 3" — referencing a caption
+
+This is the one that trips everyone up: **a `REF` field cannot point at a `SEQ`
+field.** It can only point at a bookmark. So a bare caption is not
+referenceable — there is nothing to target. Pass `bookmark_name` to
+`add_caption` and it brackets the label plus number for you:
+
+```python
+from docx_plus.bookmarks import BookmarkNameRegistry, add_cross_reference
+from docx_plus.publishing import add_caption
+
+names = BookmarkNameRegistry(doc)
+anchor = names.next_ref_name()          # e.g. "_Ref418320715", hidden from Word's UI
+
+cap = doc.add_paragraph()
+add_caption(cap, caption_type="Figure", bookmark_name=anchor)
+cap.add_run(": Architecture overview")  # added AFTER -> stays outside the bookmark
+
+body = doc.add_paragraph("As shown in ")
+add_cross_reference(body, bookmark=anchor)              # -> "Figure 1"
+body.add_run(" on page ")
+add_cross_reference(body, bookmark=anchor, kind="page") # -> "1"
+body.add_run(" ")
+add_cross_reference(body, bookmark=anchor, position=True)  # -> "above"
+mark_fields_dirty(doc)
+```
+
+The bookmark spans exactly the extent Word's own "Only label and number"
+option uses, so the reference reads `Figure 1` rather than the whole caption.
+Order matters: add the description **after** `add_caption`, or it lands inside
+the bookmark and the reference picks it up too.
 
 ## End-to-end
 

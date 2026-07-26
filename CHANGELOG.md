@@ -6,6 +6,50 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`fields.add_style_reference`** — the `STYLEREF` field, which resolves
+  to the text of the nearest paragraph carrying a given style and is the
+  one cross-reference that needs no bookmark at all. Word re-evaluates it
+  per page, so a single field in a header gives a running chapter title.
+  Takes the style *name* as Word shows it (`"Heading 1"`) rather than the
+  `w:styleId`, because that is what the field instruction accepts, or an
+  `int` outline level. Reachable before this only as a raw
+  `add_field(instruction=...)` string with no validation.
+- **Caption cross-references** — `publishing.add_caption` gained
+  `bookmark_name`, which brackets the label and `SEQ` number in a
+  bookmark. This is what makes "see Figure 3" possible: a `REF` field
+  **cannot point at a `SEQ` field**, only at a bookmark, and captions
+  previously created none — so the reference had nothing to target. The
+  bookmark spans exactly the extent Word's own "Only label and number"
+  option uses, so a bare `add_cross_reference` to it resolves to
+  `"Figure 3"`; description text added afterwards stays outside.
+- **`bookmarks.add_cross_reference` gained the rest of the switch
+  surface** — `number` (`\n` / `\r` / `\w`, the target's paragraph
+  number with varying context), `position` (`\p`, resolving to
+  `"above"` / `"below"`), `suppress_non_delimiters` (`\t`),
+  `numeric_format` (`\#`), and `preserve_formatting`
+  (`\* MERGEFORMAT`). It also now validates `bookmark` against Word's
+  name grammar, since a name only Word's UI would reject produced a
+  silently unresolved field, and rejects the `REF`-only switches when
+  paired with `kind="page"`.
+- **`core.BookmarkNameRegistry`** — bookmarks are the one thing in the
+  format addressed by name, and nothing stopped a document carrying two
+  with the same `w:name`, which makes a `REF` ambiguous and makes
+  `delete_bookmark` remove both. `next_ref_name()` mints hidden anchors
+  in Word's own `_Ref` + 9-digit form; the leading underscore is what
+  keeps them out of Word's Bookmark dialog.
+- **`core.validate_bookmark_name`** — the name grammar, now shared by the
+  three surfaces that accept a bookmark name instead of living privately
+  in `bookmarks/anchor.py`.
+
+### Changed
+
+- **`BookmarkIdRegistry` moved from `docx_plus.bookmarks.registry` to
+  `docx_plus.core.ids`** and is re-exported from its old home, so
+  existing imports are unaffected. Forced by SPEC §9.1: `publishing` needs
+  it to bookmark a caption and cannot import from a sibling capability.
+
 ### Fixed
 
 - **`resolve_effective_formatting` no longer crashes on a document with

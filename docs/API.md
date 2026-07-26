@@ -84,6 +84,10 @@ The foundation primitives. Every capability module imports from here only.
 | `body_document_for(proxy, *, operation=...)` | function | Resolve the owning main-body `Document` from a python-docx proxy; raises `ValueError` for header/footer proxies. Shared by `comments` / `notes` |
 | `build_complex_field(p_element, instruction, initial_text)` | function | Emit the 5-run complex-field sequence (begin / instrText / separate / result / end). Used by `fields/simple.py` and `bookmarks/crossref.py` |
 | `build_bookmark(start_anchor, end_anchor, *, bookmark_id, name)` | function | v0.5. Bracket a range with a `bookmarkStart` / `bookmarkEnd` pair. Lives in core so `publishing` can make a caption referenceable — a `REF` field can only point at a bookmark, never at the caption's `SEQ` field |
+| `validate_bookmark_name(name, *, arg_name="name")` | function | v0.5. Check Word's bookmark-name grammar. Shared by the three surfaces that accept one, because a name only Word's UI would reject yields a silently unresolved field |
+| `BookmarkIdRegistry(doc)` | class | Bookmark `w:id` allocator. Moved here from `bookmarks` in v0.5 and re-exported there |
+| `BookmarkNameRegistry(doc)` | class | v0.5. Bookmark *name* allocator — guards duplicates (which make a `REF` ambiguous) and mints hidden `_Ref` + 9-digit anchors via `next_ref_name()` |
+| `DuplicateBookmarkNameError` | exception | Dual-bases: `DocxPlusError, ValueError`. `BookmarkNameRegistry.reserve` on a name already in use |
 | `insert_before_first_anchor(parent, new_element, anchor_tags)` | function | Schema-strict insertion helper for `settings.xml` mutations. Used by `fields/update.py` and `layout/settings.py` |
 | `ordered_insert(parent, child, order)` | function | v0.5. Idempotent schema-ordered insert given the parent's full child sequence — replaces any same-tag sibling. The stronger form of the above; promoted out of `styles/modify.py` so `numbering` can share it |
 | `Border` | dataclass (frozen) | The `CT_Border` shape — `style`, `size`, `color`, `space` — shared by page, table, and cell borders. Defined in `layout` in v0.2, moved to `core` in v0.5; `docx_plus.layout.Border` still works |
@@ -212,6 +216,8 @@ Complex field insertion (PAGE / DATE / generic) and the
 |---|---|---|
 | `add_page_number_field(paragraph, *, field="PAGE", format=None)` | function | Append a `PAGE` / `NUMPAGES` / `SECTIONPAGES` field. `format` is a field-switch string like `r"\* ARABIC"`. Returns the begin `<w:r>` |
 | `add_date_field(paragraph, *, format="MMMM d, yyyy", auto_update=True)` | function | Append a `DATE` (auto-update) or `CREATEDATE` (frozen) field with a Word date-format string |
+| `add_style_reference(paragraph, *, style, search_from_bottom=False, number=None, position=False, suppress_non_delimiters=False, preserve_formatting=True)` | function | v0.5. `STYLEREF` — the text of the nearest paragraph with a given style, re-resolved per page. The one cross-reference needing no bookmark. `style` is the style *name* (`"Heading 1"`), or an `int` outline level |
+| `StyleRefNumber` | type alias | `"plain"` / `"relative"` / `"full"` — how much context a `STYLEREF` number carries (`\n` / `\r` / `\w`) |
 | `add_field(paragraph, *, instruction, initial_text="")` | function | Generic complex field. Use for `TOC`, `REF`, `MERGEFIELD`, etc. Spaces are normalised around `instruction` |
 | `mark_fields_dirty(doc)` | function | Set `w:updateFields val="true"` in `settings.xml`. Idempotent |
 | `PageFieldName` | type alias | `Literal["PAGE", "NUMPAGES", "SECTIONPAGES"]` |
@@ -282,10 +288,15 @@ Bookmarks and cross-references — paired body markers plus `REF` /
 | `add_bookmark(target, name, *, id_registry=None)` | function | Wrap target with `<w:bookmarkStart>` / `<w:bookmarkEnd>`. Validates `name` against `[A-Za-z_][A-Za-z0-9_]{0,39}` |
 | `delete_bookmark(doc, name)` | function | Remove every bookmark with the given name. Idempotent |
 | `read_bookmarks(doc)` | function | List every bookmark paired with its anchored text. Returns `list[BookmarkInfo]` |
-| `add_cross_reference(paragraph, *, bookmark, kind="text", hyperlink=True)` | function | Append a `REF` (`kind="text"`) or `PAGEREF` (`kind="page"`) complex field. `\h` appended by default. Pair with `mark_fields_dirty` so Word recalculates on open |
+| `add_cross_reference(paragraph, *, bookmark, kind="text", hyperlink=True, number=None, position=False, suppress_non_delimiters=False, numeric_format=None, preserve_formatting=False)` | function | Append a `REF` (`kind="text"`) or `PAGEREF` (`kind="page"`) complex field. `\h` appended by default. v0.5 added the switch surface: `number` → `
+`/`
+`/`\w` (paragraph number), `position` → `\p` (`"above"`/`"below"`), `numeric_format` → `\#`, `preserve_formatting` → `\* MERGEFORMAT`. `bookmark` is validated. Pair with `mark_fields_dirty` |
+| `NumberContext` | type alias | v0.5. `"plain"` / `"relative"` / `"full"` for `number` above |
 | `BookmarkRef` | dataclass (frozen) | `bookmark_id`, `name`, `start_element`, `end_element` |
 | `BookmarkInfo` | dataclass (frozen) | `bookmark_id`, `name`, `anchored_text`, `paragraph_index` |
-| `BookmarkIdRegistry(doc)` | class | Per-document bookmark-id allocator |
+| `BookmarkIdRegistry(doc)` | class | Per-document bookmark-id allocator. Re-export of `core.BookmarkIdRegistry` since v0.5 |
+| `BookmarkNameRegistry(doc)` | class | v0.5. Per-document bookmark-*name* allocator. `next_ref_name()` mints hidden `_Ref` anchors |
+| `DuplicateBookmarkNameError` | exception | Dual-bases: `DocxPlusError, ValueError` |
 | `BookmarkTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` |
 | `CrossReferenceKind` | type alias | `Literal["text", "page"]` |
 
@@ -321,7 +332,7 @@ next open. Architecture walkthrough in
 | Symbol | Kind | Notes |
 |---|---|---|
 | `add_toc(paragraph, *, levels=(1, 3), hyperlink=True, page_numbers=True)` | function | Append a `TOC` complex field. Instruction string matches Word's default ("Insert → Table of Contents") with `\o`, `\h`, `\z`, `\u`, optional `\n` switches |
-| `add_caption(paragraph, label, *, caption_type="Figure", numbering="ARABIC")` | function | Label text run + `SEQ <caption_type> \* <numbering>` complex field. `caption_type` must match the `\c` switch on a downstream Table of Figures |
+| `add_caption(paragraph, label, *, caption_type="Figure", numbering="ARABIC", bookmark_name=None, bookmark_id_registry=None)` | function | Label text run + `SEQ <caption_type> \* <numbering>` complex field. `caption_type` must match the `\c` switch on a downstream Table of Figures. v0.5: `bookmark_name` brackets the label + number in a bookmark, which is the **only** way to make the caption referenceable — a `REF` cannot target a `SEQ` field |
 | `add_table_of_figures(paragraph, *, caption_type="Figure", hyperlink=True)` | function | Append a `TOC \c "<caption_type>"` complex field that collects matching captions |
 
 ### `docx_plus.revisions`

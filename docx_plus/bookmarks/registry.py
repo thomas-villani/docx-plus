@@ -1,31 +1,30 @@
-"""Bookmark-id registry.
+"""Bookmark id and name registries.
 
 Bookmark ``w:id`` is its own uniqueness namespace, separate from SDT,
-comment, and note ids. The body-side ``<w:bookmarkStart>`` /
-``<w:bookmarkEnd>`` elements both carry the id on a direct ``@w:id``
-attribute (not as a ``<w:id w:val=...>`` child like SDTs), so the
-seeder uses :meth:`_collect_id_attrs`.
+comment, and note ids. Bookmarks are also the one thing in the format
+addressed by *name*, which is a second namespace needing its own
+allocator.
+
+Both classes moved to :mod:`docx_plus.core.ids` in v0.5 and are
+re-exported here, so ``from docx_plus.bookmarks import BookmarkIdRegistry``
+is unchanged. The move was forced by SPEC §9.1: ``publishing`` has to
+bookmark a caption to make it referenceable — a ``REF`` field can only
+point at a bookmark, never at the caption's own ``SEQ`` field — and it
+cannot import from a sibling capability to do it.
 
 This module imports only from ``docx_plus.core`` (SPEC §9.1).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from docx_plus.core.ids import (
+    BookmarkIdRegistry,
+    BookmarkNameRegistry,
+    DuplicateBookmarkNameError,
+)
 
-from docx_plus.core.ids import _IdRegistryBase
-
-if TYPE_CHECKING:
-    from docx.document import Document
-
-
-class BookmarkIdRegistry(_IdRegistryBase):
-    """Tracks issued bookmark ``w:id`` values for one document-edit session."""
-
-    def _seed_from_document(self, doc: Document) -> None:
-        body = doc.element.body
-        self._collect_id_attrs(body, ".//w:bookmarkStart")
-        self._collect_id_attrs(body, ".//w:bookmarkEnd")
-
-
-__all__ = ["BookmarkIdRegistry"]
+__all__ = [
+    "BookmarkIdRegistry",
+    "BookmarkNameRegistry",
+    "DuplicateBookmarkNameError",
+]
