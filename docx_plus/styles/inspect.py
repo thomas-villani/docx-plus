@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal
 
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from lxml import etree
 
 from docx_plus.core import DocxPlusError
@@ -157,7 +158,18 @@ class StyleCascadeError(DocxPlusError):
 
 
 class MissingPartError(DocxPlusError):
-    """Raised when a referenced document part (e.g. numbering.xml) is absent."""
+    """Raised when a referenced document part is absent.
+
+    Nothing in the cascade resolver raises this today, and
+    :func:`resolve_effective_formatting` used to promise it for a
+    ``numPr`` whose ``numbering.xml`` is missing. That promise was wrong:
+    an unresolvable numbering reference is normal in real documents and
+    the resolver degrades instead — see that function's ``Note``.
+
+    Retained as a public symbol because it has been exported since v0.1
+    and callers may name it in an ``except`` clause. New code should not
+    expect it from the cascade.
+    """
 
 
 @dataclass(frozen=True)
@@ -289,8 +301,15 @@ def resolve_effective_formatting(
     Raises:
         StyleCascadeError: If the basedOn chain has a cycle or exceeds Word's
             depth limit of 11.
-        MissingPartError: If the target's paragraph references a numbering id
-            that exists but the ``numbering.xml`` part itself is absent.
+
+    Note:
+        A paragraph whose ``w:numPr`` references a numbering id that
+        cannot be resolved — because ``numbering.xml`` is absent, or the
+        ``numId`` is dangling — is **not** an error. ``num_id`` and
+        ``num_level`` are still reported; only the formatting the
+        numbering level would have contributed is missing. Word behaves
+        the same way, and documents in the wild routinely carry a
+        ``numPr`` with no matching definition.
 
     Example:
         >>> from docx import Document
@@ -1098,8 +1117,20 @@ def _enclosing_table(node: etree._Element) -> etree._Element | None:
 
 
 def _numbering_root(doc: Document) -> etree._Element | None:
-    numbering_part = getattr(doc.part, "numbering_part", None)
-    if numbering_part is None:
+    """Return the ``w:numbering`` root, or ``None`` if the part is absent.
+
+    Deliberately does **not** go through ``doc.part.numbering_part``.
+    That property fabricates a missing part via ``NumberingPart.new()``,
+    which is an unimplemented stub in python-docx (1.2.0) and raises a
+    bare ``NotImplementedError`` — a crash for any document carrying a
+    ``w:numPr`` without a ``numbering.xml``, which LibreOffice, Pandoc,
+    and stripped templates all produce. Reading the relationship directly
+    keeps the resolver read-only and lets an absent part read as "no
+    numbering information", which is what the cascade wants.
+    """
+    try:
+        numbering_part = doc.part.part_related_by(RT.NUMBERING)
+    except KeyError:
         return None
     element = getattr(numbering_part, "element", None)
     if isinstance(element, etree._Element):
