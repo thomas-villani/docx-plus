@@ -12,8 +12,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
 from docx_plus.core.ns import qn
+from docx_plus.core.oxml import sub
 from docx_plus.styles import resolve_effective_formatting
 
 
@@ -36,6 +38,35 @@ def test_numbering_provenance_marks_layer(numbered_docx_path: Path) -> None:
     assert prov["indent_left"].layer == "numbering"
     assert prov["bold"].layer == "numbering"
     assert prov["num_id"].layer == "numbering"
+
+
+def test_numbering_absent_part_does_not_crash() -> None:
+    """Regression: the resolver used to raise a bare ``NotImplementedError``.
+
+    ``doc.part.numbering_part`` fabricates a missing part through
+    ``NumberingPart.new()``, an unimplemented stub in python-docx 1.2.0.
+    ``_numbering_root`` reached it via ``getattr(..., None)``, which
+    swallows only ``AttributeError``, so any document carrying a
+    ``w:numPr`` with no ``numbering.xml`` — LibreOffice, Pandoc, and
+    stripped templates all produce these — crashed here.
+    """
+    doc = Document()
+    for rid, rel in list(doc.part.rels.items()):
+        if rel.reltype == RT.NUMBERING:
+            doc.part.drop_rel(rid)
+
+    para = doc.add_paragraph("item")
+    ppr = sub(para._p, "w:pPr")
+    num_pr = sub(ppr, "w:numPr")
+    sub(num_pr, "w:ilvl", **{"w:val": "0"})
+    sub(num_pr, "w:numId", **{"w:val": "3"})
+
+    resolved = resolve_effective_formatting(para)
+
+    # The reference is still reported; only the formatting the level would
+    # have contributed is missing.
+    assert resolved.num_id == 3
+    assert resolved.num_level == 0
 
 
 def test_numbering_unknown_num_id_skips_silently(numbered_docx_path: Path) -> None:
