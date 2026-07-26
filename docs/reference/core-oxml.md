@@ -12,5 +12,7 @@ invariant 2.
         - xpath
         - remove
         - build_complex_field
+        - build_bookmark
         - insert_before_first_anchor
+        - ordered_insert
         - body_document_for

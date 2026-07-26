@@ -38,6 +38,16 @@ boundary. v0.1 targets three capabilities:
 
 ### Non-goals for v0.1
 
+> **Superseded in part (2026-07-26).** This list scopes *v0.1*, and later
+> cycles have deliberately crossed it: comments shipped in v0.2, tracked
+> changes in v0.3, and custom numbering plus table formatting are the
+> v0.5 targets. `ROADMAP.md` is the live authority on what is in scope;
+> read this section as the v0.1 boundary it was written to be, not as a
+> standing prohibition. The genuinely permanent exclusions — templating,
+> a `Document` subclass, LibreOffice parity — are called out in
+> "Stylistic non-goals" and the ROADMAP's "Considered, not on the
+> roadmap".
+
 The following are explicitly **out of scope** and must not be implemented
 even if they seem natural extensions:
 

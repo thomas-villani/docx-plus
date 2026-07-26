@@ -11,6 +11,7 @@ from docx_plus.core.errors import DocxPlusError
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 W15 = "http://schemas.microsoft.com/office/word/2012/wordml"
+W16CID = "http://schemas.microsoft.com/office/word/2016/wordml/cid"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -20,6 +21,7 @@ NSMAP: dict[str, str] = {
     "w": W,
     "w14": W14,
     "w15": W15,
+    "w16cid": W16CID,
     "r": R,
     "mc": MC,
     "a": A,
@@ -29,11 +31,13 @@ NSMAP: dict[str, str] = {
 #: Prefixes declared on elements built in the main document namespaces.
 #:
 #: Deliberately narrower than :data:`NSMAP`, which is the *query* map and
-#: has to know every prefix the library can match on. ``w15`` is only ever
-#: written into ``commentsExtended.xml``; including it here would stamp a
-#: stray ``xmlns:w15`` onto every element the library writes into
-#: ``document.xml``. :func:`docx_plus.core.oxml.el` selects between this
-#: map and a single-prefix one based on the element's own namespace.
+#: has to know every prefix the library can match on. ``w15`` and
+#: ``w16cid`` are only ever written into the comment side-parts
+#: (``commentsExtended.xml``, ``people.xml``, ``commentsIds.xml``);
+#: including them here would stamp a stray ``xmlns:w15`` onto every
+#: element the library writes into ``document.xml``.
+#: :func:`docx_plus.core.oxml.el` selects between this map and a
+#: single-prefix one based on the element's own namespace.
 BUILD_NSMAP: dict[str, str] = {
     "w": W,
     "w14": W14,
@@ -89,6 +93,7 @@ __all__ = [
     "W",
     "W14",
     "W15",
+    "W16CID",
     "XML",
     "InvalidNamespaceError",
     "qn",

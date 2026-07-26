@@ -37,10 +37,10 @@ def el(tag: str, **attrs: str) -> etree._Element:
 
     Elements in the main document namespaces are built declaring
     :data:`~docx_plus.core.ns.BUILD_NSMAP`. An element in any other
-    namespace — ``w15``, which only appears in ``commentsExtended.xml`` —
-    declares just its own prefix, so extension parts stay free of
-    irrelevant declarations and ``document.xml`` stays free of the
-    extension prefix.
+    namespace — ``w15`` and ``w16cid``, which appear only in the comment
+    side-parts — declares just its own prefix, so extension parts stay
+    free of irrelevant declarations and ``document.xml`` stays free of
+    the extension prefixes.
 
     Returns:
         A fresh detached :class:`lxml.etree._Element`.
@@ -181,6 +181,95 @@ def build_complex_field(
     return begin_run
 
 
+def build_bookmark(
+    start_anchor: etree._Element,
+    end_anchor: etree._Element,
+    *,
+    bookmark_id: int,
+    name: str,
+) -> tuple[etree._Element, etree._Element]:
+    """Bracket ``start_anchor``..``end_anchor`` with a bookmark pair.
+
+    Emits ``<w:bookmarkStart>`` immediately before ``start_anchor`` and
+    ``<w:bookmarkEnd>`` immediately after ``end_anchor``, both carrying
+    ``bookmark_id``. Pass the same element twice to bookmark a single run.
+
+    Lives in ``core`` because two capability packages need it and SPEC
+    §9.1 forbids the sibling import: ``bookmarks`` owns the public
+    :func:`~docx_plus.bookmarks.add_bookmark`, while ``publishing`` needs
+    the same emission to make a caption referenceable — a ``REF`` field
+    can only point at a bookmark, never at the caption's ``SEQ`` field.
+
+    Neither the name nor the id is validated here; the caller owns that
+    (``bookmarks`` checks the name against the ECMA-376 grammar and
+    allocates the id from a registry).
+
+    Args:
+        start_anchor: Element the ``bookmarkStart`` is placed before.
+        end_anchor: Element the ``bookmarkEnd`` is placed after.
+        bookmark_id: Numeric id shared by the pair.
+        name: Bookmark name written on the start element.
+
+    Returns:
+        The ``(start, end)`` element pair, already inserted.
+    """
+    bid = str(bookmark_id)
+    start = el("w:bookmarkStart", **{"w:id": bid, "w:name": name})
+    end = el("w:bookmarkEnd", **{"w:id": bid})
+
+    start_anchor.addprevious(start)
+    end_anchor.addnext(end)
+
+    return start, end
+
+
+def ordered_insert(
+    parent: etree._Element,
+    child: etree._Element,
+    order: tuple[str, ...],
+) -> None:
+    """Insert ``child`` into ``parent`` at the position dictated by ``order``.
+
+    Removes any existing element in ``parent`` with the same tag first, so
+    calling twice with the same tag replaces the previous instance. The
+    new element is placed immediately before the first existing sibling
+    whose local name comes later in ``order``; a tag absent from ``order``,
+    or one with no later sibling present, is appended.
+
+    The stronger sibling of :func:`insert_before_first_anchor`: that one
+    takes an explicit list of later siblings and never replaces, this one
+    derives the insertion point from a full child-order tuple and is
+    idempotent. Reach for this when the parent's complete schema sequence
+    is known — ``w:style``, ``w:pPr``, ``w:rPr``, ``w:lvl``.
+
+    Args:
+        parent: The element to insert into.
+        child: The element to insert. Any existing sibling with the same
+            tag is removed first.
+        order: Local names in schema order.
+    """
+    target_local = etree.QName(child.tag).localname
+    for existing in parent.findall(child.tag):
+        parent.remove(existing)
+    try:
+        target_idx = order.index(target_local)
+    except ValueError:
+        parent.append(child)
+        return
+    for sibling in parent:
+        if not isinstance(sibling.tag, str):
+            continue
+        sibling_local = etree.QName(sibling.tag).localname
+        try:
+            sibling_idx = order.index(sibling_local)
+        except ValueError:
+            continue
+        if sibling_idx > target_idx:
+            sibling.addprevious(child)
+            return
+    parent.append(child)
+
+
 def insert_before_first_anchor(
     parent: etree._Element,
     new_element: etree._Element,
@@ -253,9 +342,11 @@ def body_document_for(proxy: Any, *, operation: str = "this operation") -> Docum
 
 __all__ = [
     "body_document_for",
+    "build_bookmark",
     "build_complex_field",
     "el",
     "insert_before_first_anchor",
+    "ordered_insert",
     "remove",
     "sub",
     "xpath",

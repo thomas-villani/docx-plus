@@ -4,6 +4,53 @@ All notable changes to `docx_plus` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`resolve_effective_formatting` no longer crashes on a document with
+  no `numbering.xml`.** `doc.part.numbering_part` fabricates a missing
+  part through `NumberingPart.new()`, which is an unimplemented stub in
+  python-docx that raises a bare `NotImplementedError`. The cascade's
+  `_numbering_root` reached it through `getattr(..., None)`, which
+  swallows only `AttributeError`, so any paragraph carrying a `w:numPr`
+  without the part behind it raised — the state LibreOffice, Pandoc, and
+  stripped templates all produce. The resolver now reads the
+  relationship directly and treats an absent part as "no numbering
+  information", which is what it already did for a dangling `numId`.
+
+### Changed
+
+- **`MissingPartError` is documented as unraised.**
+  `resolve_effective_formatting` promised it for an unresolvable
+  numbering reference; nothing ever raised it, and the tolerant
+  behaviour is correct — Word degrades the same way. The docstring now
+  says so. The exception is retained as a public symbol.
+- **`Border` moved from `docx_plus.layout` to `docx_plus.core.borders`**,
+  where table and cell borders can share the identical `CT_Border`
+  shape. `docx_plus.layout.Border` re-exports it, so existing imports
+  are unaffected. It also gained the `size` range check and `style`
+  validation its docstring had claimed since v0.2 but never enforced.
+
+### Added
+
+- **`core.ordered_insert`** — idempotent schema-ordered insertion given a
+  parent's full child sequence. Promoted out of `styles/modify.py` so the
+  numbering writer can share it; SPEC §9.1 forbids that sibling import.
+- **`core.build_bookmark`** — the `bookmarkStart` / `bookmarkEnd` emitter,
+  extracted from `bookmarks/anchor.py` for the same reason: `publishing`
+  needs to bookmark a caption, and a `REF` field can only point at a
+  bookmark, never at the caption's own `SEQ` field.
+- **`_IdRegistryBase.next_sequential()`** — lowest-free-integer
+  allocation, alongside the existing random `next()`. Word and python-docx
+  both number lists this way, and `reserve()` now honours a per-registry
+  `_MIN_ID` so `w:abstractNumId`, which legitimately starts at 0, can use
+  the shared machinery.
+- **`core.NUMBERING_SPEC`, `COMMENTS_IDS_SPEC`, `PEOPLE_SPEC`** — part
+  specs for `/word/numbering.xml`, `/word/commentsIds.xml`, and
+  `/word/people.xml`, with the `w16cid` namespace and the `CT_` / `RT_`
+  URI constants for the two Microsoft extension parts.
+
 ## [0.4.0] - 2026-07-26
 
 ### Added

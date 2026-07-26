@@ -10,18 +10,31 @@ may not exist in a fresh document:
 - ``/word/endnotes.xml`` (relationship :data:`RT.ENDNOTES`)
 - ``/word/commentsExtended.xml`` (relationship
   :data:`RT_COMMENTS_EXTENDED`) — comment threading, added in v0.4
+- ``/word/commentsIds.xml`` (relationship :data:`RT_COMMENTS_IDS`) and
+  ``/word/people.xml`` (relationship :data:`RT_PEOPLE`) — durable comment
+  ids and author presence, added in v0.5
+- ``/word/numbering.xml`` (relationship :data:`RT.NUMBERING`) — list
+  definitions, added in v0.5
 
 This module provides a single :func:`get_or_create_part` helper that the
-``comments`` and ``notes`` packages use to look up an existing part or
-fabricate a fresh one with an empty default root.
+``comments``, ``notes``, and ``numbering`` packages use to look up an
+existing part or fabricate a fresh one with an empty default root.
 
 python-docx already registers ``CommentsPart`` with
-``PartFactory.part_type_for[CT.WML_COMMENTS]`` so existing comments parts
+``PartFactory.part_type_for[CT.WML_COMMENTS]`` — and ``NumberingPart``
+with ``CT.WML_NUMBERING`` — so existing comments and numbering parts
 deserialize with a parsed ``.element``. It does *not* register
-footnote / endnote / commentsExtended part classes, so this module
-installs minimal :class:`~docx.opc.part.XmlPart` subclasses for those
-content types at import time. Without that registration a round-tripped
-document with existing footnotes would surface them as raw blobs.
+footnote / endnote / commentsExtended / commentsIds / people part
+classes, so this module installs minimal
+:class:`~docx.opc.part.XmlPart` subclasses for those content types at
+import time. Without that registration a round-tripped document with
+existing footnotes would surface them as raw blobs.
+
+Numbering is the one part here that :func:`get_or_create_part` must own
+rather than delegating to python-docx: ``DocumentPart.numbering_part``
+fabricates through ``NumberingPart.new()``, which is an unimplemented
+stub that raises ``NotImplementedError``, so it works only for documents
+that already have the part.
 
 SPEC §2 lists the part / relationship plumbing as a v0.2 responsibility.
 """
@@ -68,19 +81,35 @@ class _CommentsExtendedPart(XmlPart):
     """Internal :class:`XmlPart` subclass for ``/word/commentsExtended.xml``."""
 
 
-# The commentsExtended content / relationship types are Microsoft extensions
-# introduced with Word 2013's threaded comments. python-docx's ``CT`` and
-# ``RT`` enums predate them and carry no member, so the URIs live here as
-# plain constants.
+class _CommentsIdsPart(XmlPart):
+    """Internal :class:`XmlPart` subclass for ``/word/commentsIds.xml``."""
+
+
+class _PeoplePart(XmlPart):
+    """Internal :class:`XmlPart` subclass for ``/word/people.xml``."""
+
+
+# The comment side-part content / relationship types are Microsoft
+# extensions introduced with Word 2013's threaded comments and Word 2016's
+# durable ids. python-docx's ``CT`` and ``RT`` enums predate them and carry
+# no member, so the URIs live here as plain constants.
 CT_COMMENTS_EXTENDED = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"
 )
 RT_COMMENTS_EXTENDED = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
 
+CT_COMMENTS_IDS = "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml"
+RT_COMMENTS_IDS = "http://schemas.microsoft.com/office/2016/09/relationships/commentsIds"
+
+CT_PEOPLE = "application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml"
+RT_PEOPLE = "http://schemas.microsoft.com/office/2011/relationships/people"
+
 
 PartFactory.part_type_for.setdefault(CT.WML_FOOTNOTES, _FootnotesPart)
 PartFactory.part_type_for.setdefault(CT.WML_ENDNOTES, _EndnotesPart)
 PartFactory.part_type_for.setdefault(CT_COMMENTS_EXTENDED, _CommentsExtendedPart)
+PartFactory.part_type_for.setdefault(CT_COMMENTS_IDS, _CommentsIdsPart)
+PartFactory.part_type_for.setdefault(CT_PEOPLE, _PeoplePart)
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +141,7 @@ class PartSpec:
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml"
 _W15_NS = "http://schemas.microsoft.com/office/word/2012/wordml"
+_W16CID_NS = "http://schemas.microsoft.com/office/word/2016/wordml/cid"
 _MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
 
@@ -146,6 +176,22 @@ def _comments_extended_root() -> bytes:
     return (
         b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         b'<w15:commentsEx xmlns:w15="' + _W15_NS.encode() + b'"/>'
+    )
+
+
+def _comments_ids_root() -> bytes:
+    """Return a fresh, empty ``commentsIds.xml`` root."""
+    return (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        b'<w16cid:commentsIds xmlns:w16cid="' + _W16CID_NS.encode() + b'"/>'
+    )
+
+
+def _people_root() -> bytes:
+    """Return a fresh, empty ``people.xml`` root."""
+    return (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        b'<w15:people xmlns:w15="' + _W15_NS.encode() + b'"/>'
     )
 
 
@@ -192,6 +238,40 @@ COMMENTS_EXTENDED_SPEC = PartSpec(
     content_type=CT_COMMENTS_EXTENDED,
     relationship_type=RT_COMMENTS_EXTENDED,
     root_xml=_comments_extended_root(),
+)
+
+COMMENTS_IDS_SPEC = PartSpec(
+    partname="/word/commentsIds.xml",
+    content_type=CT_COMMENTS_IDS,
+    relationship_type=RT_COMMENTS_IDS,
+    root_xml=_comments_ids_root(),
+)
+
+PEOPLE_SPEC = PartSpec(
+    partname="/word/people.xml",
+    content_type=CT_PEOPLE,
+    relationship_type=RT_PEOPLE,
+    root_xml=_people_root(),
+)
+
+#: ``/word/numbering.xml`` — list definitions.
+#:
+#: Unlike the comment side-parts this needs no ``PartFactory``
+#: registration: python-docx registers its own ``NumberingPart`` for
+#: :data:`CT.WML_NUMBERING`, and :func:`get_or_create_part` looks the
+#: class up, so an existing part round-trips as parsed XML for free. What
+#: python-docx *cannot* do is fabricate a missing one —
+#: ``NumberingPart.new()`` raises ``NotImplementedError`` — which is
+#: exactly the gap this spec closes.
+#:
+#: An empty ``<w:numbering/>`` is schema-valid: every child of
+#: ``CT_Numbering`` is optional, and there are no reserved entries to
+#: pre-seed the way footnotes and endnotes need separators.
+NUMBERING_SPEC = PartSpec(
+    partname="/word/numbering.xml",
+    content_type=CT.WML_NUMBERING,
+    relationship_type=RT.NUMBERING,
+    root_xml=_empty_root("numbering"),
 )
 
 FOOTNOTES_SPEC = PartSpec(
@@ -257,11 +337,18 @@ def get_or_create_part(doc: Document, spec: PartSpec) -> tuple[XmlPart, etree._E
 
 __all__ = [
     "COMMENTS_EXTENDED_SPEC",
+    "COMMENTS_IDS_SPEC",
     "COMMENTS_SPEC",
     "CT_COMMENTS_EXTENDED",
+    "CT_COMMENTS_IDS",
+    "CT_PEOPLE",
     "ENDNOTES_SPEC",
     "FOOTNOTES_SPEC",
+    "NUMBERING_SPEC",
+    "PEOPLE_SPEC",
     "PartSpec",
     "RT_COMMENTS_EXTENDED",
+    "RT_COMMENTS_IDS",
+    "RT_PEOPLE",
     "get_or_create_part",
 ]
