@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from docx import Document
 
-from docx_plus.core.ns import W, qn
+from docx_plus.core.ns import BUILD_NSMAP, W15, W, qn
 from docx_plus.core.oxml import (
     _compile_xpath,
     body_document_for,
@@ -31,6 +31,24 @@ def test_el_keeps_plain_attribute_keys() -> None:
     node = el("w:tag", id="bare")
     assert node.get("id") == "bare"
     assert node.get(qn("w:id")) is None
+
+
+def test_el_declares_the_build_nsmap_for_document_namespaces() -> None:
+    node = el("w:tag")
+    assert set(node.nsmap) == set(BUILD_NSMAP) - {"xml"}
+    assert "w15" not in node.nsmap
+
+
+def test_el_declares_only_its_own_prefix_for_extension_namespaces() -> None:
+    # w15 belongs to commentsExtended.xml. Declaring the document prefixes on
+    # it would put five irrelevant xmlns attributes on every thread entry.
+    node = el("w15:commentEx")
+    assert node.nsmap == {"w15": W15}
+
+
+def test_el_rejects_an_unknown_prefix_before_building() -> None:
+    with pytest.raises(ValueError, match="unknown namespace prefix"):
+        el("xyzzy:thing")
 
 
 def test_sub_creates_and_appends() -> None:

@@ -49,6 +49,7 @@ nav:
       - docx_plus.protection.document: reference/protection-document.md
       - docx_plus.comments.anchor: reference/comments-anchor.md
       - docx_plus.comments.read: reference/comments-read.md
+      - docx_plus.comments.threads: reference/comments-threads.md
       - docx_plus.comments.registry: reference/comments-registry.md
       - docx_plus.revisions.settings: reference/revisions-settings.md
       - docx_plus.revisions.mark: reference/revisions-mark.md

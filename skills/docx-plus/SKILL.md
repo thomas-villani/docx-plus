@@ -4,13 +4,14 @@ description: >-
   Use when generating or editing Microsoft Word (.docx) files in Python and you
   need OOXML features beyond what python-docx exposes: footnotes, endnotes,
   table of contents, captions / table of figures, fillable forms (content
-  controls: text / dropdown / date / checkbox), anchored comments, tracked
-  changes (insertions / deletions, accept / reject), style-cascade
-  inspection and Word-native style creation / modification, bookmarks and
-  cross-references, multi-column layout, page borders, line numbering,
-  page-number and date fields, and document protection. Also ships a `docx-plus`
-  command-line interface (inspect formatting, remap styles, edit content-control
-  values) for driving the library from a shell or CI. docx_plus composes with
+  controls: text / dropdown / date / checkbox), anchored and threaded comments
+  (replies, resolve / reopen), tracked changes (insertions / deletions, accept /
+  reject), style-cascade inspection and Word-native style creation /
+  modification, bookmarks and cross-references, multi-column layout, page
+  borders, line numbering, page-number and date fields, and document protection.
+  Also ships a `docx-plus` command-line interface (inspect formatting, remap
+  styles, edit content-control values, triage comment threads) for driving the
+  library from a shell or CI. docx_plus composes with
   python-docx — you keep your own Document object and call docx_plus for the
   operations python-docx can't reach.
 ---
@@ -92,9 +93,9 @@ copy-pasteable guide to that module's public API.
 | Inspect why a paragraph looks the way it does; create / modify / apply styles; resolve theme colors | `styles`         | `reference/styles.md`       |
 | Table of contents, figure/table captions, table of figures, footnotes, endnotes, bookmarks, cross-references, page-number/date/generic fields | `publishing`, `notes`, `bookmarks`, `fields` | `reference/publishing.md`   |
 | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders | `layout`         | `reference/layout.md`       |
-| Anchored review comments that "show in document" correctly   | `comments`        | `reference/comments.md`     |
+| Anchored review comments that "show in document" correctly; reply threads; resolve / reopen | `comments`        | `reference/comments.md`     |
 | Track changes: mark insertions / deletions, read revisions, accept / reject | `revisions`       | `reference/revisions.md`    |
-| Drive the library from a shell / CI: inspect formatting, remap styles, edit control values | `cli` (`docx-plus`) | `reference/cli.md`          |
+| Drive the library from a shell / CI: inspect formatting, remap styles, edit control values, triage comments | `cli` (`docx-plus`) | `reference/cli.md`          |
 
 ## Two patterns worth memorizing
 
@@ -139,11 +140,12 @@ doc.save("out.docx")
   (`mark_fields_dirty` lives here).
 - `reference/layout.md` — columns, section breaks, even/odd headers, line
   numbering, page borders.
-- `reference/comments.md` — anchored comments (add / edit / delete / read).
+- `reference/comments.md` — anchored comments (add / edit / delete / read) and
+  threads (reply, resolve / reopen, read nested).
 - `reference/revisions.md` — tracked changes: enable/disable track-changes mode,
   mark insertions / deletions, read revisions, accept / reject.
 - `reference/cli.md` — the `docx-plus` console command (`inspect` / `restyle` /
-  `controls`) for driving the library from a shell or CI.
+  `controls` / `comments`) for driving the library from a shell or CI.
 
 For exhaustive signatures and the error taxonomy, the rendered docs are at
 <https://thomas-villani.github.io/docx-plus/> and the in-repo index is

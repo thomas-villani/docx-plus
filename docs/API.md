@@ -33,19 +33,20 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Public surface at v0.3
+## Public surface at v0.4 (unreleased)
 
 v0.1's six phases, the initial v0.2 cycle (comments, layout, bookmarks
 / cross-references, footnotes / endnotes), the v0.2 in-place
 expansion (toggle props, in-place comment / note edits, line numbering,
 page borders, conditional table-style formatting, publishing module),
-and the v0.3 cycle (tracked changes, the `docx-plus` CLI) are all
-complete. Ten runnable example scripts in
+the v0.3 cycle (tracked changes, the `docx-plus` CLI), and the v0.4
+cycle (threaded comments with resolve / reopen) are all complete.
+Eleven runnable example scripts in
 `docx_plus/examples/` demonstrate the surface: `inspect_document.py`,
 `restyle_existing.py`, `build_form.py`, `populate_form.py`,
-`add_comments.py`, `multi_column_layout.py`, `bookmarks_and_xrefs.py`,
-`footnotes_and_endnotes.py`, `publishing_layout.py`,
-`track_changes.py`. Start there if you
+`add_comments.py`, `threaded_comments.py`, `multi_column_layout.py`,
+`bookmarks_and_xrefs.py`, `footnotes_and_endnotes.py`,
+`publishing_layout.py`, `track_changes.py`. Start there if you
 want to see the library in motion before reading the index.
 
 ### `docx_plus` (top-level package)
@@ -53,7 +54,7 @@ want to see the library in motion before reading the index.
 | Symbol | Kind | Notes |
 |---|---|---|
 | `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §9](ARCHITECTURE.md#9-error-hierarchy) |
-| `__version__` | str | `"0.3.0"` |
+| `__version__` | str | `"0.3.0"` — bumps to `"0.4.0"` at release |
 
 ### `docx_plus.core`
 
@@ -66,11 +67,13 @@ The foundation primitives. Every capability module imports from here only.
 | `IdRegistry.next()` | method | Issue a fresh 31-bit positive `w:id` |
 | `IdRegistry.reserve(value)` | method | Reserve a specific value or raise `DuplicateIdError` |
 | `IdRegistry.issued()` | method | Frozenset snapshot of all issued IDs |
+| `ParaIdRegistry(doc)` | class | v0.4. Per-*package* `w14:paraId` allocator — threaded comments key their parent/child links off it, so it seeds from the body plus the comments / footnotes / endnotes parts. `next_hex()` renders the 8-uppercase-hex-digit form |
 | `DuplicateIdError` | exception | Dual-bases: `DocxPlusError, ValueError`. `reserve()` on an already-issued value |
 | `IdRangeError` | exception | Dual-bases: `DocxPlusError, ValueError`. A reserved id falls outside the 31-bit positive range |
 | `qn(name)` | function | `"w:tag"` → Clark-notation `{namespace}tag` |
 | `InvalidNamespaceError` | exception | Dual-bases: `DocxPlusError, ValueError`. `qn()` got a malformed name or unknown prefix |
-| `NSMAP` | dict | The library's pre-bound namespace map (`w`, `w14`, `r`, `mc`, `a`, `xml`) |
+| `NSMAP` | dict | The library's pre-bound *query* namespace map (`w`, `w14`, `w15`, `r`, `mc`, `a`, `xml`) |
+| `W15` | str | The Word 2012 extension namespace URI — `commentsExtended.xml`. v0.4 |
 | `XML` | str | XML namespace URI (added Phase 5 to make `qn("xml:space")` work for `w:instrText`) |
 | `el(tag, **attrs)` | function | Create a namespaced element |
 | `sub(parent, tag, **attrs)` | function | Create + append a namespaced child |
@@ -82,8 +85,10 @@ The foundation primitives. Every capability module imports from here only.
 | `get_or_create_part(doc, spec)` | function | Return `(part, root_element)` for a separate OOXML part (creates and wires the relationship if absent). v0.2 |
 | `PartSpec` | dataclass (frozen) | Identification data for `get_or_create_part`. Use the pre-baked constants below or build your own |
 | `COMMENTS_SPEC` | `PartSpec` | `/word/comments.xml` |
+| `COMMENTS_EXTENDED_SPEC` | `PartSpec` | `/word/commentsExtended.xml` — comment threading. v0.4 |
 | `FOOTNOTES_SPEC` | `PartSpec` | `/word/footnotes.xml` |
 | `ENDNOTES_SPEC` | `PartSpec` | `/word/endnotes.xml` |
+| `CT_COMMENTS_EXTENDED` / `RT_COMMENTS_EXTENDED` | str | Content- and relationship-type URIs for the extended part. Microsoft extensions, absent from python-docx's `CT` / `RT` enums. v0.4 |
 
 ### `docx_plus.styles` — inspection
 
@@ -215,21 +220,27 @@ password-protected forms are v0.2 (SPEC §1).
 
 ### `docx_plus.comments`
 
-Anchored comments — the body-side range markers python-docx skips, plus
-the comment body in `comments.xml`. Architecture walkthrough in
+Anchored, threaded comments — the body-side range markers python-docx
+skips, the comment body in `comments.xml`, and the thread graph in
+`commentsExtended.xml`. Architecture walkthrough in
 [`ARCHITECTURE.md` §7.6](ARCHITECTURE.md#76-anchored-comments).
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `add_comment(target, text, *, author="", initials=None, id_registry=None)` | function | Anchor a comment to a `Run`, `Paragraph` (≥1 run required), or `(Run, Run)` tuple. Writes `commentRangeStart` / `commentRangeEnd` / the `CommentReference` marker run, plus the `<w:comment>` body |
-| `edit_comment(doc, comment_id, text)` | function | Replace the body text of an existing comment in place. Preserves `w:author` / `w:date` / `w:initials` and the body-side anchors. Raises `CommentNotFoundError` if id missing |
-| `delete_comment(doc, comment_id)` | function | Remove all four traces (range markers, reference run, body). Idempotent — missing id is a no-op |
-| `clear_all_comments(doc)` | function | Bulk delete every comment by routing each id through `delete_comment`. Idempotent on an empty document |
+| `add_comment(target, text, *, author="", initials=None, id_registry=None, para_id_registry=None)` | function | Anchor a comment to a `Run`, `Paragraph` (≥1 run required), or `(Run, Run)` tuple. Writes `commentRangeStart` / `commentRangeEnd` / the `CommentReference` marker run, the `<w:comment>` body, and — v0.4 — a `w14:paraId` stamp plus an unresolved `<w15:commentEx>` thread entry |
+| `reply_to_comment(doc, parent_id, text, *, author="", initials=None, id_registry=None, para_id_registry=None)` | function | v0.4. Add a reply beneath an existing comment, mirroring the parent's anchor range. Raises `CommentNotFoundError` if `parent_id` is missing |
+| `resolve_comment(doc, comment_id)` | function | v0.4. Mark the whole thread containing `comment_id` resolved (`w15:done="1"`) |
+| `reopen_comment(doc, comment_id)` | function | v0.4. The inverse — mark the thread unresolved |
+| `edit_comment(doc, comment_id, text)` | function | Replace the body text of an existing comment in place. Preserves `w:author` / `w:date` / `w:initials`, the body-side anchors, and the `w14:paraId` that holds the thread together. Raises `CommentNotFoundError` if id missing |
+| `delete_comment(doc, comment_id, *, include_replies=True)` | function | Remove every trace (range markers, reference run, body, thread entry). `include_replies=True` (default) also deletes the subtree, as Word does; `False` promotes orphaned replies to roots. Idempotent — missing id is a no-op |
+| `clear_all_comments(doc, *, remove_part=False)` | function | Bulk delete every comment and thread entry. `remove_part=True` tears down both the comments and commentsExtended parts. Idempotent on an empty document |
 | `read_comments(doc)` | function | List every comment paired with the document text it anchors. Returns `list[AnchoredComment]` |
+| `read_threads(doc)` | function | v0.4. The same comments grouped into threads. Returns `list[CommentThread]` |
 | `CommentRef` | dataclass (frozen) | `comment_id`, `body_element` — handle returned by `add_comment` |
-| `AnchoredComment` | dataclass (frozen) | `comment_id`, `author`, `initials`, `timestamp`, `text`, `anchored_text`, `paragraph_index` |
+| `AnchoredComment` | dataclass (frozen) | `comment_id`, `author`, `initials`, `timestamp`, `text`, `anchored_text`, `paragraph_index`, `parent_id`, `resolved` |
+| `CommentThread` | dataclass (frozen) | v0.4. `root`, `replies`, `resolved` |
 | `CommentIdRegistry(doc)` | class | Per-document comment-id allocator. Subclasses the internal `_IdRegistryBase` and seeds from the comments part + any orphaned body anchors |
-| `CommentNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `edit_comment` on a missing id |
+| `CommentNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `edit_comment` / `reply_to_comment` / `resolve_comment` on a missing id |
 | `CommentTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` |
 
 ### `docx_plus.layout`

@@ -6,6 +6,64 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Threaded comments (`comments/threads.py`)** — the reply / resolve model
+  Word has used since 2013, backed by the `commentsExtended.xml` part
+  neither python-docx nor `docx_plus` previously wrote.
+  `reply_to_comment` attaches a reply beneath an existing comment,
+  mirroring the parent's anchor range so Word renders the thread as one
+  balloon; `resolve_comment` / `reopen_comment` toggle a thread's
+  resolved state (`w15:done`), thread-wide as in Word's UI, so naming any
+  member moves the whole thread; `read_threads` returns comments grouped
+  as `CommentThread` (root, replies, resolved). `read_comments` results
+  gained `parent_id` and `resolved`. `delete_comment` gained
+  `include_replies` (default `True`), which deletes a root's reply
+  subtree the way Word does. A new
+  `docx_plus/examples/threaded_comments.py` and the refreshed `comments`
+  agent-skill reference round out the surface.
+- **`docx-plus comments`** — `list` (with `--unresolved` and `--json`,
+  printing replies indented under their root), plus `resolve` and
+  `reopen`, which require `-o/--output` or `--in-place` per the CLI's
+  mutating-command convention.
+- **`core.ParaIdRegistry`** — allocator for `w14:paraId`, the id threaded
+  comments key their parent/child links off. Unlike every other registry
+  it is unique across the whole *package*, so it seeds from the document
+  body plus the comments / footnotes / endnotes parts; `next_hex()`
+  renders the 8-uppercase-hex-digit form Word writes.
+- **`core.COMMENTS_EXTENDED_SPEC`** — `PartSpec` for
+  `/word/commentsExtended.xml`, alongside the `CT_COMMENTS_EXTENDED` /
+  `RT_COMMENTS_EXTENDED` URIs (Microsoft extensions with no member in
+  python-docx's `CT` / `RT` enums) and an `XmlPart` registration so an
+  existing extended part round-trips as parsed XML rather than a blob.
+- **`core.ns.W15` and `core.ns.BUILD_NSMAP`** — the Word 2012 namespace,
+  and a narrower construction map that keeps `el()` from declaring the
+  extension prefix on every element written into `document.xml`.
+
+### Changed
+
+- **`add_comment` now writes thread metadata.** Every comment it inserts
+  is stamped with a `w14:paraId` and registered as an unresolved root in
+  `commentsExtended.xml`, which is created on first use — matching what
+  Word writes, and making any comment reply-able and resolvable the
+  moment it exists. Documents that previously carried only
+  `comments.xml` will gain the second part. `add_comment` accepts an
+  optional `para_id_registry` for sharing an allocator across a batch.
+- **`edit_comment` preserves the thread link.** The rebuilt body
+  paragraph carries the comment's original `paraId`, so replies stay
+  attached and a resolved thread does not silently reopen.
+- **`clear_all_comments` clears thread entries too**, and its
+  `remove_part=True` form tears down the commentsExtended part alongside
+  the comments part.
+- **The fabricated `comments.xml` root declares `xmlns:w14` and
+  `mc:Ignorable="w14"`**, since comment body paragraphs now carry a
+  `w14` attribute.
+
+Documents written by python-docx or by Word before 2013 have no thread
+data at all; they read as one unresolved single-comment thread each, and
+replying to or resolving such a comment materializes the missing metadata
+in place rather than failing.
+
 ## [0.3.0] - 2026-06-15
 
 ### Added

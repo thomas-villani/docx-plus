@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from lxml import etree
 
-from docx_plus.core.ns import NSMAP, qn
+from docx_plus.core.ns import BUILD_NSMAP, NSMAP, qn
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -35,6 +35,13 @@ def el(tag: str, **attrs: str) -> etree._Element:
         **attrs: Attributes. Keys may be namespaced (``"w:val"``) or plain
             (``"id"``). Values are coerced to strings via the lxml setter.
 
+    Elements in the main document namespaces are built declaring
+    :data:`~docx_plus.core.ns.BUILD_NSMAP`. An element in any other
+    namespace — ``w15``, which only appears in ``commentsExtended.xml`` —
+    declares just its own prefix, so extension parts stay free of
+    irrelevant declarations and ``document.xml`` stays free of the
+    extension prefix.
+
     Returns:
         A fresh detached :class:`lxml.etree._Element`.
 
@@ -43,7 +50,10 @@ def el(tag: str, **attrs: str) -> etree._Element:
         >>> style.tag.endswith("}style")
         True
     """
-    node = etree.Element(qn(tag), nsmap=NSMAP)
+    qname = qn(tag)  # validates the prefix before it is used as an nsmap key
+    prefix = tag.partition(":")[0]
+    nsmap = BUILD_NSMAP if prefix in BUILD_NSMAP else {prefix: NSMAP[prefix]}
+    node = etree.Element(qname, nsmap=nsmap)
     for key, value in attrs.items():
         node.set(_resolve_attr_key(key), value)
     return node

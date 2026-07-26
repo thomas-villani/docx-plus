@@ -10,19 +10,21 @@ subcommand is a thin wrapper over one tested function. Built on stdlib
 
 **You usually don't need this from Python.** If you're already writing Python,
 call the underlying functions directly (`resolve_effective_formatting`,
-`remap_styles`, `read_controls` / `set_control_value` / `clear_control`). Reach
-for the CLI when the caller is a shell, CI step, or another non-Python tool.
+`remap_styles`, `read_controls` / `set_control_value` / `clear_control`,
+`read_threads` / `resolve_comment`). Reach for the CLI when the caller is a
+shell, CI step, or another non-Python tool.
 
 ## Conventions
 
-- **Read commands take `--json`** (`inspect`, `controls list`): default is
-  human-readable text; `--json` emits structured output.
+- **Read commands take `--json`** (`inspect`, `controls list`,
+  `comments list`): default is human-readable text; `--json` emits structured
+  output.
 - **Mutating commands never overwrite the input by accident** (`restyle`,
-  `controls set` / `clear`): they require `-o/--output`, or `--in-place` to
-  opt into overwriting the source.
+  `controls set` / `clear`, `comments resolve` / `reopen`): they require
+  `-o/--output`, or `--in-place` to opt into overwriting the source.
 - **Exit codes:** `0` success; `1` for a handled error (bad path, missing
-  output, un-coercible value, unknown tag — printed as `error: ...` on stderr);
-  `2` for a usage error or no command.
+  output, un-coercible value, unknown tag or comment id — printed as
+  `error: ...` on stderr); `2` for a usage error or no command.
 
 ## `inspect` — effective formatting
 
@@ -67,3 +69,19 @@ Wraps `read_controls` / `set_control_value` / `clear_control`. `set` reads the
 control's type and **coerces the command-line string**: `true/false/1/0/yes/no/on/off`
 for checkboxes, an ISO 8601 string for dates, plain text otherwise. An
 un-coercible value or unknown tag is a clean `error: ...` (exit 1).
+
+## `comments` — list / resolve / reopen
+
+```bash
+docx-plus comments list draft.docx                      # threads, replies indented
+docx-plus comments list draft.docx --unresolved --json  # only open threads
+docx-plus comments resolve draft.docx 3 -o triaged.docx
+docx-plus comments reopen triaged.docx 3 --in-place
+```
+
+Wraps `read_threads` / `resolve_comment` / `reopen_comment`. `list` prints each
+thread root with its replies indented beneath, the anchored text each is
+attached to, and a `[resolved]` marker; a comment with no anchor in the document
+body is flagged as orphaned. Resolution is **thread-wide**, so `resolve` /
+`reopen` accept any comment id in the thread. An unknown id is a clean
+`error: ...` (exit 1).

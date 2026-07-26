@@ -21,11 +21,12 @@ docx_plus/
 ├── __init__.py              # top-level re-exports (DocxPlusError, __version__)
 ├── core/                    # foundation primitives — every capability depends on these
 │   ├── __init__.py          # DocxPlusError (base of all typed errors) + re-exports
-│   ├── ns.py                # W, W14, R, MC, A, XML namespace constants + qn()
+│   ├── ns.py                # W, W14, W15, R, MC, A, XML constants + NSMAP / BUILD_NSMAP + qn()
 │   ├── oxml.py              # el(), sub(), xpath(), remove(),
 │   │                        # build_complex_field, insert_before_first_anchor
-│   ├── ids.py               # IdRegistry, _IdRegistryBase, DuplicateIdError
-│   └── parts.py             # get_or_create_part, PartSpec, COMMENTS/FOOTNOTES/ENDNOTES_SPEC
+│   ├── ids.py               # IdRegistry, ParaIdRegistry, _IdRegistryBase, DuplicateIdError
+│   └── parts.py             # get_or_create_part, PartSpec,
+│                            # COMMENTS/COMMENTS_EXTENDED/FOOTNOTES/ENDNOTES_SPEC
 ├── styles/                  # inspect, modify, theme
 │   ├── __init__.py          # re-exports every public symbol from the submodules
 │   ├── inspect.py           # resolve_effective_formatting + ResolvedFormatting + FormattingSource
@@ -49,11 +50,14 @@ docx_plus/
 │   ├── __init__.py          # re-exports the public surface
 │   └── document.py          # protect_document, unprotect_document, is_protected,
 │                            # ProtectionMode Literal
-├── comments/                # anchored comments — v0.2
+├── comments/                # anchored, threaded comments — v0.2 / v0.4
 │   ├── __init__.py          # re-exports the public surface
 │   ├── anchor.py            # add_comment, edit_comment, delete_comment, clear_all_comments,
 │   │                        # CommentRef, CommentTarget, CommentNotFoundError
 │   ├── read.py              # read_comments, AnchoredComment
+│   ├── threads.py           # reply_to_comment, resolve_comment, reopen_comment,
+│   │                        # read_threads, CommentThread — v0.4
+│   ├── _extended.py         # commentsExtended.xml thread graph (internal) — v0.4
 │   └── registry.py          # CommentIdRegistry
 ├── layout/                  # page-layout extras — v0.2
 │   ├── __init__.py          # re-exports the public surface
@@ -503,6 +507,10 @@ fresh document:
 - `/word/footnotes.xml` (relationship `RT.FOOTNOTES`)
 - `/word/endnotes.xml` (relationship `RT.ENDNOTES`)
 
+v0.4 adds a fourth for comment threading:
+
+- `/word/commentsExtended.xml` (relationship `RT_COMMENTS_EXTENDED`)
+
 `core/parts.py:get_or_create_part(doc, spec)` is the single entry
 point. Given a `PartSpec` describing the target, it tries
 `doc.part.part_related_by(spec.relationship_type)`; on `KeyError` it
@@ -511,16 +519,20 @@ the correct part class from `PartFactory.part_type_for`, constructs the
 part, and wires the relationship. Returns `(part, root_element)`.
 
 python-docx already registers `CommentsPart` for `WML_COMMENTS` at
-package-import time. It does **not** register footnote or endnote
-content types, so `core/parts.py` does — installing internal
-`_FootnotesPart` / `_EndnotesPart` subclasses of `XmlPart` with
-`PartFactory.part_type_for.setdefault(...)`. Without that registration,
-an existing document with footnotes would deserialize the part as the
-default `Part` (blob-only), and `part.element` would not exist.
+package-import time. It does **not** register footnote, endnote, or
+commentsExtended content types, so `core/parts.py` does — installing
+internal `_FootnotesPart` / `_EndnotesPart` / `_CommentsExtendedPart`
+subclasses of `XmlPart` with `PartFactory.part_type_for.setdefault(...)`.
+Without that registration, an existing document with footnotes would
+deserialize the part as the default `Part` (blob-only), and
+`part.element` would not exist.
 
-Three pre-baked `PartSpec` constants cover every v0.2 need:
-`COMMENTS_SPEC`, `FOOTNOTES_SPEC`, `ENDNOTES_SPEC`. Custom callers can
-build their own.
+Four pre-baked `PartSpec` constants cover every need through v0.4:
+`COMMENTS_SPEC`, `COMMENTS_EXTENDED_SPEC`, `FOOTNOTES_SPEC`,
+`ENDNOTES_SPEC`. Custom callers can build their own. The
+commentsExtended content and relationship types are Microsoft extensions
+with no member in python-docx's enums, so they ship alongside as the
+`CT_COMMENTS_EXTENDED` / `RT_COMMENTS_EXTENDED` string constants.
 
 ---
 
@@ -533,7 +545,7 @@ elements that anchor the comment to a text range, so its comments show
 in the review pane but have nothing to point at when the reader clicks
 "show in document".
 
-Each `add_comment` writes four elements:
+Each `add_comment` writes five elements:
 
 1. `<w:commentRangeStart w:id=N/>` — placed before `start_anchor` via
    `addprevious`
@@ -542,7 +554,10 @@ Each `add_comment` writes four elements:
 3. The reference run — `<w:r><w:rPr><w:rStyle val="CommentReference"/></w:rPr><w:commentReference w:id=N/></w:r>`
    — placed after the range end
 4. The comment body — `<w:comment w:id=N w:author=... w:date=... [w:initials=...]>`
-   appended to the root of `comments.xml` (via `get_or_create_part`)
+   appended to the root of `comments.xml` (via `get_or_create_part`), its
+   paragraphs stamped with `w14:paraId`
+5. The thread entry — `<w15:commentEx w15:paraId=P w15:done="0"/>`
+   appended to `commentsExtended.xml` (v0.4; see §7.6.1)
 
 Target shapes: a python-docx `Run` (brackets just that run), a
 `Paragraph` (brackets every run, must have ≥1 run), or a
@@ -551,8 +566,10 @@ paragraphs; OOXML permits this. Comment body uses
 `xml:space="preserve"` so leading/trailing whitespace survives Word's
 XML reader.
 
-`delete_comment(doc, comment_id)` is the inverse — removes all four
-elements and is idempotent (missing id is a no-op).
+`delete_comment(doc, comment_id, *, include_replies=True)` is the
+inverse — removes all five elements and is idempotent (missing id is a
+no-op). By default it also deletes the comment's reply subtree, which is
+what Word does when you delete a thread root.
 
 `read_comments(doc)` walks `comments.xml` and pairs each `<w:comment>`
 with its body range, extracting `author`, `initials`, `timestamp`
@@ -566,8 +583,59 @@ bookmark, note ids). It seeds from both the comments part AND any
 orphaned body-side anchors so a partially-deleted comment cannot
 trigger id reuse.
 
-Threaded comments (w15 `parentCommentEx` for replies) are deferred to
-v0.3 — basic anchored comments first.
+## §7.6.1 Comment threading — `commentsExtended.xml`
+
+Word 2013 made comments *threaded* without touching `<w:comment>`: the
+thread graph went into a second part, `/word/commentsExtended.xml`,
+holding one `<w15:commentEx>` per comment with an optional
+`w15:paraIdParent` and a `w15:done` resolved flag. `comments/threads.py`
+(v0.4) is the public surface — `reply_to_comment`, `resolve_comment`,
+`reopen_comment`, `read_threads` — over `comments/_extended.py`, which
+owns the part.
+
+Three properties of Microsoft's design shape the implementation:
+
+1. **Entries key off `w14:paraId`, not `w:id`.** The key is the `paraId`
+   of the comment body's *last* paragraph. Comment ids and thread keys
+   are separate namespaces, so every mapping between them routes through
+   the comment body. `ParaIdRegistry` (`core/ids.py`) allocates the
+   values; unlike every other registry it is unique across the whole
+   *package*, not one part, so it seeds from the body plus the comments /
+   footnotes / endnotes parts. Word's legal range for a `paraId` —
+   nonzero and below `0x80000000` — is exactly the existing 31-bit
+   allocator range, so only the hex rendering is new.
+2. **A reply shares its parent's anchor range.** `_mirror_anchors` nests
+   the markers the way Word does: the reply's `commentRangeStart` just
+   inside the parent's, its `commentRangeEnd` and reference run after the
+   parent's reference run. A parent with no anchors (an orphaned comment)
+   leaves the reply orphaned too rather than inventing a range.
+3. **Resolution is thread-wide.** Word's Resolve button greys out root
+   and replies together, so `resolve_comment` sets `w15:done` across the
+   whole thread no matter which member you name.
+
+The part is optional in the format, and every reader here treats its
+absence as "one unresolved root per comment" — which is the correct
+reading of a document from python-docx or pre-2013 Word. The write paths
+materialize the missing metadata in place, so replying to or resolving a
+foreign comment upgrades it rather than failing.
+
+`core/parts.py` supplies `COMMENTS_EXTENDED_SPEC` plus the
+`CT_COMMENTS_EXTENDED` / `RT_COMMENTS_EXTENDED` URIs — Microsoft
+extensions with no member in python-docx's `CT` / `RT` enums — and
+registers an `XmlPart` subclass for the content type so an existing
+extended part deserializes with a parsed `.element` instead of a blob.
+
+Because `w14:paraId` is now written into `comments.xml`, the fabricated
+comments root declares `xmlns:w14` and `mc:Ignorable="w14"`. And because
+`w15` belongs only to the extended part, `core/ns.py` splits the
+namespace map in two: `NSMAP` is the *query* map that XPath binds, while
+the narrower `BUILD_NSMAP` is what `el()` declares on main-document
+elements. An element outside those prefixes declares just its own, so
+adding `w15` did not stamp a stray `xmlns:w15` onto every element the
+library writes.
+
+Deferred: `commentsIds.xml` (`w16cid` durable ids, which Word
+regenerates) and `people.xml` (`w15:people` author presence, cosmetic).
 
 ---
 
