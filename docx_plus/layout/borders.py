@@ -3,8 +3,13 @@
 python-docx does not abstract ``<w:pgBorders>`` — the section-scoped
 control for the decorative box around a page that formal documents
 (certificates, awards, contract title pages) frequently want. This
-module fills the gap with a :class:`Border` dataclass and a single
-:func:`set_page_borders` helper.
+module fills the gap with a single :func:`set_page_borders` helper over
+the shared :class:`~docx_plus.core.borders.Border` dataclass.
+
+:class:`Border` was defined here in v0.2 and moved to
+:mod:`docx_plus.core.borders` in v0.5, when table and cell borders became
+a second consumer of the identical ``CT_Border`` shape. It is re-exported
+below, so ``from docx_plus.layout import Border`` is unchanged.
 
 ECMA-376 §17.6.10: ``pgBorders`` is a container element whose four
 optional children (``top``, ``left``, ``bottom``, ``right`` — in
@@ -19,19 +24,14 @@ This module imports only from ``docx_plus.core`` (SPEC §9.1).
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from docx_plus.core.borders import Border, border_attrs
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import el, insert_before_first_anchor, remove, sub
 
 if TYPE_CHECKING:
     from docx.section import Section
-
-
-# ECMA-376 17.18.79 ST_HexColor: "auto" or six hex digits ("RRGGBB").
-_HEX_COLOR_RE = re.compile(r"^(auto|[0-9A-Fa-f]{6})$")
 
 
 # Schema siblings later than `w:pgBorders` per ECMA-376 17.6.17 CT_SectPr.
@@ -52,47 +52,6 @@ _LATER_SIBLINGS: tuple[str, ...] = (
 )
 
 OffsetFrom = Literal["page", "text"]
-
-
-@dataclass(frozen=True)
-class Border:
-    """One side of a page border.
-
-    Attributes:
-        style: ECMA-376 17.18.2 border style name. Common values:
-            ``"single"`` (default), ``"double"``, ``"thick"``,
-            ``"dashed"``, ``"dotted"``, ``"wave"``, ``"none"``. The
-            full enumeration has 200+ entries — see the spec.
-        size: Border thickness in **eighths of a point** (so ``4`` is
-            0.5 pt and ``8`` is 1 pt). ECMA-376 caps this at 96.
-        color: ``"RRGGBB"`` hex or ``"auto"`` (default) to let Word pick
-            a sensible contrast. Validated at construction against
-            ECMA-376 17.18.79 ``ST_HexColor`` — ``"red"``, ``"#FF0000"``,
-            or a 3-digit shorthand raise :class:`ValueError`.
-        space: Gap between the page edge (or text — see
-            :func:`set_page_borders`'s ``offset_from``) and the border,
-            in **points**. ECMA-376 17.6.10 caps this at 31. ``24``
-            (default) — 1/3 inch — matches what Word's UI emits for
-            ``"Whole document, Box, Default settings"`` paired with the
-            default ``offset_from="page"``.
-
-    Raises:
-        ValueError: If ``color`` is not ``"auto"`` or a six-hex-digit
-            ``"RRGGBB"`` string.
-    """
-
-    style: str = "single"
-    size: int = 4
-    color: str = "auto"
-    space: int = 24
-
-    def __post_init__(self) -> None:
-        """Validate ``color`` against ECMA-376 ``ST_HexColor`` at construction."""
-        if not _HEX_COLOR_RE.match(self.color):
-            raise ValueError(
-                "Border.color must be 'auto' or a six-hex-digit 'RRGGBB' string; "
-                f"got {self.color!r}"
-            )
 
 
 def set_page_borders(
@@ -149,16 +108,7 @@ def set_page_borders(
     ):
         if border is None:
             continue
-        sub(
-            borders_el,
-            tag,
-            **{
-                "w:val": border.style,
-                "w:sz": str(border.size),
-                "w:color": border.color,
-                "w:space": str(border.space),
-            },
-        )
+        sub(borders_el, tag, **border_attrs(border))
 
     insert_before_first_anchor(sect_pr, borders_el, _LATER_SIBLINGS)
 

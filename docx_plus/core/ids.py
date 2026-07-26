@@ -67,6 +67,12 @@ class _IdRegistryBase:
     it as a magic attribute on :class:`~docx.document.Document` (SPEC §9.4).
     """
 
+    #: Lowest legal value in this namespace. ``w:id`` and ``w14:paraId``
+    #: both treat ``0`` as invalid, but ``w:abstractNumId`` starts at 0 —
+    #: python-docx's own default template uses ``abstractNumId`` 0-8 — so
+    #: the numbering registries lower this.
+    _MIN_ID: int = 1
+
     def __init__(self, doc: Document) -> None:
         """Scan ``doc`` for IDs already issued in this namespace.
 
@@ -110,12 +116,23 @@ class _IdRegistryBase:
             except ValueError:
                 continue
 
-    def _collect_hex_id_attrs(self, root: etree._Element, expr: str, attr: str) -> None:
-        """Base-16 sibling of :meth:`_collect_id_attrs`.
+    def _collect_named_attrs(
+        self,
+        root: etree._Element,
+        expr: str,
+        attr: str,
+        *,
+        base: int = 10,
+    ) -> None:
+        """Generalised sibling of :meth:`_collect_id_attrs`.
 
-        ``w14:paraId`` and friends are 8-hex-digit strings rather than
-        decimal integers, but they share the same 31-bit uniqueness
-        space, so they seed the same ``_issued`` set once parsed.
+        :meth:`_collect_id_attrs` hardcodes ``w:id``; this takes the
+        attribute name, so namespaces keyed off something else
+        (``w:numId``, ``w:abstractNumId``, ``w16cid:durableId``) can seed
+        through the same path. ``base`` selects the integer parse — the
+        hex-rendered ids (``w14:paraId``) share the same 31-bit
+        uniqueness space as the decimal ones, so both land in the same
+        ``_issued`` set once parsed.
         """
         qattr = qn(attr)
         for elem in xpath(root, expr):
@@ -123,9 +140,17 @@ class _IdRegistryBase:
             if raw is None:
                 continue
             try:
-                self._issued.add(int(raw, 16))
+                self._issued.add(int(raw, base))
             except ValueError:
                 continue
+
+    def _collect_hex_id_attrs(self, root: etree._Element, expr: str, attr: str) -> None:
+        """Base-16 sibling of :meth:`_collect_id_attrs`.
+
+        Thin wrapper over :meth:`_collect_named_attrs` kept for the
+        ``w14:paraId`` callers that predate it.
+        """
+        self._collect_named_attrs(root, expr, attr, base=16)
 
     def next(self) -> int:
         """Issue a fresh 31-bit positive integer not previously seen.
@@ -142,7 +167,28 @@ class _IdRegistryBase:
             if candidate not in self._issued:
                 self._issued.add(candidate)
                 return candidate
-        for candidate in range(1, _MAX_W_ID + 1):
+        return self.next_sequential()
+
+    def next_sequential(self) -> int:
+        """Issue the lowest unused value at or above :attr:`_MIN_ID`.
+
+        The counterpart to :meth:`next`, which mints a *random* value.
+        Random is right where an id is only ever an opaque handle
+        (``w:id``, ``w14:paraId``) and collisions across independently
+        edited documents matter. It is wrong for numbering, where Word
+        and python-docx both allocate the lowest free integer and where a
+        ``numbering.xml`` full of nine-digit ids is needlessly unreadable.
+
+        Gap-filling, so a document whose ids are ``1, 2, 5`` yields ``3``.
+
+        Returns:
+            A new ``int`` in ``[_MIN_ID, 2**31 - 1]``.
+
+        Raises:
+            RuntimeError: If the 31-bit space is exhausted (effectively
+                impossible — included for completeness).
+        """
+        for candidate in range(self._MIN_ID, _MAX_W_ID + 1):
             if candidate not in self._issued:
                 self._issued.add(candidate)
                 return candidate
@@ -152,18 +198,20 @@ class _IdRegistryBase:
         """Reserve a specific value, asserting it isn't already issued.
 
         Args:
-            value: A positive integer in ``[1, 2**31 - 1]``.
+            value: An integer in ``[_MIN_ID, 2**31 - 1]`` — normally
+                ``[1, 2**31 - 1]``, but the numbering registries admit
+                ``0``.
 
         Returns:
             ``value`` (echoed so the call composes inline).
 
         Raises:
-            IdRangeError: If ``value`` is outside the 31-bit positive range.
+            IdRangeError: If ``value`` is outside the namespace's legal range.
             DuplicateIdError: If ``value`` has already been issued or
                 reserved on this registry.
         """
-        if not 1 <= value <= _MAX_W_ID:
-            raise IdRangeError(f"id {value!r} outside 31-bit positive range")
+        if not self._MIN_ID <= value <= _MAX_W_ID:
+            raise IdRangeError(f"id {value!r} outside legal range [{self._MIN_ID}, {_MAX_W_ID}]")
         if value in self._issued:
             raise DuplicateIdError(f"id {value} already issued")
         self._issued.add(value)

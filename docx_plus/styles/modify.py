@@ -24,6 +24,7 @@ from lxml import etree
 from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import el, xpath
+from docx_plus.core.oxml import ordered_insert as _ordered_insert
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -1008,36 +1009,6 @@ def _write_color(style_el: etree._Element, value: str | None) -> None:
 # --------------------------------------------------------------------------
 # Schema-ordered insert / replace helpers.
 # --------------------------------------------------------------------------
-
-
-def _ordered_insert(parent: etree._Element, child: etree._Element, order: tuple[str, ...]) -> None:
-    """Insert ``child`` into ``parent`` at the position dictated by ``order``.
-
-    Removes any existing element in ``parent`` with the same local name first,
-    so calling twice with the same tag replaces the previous instance. The
-    new element is placed immediately before the first existing sibling whose
-    local name comes later in ``order``.
-    """
-    target_local = etree.QName(child.tag).localname
-    for existing in parent.findall(qn(f"w:{target_local}")):
-        parent.remove(existing)
-    try:
-        target_idx = order.index(target_local)
-    except ValueError:
-        parent.append(child)
-        return
-    for sibling in parent:
-        if not isinstance(sibling.tag, str):
-            continue
-        sibling_local = etree.QName(sibling.tag).localname
-        try:
-            sibling_idx = order.index(sibling_local)
-        except ValueError:
-            continue
-        if sibling_idx > target_idx:
-            sibling.addprevious(child)
-            return
-    parent.append(child)
 
 
 def _set_simple_child(style_el: etree._Element, tag: str, attrs: dict[str, str]) -> None:

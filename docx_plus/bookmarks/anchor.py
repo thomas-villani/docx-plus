@@ -22,7 +22,7 @@ from lxml import etree
 
 from docx_plus.bookmarks.registry import BookmarkIdRegistry
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el, remove, xpath
+from docx_plus.core.oxml import build_bookmark, remove, xpath
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -105,13 +105,13 @@ def add_bookmark(
     if id_registry is None:
         id_registry = BookmarkIdRegistry(doc)
     bookmark_id = id_registry.next()
-    bid = str(bookmark_id)
 
-    start = el("w:bookmarkStart", **{"w:id": bid, "w:name": name})
-    end = el("w:bookmarkEnd", **{"w:id": bid})
-
-    start_anchor.addprevious(start)
-    end_anchor.addnext(end)
+    start, end = build_bookmark(
+        start_anchor,
+        end_anchor,
+        bookmark_id=bookmark_id,
+        name=name,
+    )
 
     return BookmarkRef(
         bookmark_id=bookmark_id,

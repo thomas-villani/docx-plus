@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import pytest
 from docx import Document
+from lxml import etree
 
 from docx_plus.core.ns import BUILD_NSMAP, W15, W, qn
 from docx_plus.core.oxml import (
     _compile_xpath,
     body_document_for,
+    build_bookmark,
     el,
+    ordered_insert,
     remove,
     sub,
     xpath,
@@ -126,3 +129,93 @@ def test_body_document_for_rejects_non_body_proxy() -> None:
 
     with pytest.raises(ValueError, match="myop only supports the main document body"):
         body_document_for(_FakeProxy(), operation="myop")
+
+
+# --------------------------------------------------------------------------
+# ordered_insert — promoted out of styles/modify.py in v0.5 so numbering/
+# can share it (SPEC §9.1 forbids the sibling import).
+# --------------------------------------------------------------------------
+
+_ORDER = ("first", "second", "third")
+
+
+def test_ordered_insert_places_before_a_later_sibling() -> None:
+    parent = el("w:parent")
+    sub(parent, "w:third")
+    ordered_insert(parent, el("w:second"), _ORDER)
+    assert [qname_local(child) for child in parent] == ["second", "third"]
+
+
+def test_ordered_insert_appends_when_no_later_sibling_exists() -> None:
+    parent = el("w:parent")
+    sub(parent, "w:first")
+    ordered_insert(parent, el("w:third"), _ORDER)
+    assert [qname_local(child) for child in parent] == ["first", "third"]
+
+
+def test_ordered_insert_replaces_an_existing_same_tag() -> None:
+    parent = el("w:parent")
+    sub(parent, "w:second", **{"w:val": "old"})
+    ordered_insert(parent, el("w:second", **{"w:val": "new"}), _ORDER)
+    assert len(list(parent)) == 1
+    assert parent[0].get(qn("w:val")) == "new"
+
+
+def test_ordered_insert_appends_a_tag_absent_from_the_order() -> None:
+    parent = el("w:parent")
+    sub(parent, "w:first")
+    ordered_insert(parent, el("w:unknown"), _ORDER)
+    assert [qname_local(child) for child in parent] == ["first", "unknown"]
+
+
+def test_ordered_insert_ignores_comment_nodes() -> None:
+    """A comment's ``.tag`` is a callable, not a string — must not crash."""
+    parent = el("w:parent")
+    parent.append(etree.Comment("a note"))
+    sub(parent, "w:third")
+    ordered_insert(parent, el("w:first"), _ORDER)
+    elements = [child for child in parent if isinstance(child.tag, str)]
+    assert [qname_local(child) for child in elements] == ["first", "third"]
+
+
+def qname_local(node: etree._Element) -> str:
+    return etree.QName(node.tag).localname
+
+
+# --------------------------------------------------------------------------
+# build_bookmark — shared emitter so publishing/ can bookmark a caption
+# without importing bookmarks/.
+# --------------------------------------------------------------------------
+
+
+def test_build_bookmark_brackets_the_anchors() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    first = sub(p._p, "w:r")
+    last = sub(p._p, "w:r")
+
+    start, end = build_bookmark(first, last, bookmark_id=7, name="fig_1")
+
+    assert [qname_local(child) for child in p._p] == [
+        "bookmarkStart",
+        "r",
+        "r",
+        "bookmarkEnd",
+    ]
+    assert start.get(qn("w:id")) == "7"
+    assert start.get(qn("w:name")) == "fig_1"
+    assert end.get(qn("w:id")) == "7"
+
+
+def test_build_bookmark_accepts_the_same_anchor_twice() -> None:
+    doc = Document()
+    p = doc.add_paragraph()
+    only = sub(p._p, "w:r")
+
+    build_bookmark(only, only, bookmark_id=1, name="solo")
+
+    assert [qname_local(child) for child in p._p] == [
+        "bookmarkStart",
+        "r",
+        "bookmarkEnd",
+    ]

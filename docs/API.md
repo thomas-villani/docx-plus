@@ -64,7 +64,8 @@ The foundation primitives. Every capability module imports from here only.
 |---|---|---|
 | `DocxPlusError` | exception | Re-export of the top-level root |
 | `IdRegistry(doc)` | class | Per-document SDT `w:id` allocator. See `core/ids.py` |
-| `IdRegistry.next()` | method | Issue a fresh 31-bit positive `w:id` |
+| `IdRegistry.next()` | method | Issue a fresh 31-bit positive `w:id`, chosen at random |
+| `IdRegistry.next_sequential()` | method | v0.5. Issue the *lowest* unused id instead — Word's convention for numbering, where a file full of nine-digit ids would be needlessly unreadable. Gap-filling |
 | `IdRegistry.reserve(value)` | method | Reserve a specific value or raise `DuplicateIdError` |
 | `IdRegistry.issued()` | method | Frozenset snapshot of all issued IDs |
 | `ParaIdRegistry(doc)` | class | v0.4. Per-*package* `w14:paraId` allocator — threaded comments key their parent/child links off it, so it seeds from the body plus the comments / footnotes / endnotes parts. `next_hex()` renders the 8-uppercase-hex-digit form |
@@ -72,8 +73,9 @@ The foundation primitives. Every capability module imports from here only.
 | `IdRangeError` | exception | Dual-bases: `DocxPlusError, ValueError`. A reserved id falls outside the 31-bit positive range |
 | `qn(name)` | function | `"w:tag"` → Clark-notation `{namespace}tag` |
 | `InvalidNamespaceError` | exception | Dual-bases: `DocxPlusError, ValueError`. `qn()` got a malformed name or unknown prefix |
-| `NSMAP` | dict | The library's pre-bound *query* namespace map (`w`, `w14`, `w15`, `r`, `mc`, `a`, `xml`) |
-| `W15` | str | The Word 2012 extension namespace URI — `commentsExtended.xml`. v0.4 |
+| `NSMAP` | dict | The library's pre-bound *query* namespace map (`w`, `w14`, `w15`, `w16cid`, `r`, `mc`, `a`, `xml`) |
+| `W15` | str | The Word 2012 extension namespace URI — `commentsExtended.xml`, `people.xml`. v0.4 |
+| `W16CID` | str | The Word 2016 extension namespace URI — `commentsIds.xml`. v0.5 |
 | `XML` | str | XML namespace URI (added Phase 5 to make `qn("xml:space")` work for `w:instrText`) |
 | `el(tag, **attrs)` | function | Create a namespaced element |
 | `sub(parent, tag, **attrs)` | function | Create + append a namespaced child |
@@ -81,14 +83,22 @@ The foundation primitives. Every capability module imports from here only.
 | `remove(node)` | function | Detach from parent, no-op if already detached |
 | `body_document_for(proxy, *, operation=...)` | function | Resolve the owning main-body `Document` from a python-docx proxy; raises `ValueError` for header/footer proxies. Shared by `comments` / `notes` |
 | `build_complex_field(p_element, instruction, initial_text)` | function | Emit the 5-run complex-field sequence (begin / instrText / separate / result / end). Used by `fields/simple.py` and `bookmarks/crossref.py` |
+| `build_bookmark(start_anchor, end_anchor, *, bookmark_id, name)` | function | v0.5. Bracket a range with a `bookmarkStart` / `bookmarkEnd` pair. Lives in core so `publishing` can make a caption referenceable — a `REF` field can only point at a bookmark, never at the caption's `SEQ` field |
 | `insert_before_first_anchor(parent, new_element, anchor_tags)` | function | Schema-strict insertion helper for `settings.xml` mutations. Used by `fields/update.py` and `layout/settings.py` |
+| `ordered_insert(parent, child, order)` | function | v0.5. Idempotent schema-ordered insert given the parent's full child sequence — replaces any same-tag sibling. The stronger form of the above; promoted out of `styles/modify.py` so `numbering` can share it |
+| `Border` | dataclass (frozen) | The `CT_Border` shape — `style`, `size`, `color`, `space` — shared by page, table, and cell borders. Defined in `layout` in v0.2, moved to `core` in v0.5; `docx_plus.layout.Border` still works |
+| `border_attrs(border)` | function | v0.5. Serialize a `Border` to its four OOXML attributes |
 | `get_or_create_part(doc, spec)` | function | Return `(part, root_element)` for a separate OOXML part (creates and wires the relationship if absent). v0.2 |
 | `PartSpec` | dataclass (frozen) | Identification data for `get_or_create_part`. Use the pre-baked constants below or build your own |
 | `COMMENTS_SPEC` | `PartSpec` | `/word/comments.xml` |
 | `COMMENTS_EXTENDED_SPEC` | `PartSpec` | `/word/commentsExtended.xml` — comment threading. v0.4 |
+| `COMMENTS_IDS_SPEC` | `PartSpec` | `/word/commentsIds.xml` — durable comment ids. v0.5 |
+| `PEOPLE_SPEC` | `PartSpec` | `/word/people.xml` — comment author presence. v0.5 |
+| `NUMBERING_SPEC` | `PartSpec` | `/word/numbering.xml` — list definitions. v0.5. Needed because `DocumentPart.numbering_part` fabricates through `NumberingPart.new()`, an unimplemented stub that raises `NotImplementedError` |
 | `FOOTNOTES_SPEC` | `PartSpec` | `/word/footnotes.xml` |
 | `ENDNOTES_SPEC` | `PartSpec` | `/word/endnotes.xml` |
 | `CT_COMMENTS_EXTENDED` / `RT_COMMENTS_EXTENDED` | str | Content- and relationship-type URIs for the extended part. Microsoft extensions, absent from python-docx's `CT` / `RT` enums. v0.4 |
+| `CT_COMMENTS_IDS` / `RT_COMMENTS_IDS`, `CT_PEOPLE` / `RT_PEOPLE` | str | Same, for the two v0.5 comment side-parts |
 
 ### `docx_plus.styles` — inspection
 

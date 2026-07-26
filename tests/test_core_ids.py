@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from docx import Document
 
-from docx_plus.core.ids import DuplicateIdError, IdRegistry
+from docx_plus.core.ids import DuplicateIdError, IdRangeError, IdRegistry, _IdRegistryBase
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
 
@@ -122,3 +122,75 @@ def test_registry_ignores_id_on_non_sdt() -> None:
 
     reg = IdRegistry(doc)
     assert 999 not in reg.issued()
+
+
+# --------------------------------------------------------------------------
+# Sequential allocation — the numbering namespaces want Word's "lowest free
+# integer" convention rather than the random handles ``next()`` mints.
+# --------------------------------------------------------------------------
+
+
+class _SeededRegistry(_IdRegistryBase):
+    """Test double: seeds from an explicit set instead of a document."""
+
+    def __init__(self, seeded: set[int]) -> None:
+        self._issued = set(seeded)
+
+    def _seed_from_document(self, doc: Document) -> None:  # pragma: no cover
+        raise AssertionError("not used")
+
+
+def test_next_sequential_starts_at_min_id() -> None:
+    assert _SeededRegistry(set()).next_sequential() == 1
+
+
+def test_next_sequential_fills_gaps() -> None:
+    reg = _SeededRegistry({1, 2, 5})
+    assert reg.next_sequential() == 3
+    assert reg.next_sequential() == 4
+    assert reg.next_sequential() == 6
+
+
+def test_next_sequential_honours_a_lowered_min_id() -> None:
+    """``w:abstractNumId`` legitimately starts at 0, unlike every ``w:id``."""
+
+    class ZeroBased(_SeededRegistry):
+        _MIN_ID = 0
+
+    assert ZeroBased(set()).next_sequential() == 0
+
+
+def test_reserve_rejects_zero_by_default() -> None:
+    reg = _SeededRegistry(set())
+    with pytest.raises(IdRangeError, match=r"outside legal range \[1,"):
+        reg.reserve(0)
+
+
+def test_reserve_admits_zero_when_min_id_is_lowered() -> None:
+    class ZeroBased(_SeededRegistry):
+        _MIN_ID = 0
+
+    assert ZeroBased(set()).reserve(0) == 0
+
+
+def test_collect_named_attrs_reads_decimal_and_hex() -> None:
+    doc = Document()
+    para = doc.add_paragraph()
+    sub(para._p, "w:numPr", **{"w:numId": "7"})
+
+    reg = _SeededRegistry(set())
+    reg._collect_named_attrs(doc.element.body, ".//w:numPr", "w:numId")
+    assert 7 in reg.issued()
+
+    reg._collect_named_attrs(doc.element.body, ".//w:numPr", "w:numId", base=16)
+    assert 0x7 in reg.issued()
+
+
+def test_collect_named_attrs_skips_unparseable_values() -> None:
+    doc = Document()
+    para = doc.add_paragraph()
+    sub(para._p, "w:numPr", **{"w:numId": "not-a-number"})
+
+    reg = _SeededRegistry(set())
+    reg._collect_named_attrs(doc.element.body, ".//w:numPr", "w:numId")
+    assert reg.issued() == frozenset()

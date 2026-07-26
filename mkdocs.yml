@@ -39,6 +39,7 @@ nav:
       - docx_plus.core.oxml: reference/core-oxml.md
       - docx_plus.core.ids: reference/core-ids.md
       - docx_plus.core.parts: reference/core-parts.md
+      - docx_plus.core.borders: reference/core-borders.md
       - docx_plus.styles.inspect: reference/styles-inspect.md
       - docx_plus.styles.modify: reference/styles-modify.md
       - docx_plus.styles.theme: reference/styles-theme.md

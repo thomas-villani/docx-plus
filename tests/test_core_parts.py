@@ -10,19 +10,29 @@ from docx.opc.constants import CONTENT_TYPE as CT
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.opc.part import PartFactory, XmlPart
 from docx.parts.comments import CommentsPart
+from docx.parts.numbering import NumberingPart
 
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
 from docx_plus.core.parts import (
     COMMENTS_EXTENDED_SPEC,
+    COMMENTS_IDS_SPEC,
     COMMENTS_SPEC,
     CT_COMMENTS_EXTENDED,
+    CT_COMMENTS_IDS,
+    CT_PEOPLE,
     ENDNOTES_SPEC,
     FOOTNOTES_SPEC,
+    NUMBERING_SPEC,
+    PEOPLE_SPEC,
     RT_COMMENTS_EXTENDED,
+    RT_COMMENTS_IDS,
+    RT_PEOPLE,
     _CommentsExtendedPart,
+    _CommentsIdsPart,
     _EndnotesPart,
     _FootnotesPart,
+    _PeoplePart,
     get_or_create_part,
 )
 
@@ -47,6 +57,19 @@ def test_comments_part_class_still_python_docx_default() -> None:
 
 def test_comments_extended_part_class_registered() -> None:
     assert PartFactory.part_type_for[CT_COMMENTS_EXTENDED] is _CommentsExtendedPart
+
+
+def test_comments_ids_part_class_registered() -> None:
+    assert PartFactory.part_type_for[CT_COMMENTS_IDS] is _CommentsIdsPart
+
+
+def test_people_part_class_registered() -> None:
+    assert PartFactory.part_type_for[CT_PEOPLE] is _PeoplePart
+
+
+def test_numbering_part_class_still_python_docx_default() -> None:
+    """python-docx registers ``NumberingPart``; we must not clobber it."""
+    assert PartFactory.part_type_for[CT.WML_NUMBERING] is NumberingPart
 
 
 # --------------------------------------------------------------------------
@@ -86,6 +109,79 @@ def test_comments_extended_relationship_is_wired_from_the_document_part() -> Non
     doc = Document()
     part, _ = get_or_create_part(doc, COMMENTS_EXTENDED_SPEC)
     assert doc.part.part_related_by(RT_COMMENTS_EXTENDED) is part
+
+
+def test_get_or_create_comments_ids_creates_when_absent() -> None:
+    doc = Document()
+    part, root = get_or_create_part(doc, COMMENTS_IDS_SPEC)
+    assert isinstance(part, _CommentsIdsPart)
+    assert part.content_type == CT_COMMENTS_IDS
+    assert part.partname == "/word/commentsIds.xml"
+    assert root.tag == qn("w16cid:commentsIds")
+    assert len(list(root)) == 0
+    assert doc.part.part_related_by(RT_COMMENTS_IDS) is part
+
+
+def test_get_or_create_people_creates_when_absent() -> None:
+    doc = Document()
+    part, root = get_or_create_part(doc, PEOPLE_SPEC)
+    assert isinstance(part, _PeoplePart)
+    assert part.content_type == CT_PEOPLE
+    assert part.partname == "/word/people.xml"
+    assert root.tag == qn("w15:people")
+    assert len(list(root)) == 0
+    assert doc.part.part_related_by(RT_PEOPLE) is part
+
+
+# --------------------------------------------------------------------------
+# Numbering: the one spec whose part python-docx can load but cannot create.
+# --------------------------------------------------------------------------
+
+
+def test_get_or_create_numbering_returns_the_template_part() -> None:
+    # python-docx's bundled template already ships numbering.xml, so this is
+    # the lookup path rather than the create path.
+    doc = Document()
+    part, root = get_or_create_part(doc, NUMBERING_SPEC)
+    assert isinstance(part, NumberingPart)
+    assert root.tag == qn("w:numbering")
+    assert doc.part.part_related_by(RT.NUMBERING) is part
+
+
+def test_get_or_create_numbering_creates_when_absent() -> None:
+    """The gap this spec exists to close.
+
+    ``doc.part.numbering_part`` fabricates through ``NumberingPart.new()``,
+    an unimplemented stub that raises ``NotImplementedError``. Documents
+    from LibreOffice / Pandoc / stripped templates reach that path.
+    """
+    doc = Document()
+    for rid, rel in list(doc.part.rels.items()):
+        if rel.reltype == RT.NUMBERING:
+            doc.part.drop_rel(rid)
+
+    part, root = get_or_create_part(doc, NUMBERING_SPEC)
+    assert isinstance(part, NumberingPart)
+    assert part.partname == "/word/numbering.xml"
+    assert root.tag == qn("w:numbering")
+    assert len(list(root)) == 0
+
+
+def test_numbering_part_round_trip(tmp_path: Path) -> None:
+    doc = Document()
+    for rid, rel in list(doc.part.rels.items()):
+        if rel.reltype == RT.NUMBERING:
+            doc.part.drop_rel(rid)
+    _, root = get_or_create_part(doc, NUMBERING_SPEC)
+    sub(root, "w:abstractNum", **{"w:abstractNumId": "42"})
+
+    path = tmp_path / "numbering.docx"
+    doc.save(path)
+    reloaded = Document(path)
+
+    part = reloaded.part.part_related_by(RT.NUMBERING)
+    entries = part.element.findall(qn("w:abstractNum"))
+    assert [entry.get(qn("w:abstractNumId")) for entry in entries] == ["42"]
 
 
 def test_comments_extended_part_round_trip(tmp_path: Path) -> None:
