@@ -5,7 +5,7 @@ the library every python-docx power user ends up writing badly: hardened
 helpers for OOXML operations that sit just past python-docx's
 abstraction boundary.
 
-Status: **v0.3.0 released** — published 2026-06-15 on
+Status: **v0.4.0 released** — published 2026-07-26 on
 [PyPI](https://pypi.org/project/docx-plus/).
 
 ## Capabilities
@@ -21,6 +21,9 @@ Status: **v0.3.0 released** — published 2026-06-15 on
   tracked-changes mode at the document level.
 - **Anchored comments** (v0.2) — the body-side range markers
   python-docx skips, so "show in document" actually works.
+- **Threaded comments** (v0.4) — replies, thread-wide resolve / reopen,
+  and nested reads over the `commentsExtended.xml` part.
+  (Module: `docx_plus/comments/threads.py`.)
 - **Layout** (v0.2) — multi-column sections, mid-document section
   breaks, distinct even/odd headers.
 - **Bookmarks + cross-references** (v0.2) — paired body markers plus
@@ -38,8 +41,8 @@ Status: **v0.3.0 released** — published 2026-06-15 on
   read revisions, accept / reject, and toggle track-changes mode.
   (Module: `docx_plus/revisions/`.)
 - **Command line** (v0.3) — a `docx-plus` console command —
-  `inspect`, `restyle`, `controls` — over the library.
-  (Module: `docx_plus/cli/`.)
+  `inspect`, `restyle`, `controls`, and `comments` (v0.4) — over the
+  library. (Module: `docx_plus/cli/`.)
 
 ## Where to start
 
@@ -251,3 +254,5 @@ See [`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
 | v0.2 expansion | Toggle props, in-place edits, line numbering, page borders, conditional table styles, `publishing/` | ✓ complete |
 | v0.3 | Tracked changes — mark / read / accept / reject, track-changes toggle (`revisions/`) | ✓ shipped (v0.3) |
 | v0.3 | CLI — `docx-plus` console command: `inspect`, `restyle`, `controls` (`cli/`) | ✓ shipped (v0.3) |
+| v0.4 | Threaded comments — reply / resolve / reopen / nested read, `commentsExtended.xml` (`comments/threads.py`) | ✓ shipped (v0.4) |
+| v0.4 | CLI — `docx-plus comments list / resolve / reopen` | ✓ shipped (v0.4) |

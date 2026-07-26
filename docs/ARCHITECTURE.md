@@ -1,10 +1,11 @@
 # docx_plus — Architecture
 
 Present-tense reference for how `docx_plus` is laid out and why. This
-document describes what currently exists at the end of v0.3 (Phase 6,
+document describes what currently exists at the end of v0.4 (Phase 6,
 the v0.2 cycle: comments, layout, bookmarks / cross-references,
-footnotes / endnotes, and the v0.3 work: tracked changes plus the
-`docx-plus` CLI). The contract that constrains it is `SPEC.md`;
+footnotes / endnotes; the v0.3 work: tracked changes plus the
+`docx-plus` CLI; and the v0.4 work: threaded comments). The contract
+that constrains it is `SPEC.md`;
 the meta-guidance on how it was built and how to extend it is
 `IMPLEMENTATION.md`. Read this when you need to understand the
 library's shape; read those when you need to decide what to add or how.
@@ -726,8 +727,9 @@ as a clickable link. Pair calls with `mark_fields_dirty` so Word
 recalculates the cached results on first open.
 
 Cross-references to headings, numbered items, or captions
-(`STYLEREF`, sequence fields) are deferred to v0.3 — they require
-different field instructions but the same field-building plumbing.
+(`STYLEREF`, sequence fields) are on the `ROADMAP.md` backlog — they
+require different field instructions but the same field-building
+plumbing.
 
 ---
 
@@ -795,8 +797,8 @@ before save — the docstrings document the contract.
 
 Bibliography (sources stored in a Custom XML Part, `<w:sdt>`
 citations referencing them, a `BIBLIOGRAPHY` field rendering the
-list) is deferred to v0.3 because it depends on the CXML
-data-binding subsystem (also v0.3).
+list) sits on the `ROADMAP.md` dependency-gated backlog because it
+depends on the CXML data-binding subsystem, which is also unbuilt.
 
 ---
 
@@ -990,7 +992,8 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **803 tests** at the v0.3.0 release.
+  I/O beyond reading fixtures. **905 tests** at the v0.4.0 release
+  (895 pass; 10 LibreOffice round-trips skip without `soffice`).
   Of these, 631 were collected at v0.2.0: v0.1's surface (319 tests)
   plus the v0.2 cycle — `core/parts` (13), `comments/` (35),
   `layout/` (47), `bookmarks/` + cross-refs (26), `notes/` (34),
@@ -1000,7 +1003,10 @@ SPEC §10 specifies three layers:
   wiring, error taxonomy, publishing validation, and the six
   newly-writable run toggles). v0.3 added the balance: `revisions/`
   (mark / read / accept-reject / settings / registry) and the `cli/`
-  subcommands.
+  subcommands. v0.4 added `tests/test_comments_threads.py` (reply
+  anchoring and marker ordering, thread-wide resolve / reopen, nested
+  reads, foreign / malformed `commentsExtended.xml` tolerance) plus the
+  `comments` CLI subcommand.
 - **Layer 2 — round-trip tests.** Build → save → reopen with
   `python-docx` → assert. The high-value class for OOXML
   correctness (`IMPLEMENTATION.md §8`). Phase 5 added round-trips for
@@ -1017,8 +1023,8 @@ script is the source of truth, not the `.docx` files it produces —
 on demand.
 
 Shared assertions live in `docx_plus/_testing/ooxml_asserts.py`:
-`assert_ids_unique`, `assert_style_defined`, `count_controls`,
-`assert_protected`, `assert_field_dirty`. The module is internal —
+`assert_ids_unique`, `assert_para_ids_unique`, `assert_style_defined`,
+`count_controls`, `assert_protected`, `assert_field_dirty`. The module is internal —
 not re-exported from the top-level package — and is built out lazily
 as later tests demand more helpers. Of the SPEC §10 helper list, only
 `assert_style_not_defined` and `assert_no_orphan_relationships`
@@ -1034,9 +1040,12 @@ For a frozen snapshot of where the suite has real holes, see
 v0.1 (Phases 1–6), the v0.2 cycle, and the v0.2 in-place expansion are
 complete (released through `v0.2.1`). v0.3 then shipped its two headline
 targets: **tracked changes (read/write)** in `revisions/` (§7.11) and the
-**`docx-plus` CLI** in `cli/` (§7.12).
+**`docx-plus` CLI** in `cli/` (§7.12). v0.4 shipped **threaded comments**
+in `comments/threads.py` over `comments/_extended.py` (§7.6.1), with the
+`commentsExtended.xml` part and the `comments` CLI subcommand.
 
-The authoritative roadmap for everything deferred to the post-v0.3
+The authoritative roadmap for everything deferred to the post-v0.4
 backlog — targeted work, bounded backlog, and dependency-gated items
-(threaded comments, bibliography / CXML data binding, …) — lives in
-`ROADMAP.md` at the repo root.
+(custom numbering definitions, `STYLEREF` / caption cross-references,
+bibliography / CXML data binding, …) — lives in `ROADMAP.md` at the repo
+root.

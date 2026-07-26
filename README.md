@@ -5,7 +5,7 @@ Composes with python-docx rather than replacing it: callers keep their
 `Document` object and use `docx_plus` for the operations python-docx
 can't reach.
 
-**Capabilities** (v0.1 through v0.3):
+**Capabilities** (v0.1 through v0.4):
 
 - **Style cascade**: read the effective formatting that would apply to
   any paragraph/run/cell, with per-field provenance; modify styles in
@@ -19,6 +19,9 @@ can't reach.
   tracked-changes mode at the document level.
 - **Anchored comments** (v0.2): the body-side range markers
   python-docx skips, so "show in document" actually works.
+- **Threaded comments** (v0.4): replies, thread-wide resolve / reopen, and
+  nested reads over the `commentsExtended.xml` part — the reply model Word
+  has used since 2013.
 - **Tracked changes** (v0.3): mark runs as insertions / deletions, read
   every revision with its author / timestamp / text, and accept or reject
   them — the inline `w:ins` / `w:del` revision marks python-docx can't reach.
@@ -39,9 +42,10 @@ can't reach.
   (`add_table_of_figures`) (v0.2).
 - **Command line** (v0.3): a `docx-plus` console command over the
   library — `inspect` (effective formatting), `restyle` (style
-  remapping), and `controls` (list / set / clear control values).
+  remapping), `controls` (list / set / clear control values), and
+  `comments` (list / resolve / reopen threads) (v0.4).
 
-> **Status:** v0.3.0 is the current release, published on 2026-06-15 to
+> **Status:** v0.4.0 is the current release, published on 2026-07-26 to
 > [PyPI](https://pypi.org/project/docx-plus/). Read [`SPEC.md`](SPEC.md) for
 > the API contract and [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the
 > build plan.
@@ -361,13 +365,15 @@ v0.2 ships the feature modules listed at the top of this README, plus
 the in-place expansion (line numbering, page borders, conditional
 table-style formatting, comment / note editing, and the publishing
 module). v0.3 added **tracked changes** (read/write revision marks) and
-the **`docx-plus` CLI** (`inspect` / `restyle` / `controls`).
-[`ROADMAP.md`](ROADMAP.md) tracks what comes after: the backlog
-holds `STYLEREF` / sequence-field cross-references, w15 threaded
-comments (respond / resolve / reopen), content-control data binding to
-Custom XML Parts, bibliography (citations + `BIBLIOGRAPHY` field),
-glossary placeholder text, and password-protected forms. Open an issue
-if your use case needs any of these.
+the **`docx-plus` CLI** (`inspect` / `restyle` / `controls`). v0.4 added
+**threaded comments** (reply / resolve / reopen, plus `docx-plus
+comments`). [`ROADMAP.md`](ROADMAP.md) tracks what comes after: the
+backlog holds custom numbering definitions, `STYLEREF` / caption
+cross-references, comment durable ids + author presence, table borders /
+shading, content-control data binding to Custom XML Parts, bibliography
+(citations + `BIBLIOGRAPHY` field), glossary placeholder text, and
+password-protected forms. Open an issue if your use case needs any of
+these.
 
 <details>
 <summary>Build history (for contributors)</summary>
@@ -382,6 +388,9 @@ if your use case needs any of these.
   conditional table styles, and the `publishing/` module).
 - **v0.3.0** — complete: tracked changes (`revisions/`) and the
   `docx-plus` command line (`cli/`).
+- **v0.4.0** — complete: threaded comments (`comments/threads.py` over
+  `comments/_extended.py`), the `commentsExtended.xml` part, and
+  `docx-plus comments`.
 
 The per-phase log with dates lives in `IMPLEMENTATION.md` §12.
 

@@ -40,7 +40,7 @@ it pulls in on demand.
 ## Accuracy
 
 Every code snippet in the skill imports only public symbols and is verified to
-run end to end against the current release (v0.3.0). The skill mirrors the same
+run end to end against the current release (v0.4.0). The skill mirrors the same
 public surface documented in the [API Index](API.md) and the per-module
 [Reference](reference/core-ns.md) pages — it's the agent-facing complement to
 those human-facing docs, not a separate source of truth.

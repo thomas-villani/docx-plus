@@ -8,10 +8,10 @@ things `python-docx` can't. Every item below either fills a documented
 `python-docx` gap or rounds out a surface already started here. Ideas that
 don't fit that charter are routed to sibling projects, not absorbed.
 
-## Current state — v0.3.0 released; v0.4 on `main`, unreleased
+## Current state — v0.4.0 released
 
-Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15). Shipped
-capability modules:
+Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
+(2026-07-26). Shipped capability modules:
 
 | Module | Surface |
 |---|---|
@@ -27,10 +27,11 @@ capability modules:
 | `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
 | `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4) |
 
-Suite at last gate: 891 tests (881 pass, 10 LibreOffice-skipped), 94%
-coverage; `mypy --strict`, `ruff`, and `mkdocs build --strict` all clean.
+Suite at the v0.4.0 release: 905 tests (895 pass, 10 LibreOffice-skipped),
+94% coverage; `mypy --strict`, `ruff`, and `mkdocs build --strict` all
+clean.
 
-## v0.4 — landed, unreleased
+## v0.4 — shipped
 
 ### Threaded comments — shipped
 

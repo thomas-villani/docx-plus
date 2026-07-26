@@ -33,7 +33,7 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Public surface at v0.4 (unreleased)
+## Public surface at v0.4.0
 
 v0.1's six phases, the initial v0.2 cycle (comments, layout, bookmarks
 / cross-references, footnotes / endnotes), the v0.2 in-place
@@ -54,7 +54,7 @@ want to see the library in motion before reading the index.
 | Symbol | Kind | Notes |
 |---|---|---|
 | `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §9](ARCHITECTURE.md#9-error-hierarchy) |
-| `__version__` | str | `"0.3.0"` — bumps to `"0.4.0"` at release |
+| `__version__` | str | `"0.4.0"` |
 
 ### `docx_plus.core`
 
