@@ -310,6 +310,33 @@ walkthrough in
 | `EndnoteIdRegistry(doc)` | class | Per-document endnote-id allocator. Same reserved-id treatment |
 | `NoteNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `edit_footnote` / `edit_endnote` on a missing id |
 
+### `docx_plus.numbering`
+
+Custom list definitions — v0.5. python-docx has no `CT_AbstractNum` and
+no `CT_Lvl`, so it cannot express what a list *looks like*. OOXML splits
+a list into a `<w:abstractNum>` definition and a `<w:num>` instance;
+paragraphs reference the **instance**, and that indirection is what makes
+restarting possible. See
+[`ARCHITECTURE.md` §7.13](ARCHITECTURE.md#713-custom-numbering).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `LevelDefinition` | dataclass (frozen) | One outline level: `fmt`, `text`, `start`, `indent`, `hanging`, `justify`, `suffix`, `restart_after`, `font`. Validated against the ECMA-376 simple types at construction |
+| `define_list_definition(doc, *, levels, name=None, style_link=None, num_style_link=None, multi_level_type=None, num_registry=None, abstract_registry=None)` | function | The primitive. Writes one `w:abstractNum` plus one `w:num`; returns the `numId` |
+| `define_bullet_list(doc, *, levels=1, indent_step=720, hanging=360, ...)` | function | Preset using Word's round / hollow-`o` / square glyph cycle, each with its symbol font |
+| `define_numbered_list(doc, *, levels=1, indent_step=720, hanging=360, ...)` | function | Preset using Word's `1.` / `a.` / `i.` format cycle |
+| `apply_list(paragraph, num_id, *, level=0)` | function | Write `w:numPr`. Idempotent; does not validate `num_id` (a dangling reference is legal and renders unnumbered) |
+| `remove_list(paragraph, *, suppress_style_numbering=False)` | function | Drop the `w:numPr`. The flag writes the `numId="0"` sentinel instead, the only way to suppress numbering a *style* applies |
+| `restart_list(paragraph, num_id, *, level=0, start=1, num_registry=None)` | function | Begin a fresh sequence: adds a second `w:num` over the same `w:abstractNum` with a `w:startOverride`, applies it, returns the new `numId` |
+| `read_list_definitions(doc)` | function | Every definition in `numbering.xml`. Returns `[]` when the part is absent; never creates it. Note a fresh `Document()` already has nine from python-docx's template |
+| `ListDefinition` | dataclass (frozen) | `num_id`, `abstract_id`, `levels`, `name`, `style_link`, `num_style_link`, `multi_level_type`, `start_overrides` |
+| `ListLevel` | dataclass (frozen) | Read-side level. Every field is `None` when its element is absent — which Word reads as its own default, not as zero |
+| `NumIdRegistry(doc)` | class | `w:numId` allocator, from 1. Allocates lowest-free via `next_sequential()`, matching Word |
+| `AbstractNumIdRegistry(doc)` | class | `w:abstractNumId` allocator, from **0** — the one id namespace where zero is legal |
+| `InvalidLevelError` | exception | Dual-bases: `DocxPlusError, ValueError`. A bad `numFmt`, an over-deep `%N` placeholder, more than nine levels |
+| `ListDefinitionNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `restart_list` on an unknown `numId` |
+| `MAX_LEVELS` | int | `9` — ECMA-376 caps `w:lvl` per definition |
+
 ### `docx_plus.publishing`
 
 Long-document publishing primitives — Table of Contents, captions,

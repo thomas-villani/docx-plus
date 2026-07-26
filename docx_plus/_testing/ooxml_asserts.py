@@ -196,10 +196,64 @@ def field_instruction_text(p_element: Any) -> str | None:
     return "".join(texts) if texts else None
 
 
+def assert_numbering_well_formed(doc: Document) -> None:
+    """Assert ``numbering.xml`` satisfies the invariants Word relies on.
+
+    Three things, all of which produce a file that round-trips through
+    lenient parsers but that Word may reject or render wrong:
+
+    1. Every ``w:abstractNum`` precedes every ``w:num`` (ECMA-376 17.9.17
+       orders ``CT_Numbering`` as ``numPicBullet*, abstractNum*, num*,
+       numIdMacAtCleanup?``). Nothing in python-docx inserts an
+       ``abstractNum``, so this ordering is entirely on the caller.
+    2. ``w:numId`` and ``w:abstractNumId`` are each unique.
+    3. Every ``w:num`` resolves to a defined ``w:abstractNum``.
+
+    A document with no numbering part passes trivially.
+
+    Args:
+        doc: python-docx Document to inspect.
+
+    Raises:
+        AssertionError: If any of the three fails.
+    """
+    try:
+        part = cast("XmlPart", doc.part.part_related_by(RT.NUMBERING))
+    except KeyError:
+        return
+    root = part.element
+
+    order = [etree.QName(child.tag).localname for child in root if isinstance(child.tag, str)]
+    if "abstractNum" in order and "num" in order:
+        last_abstract = len(order) - 1 - order[::-1].index("abstractNum")
+        first_num = order.index("num")
+        assert last_abstract < first_num, (
+            f"w:abstractNum must precede every w:num in CT_Numbering; got {order}"
+        )
+
+    abstract_ids = [elem.get(qn("w:abstractNumId")) for elem in xpath(root, "./w:abstractNum")]
+    num_ids = [elem.get(qn("w:numId")) for elem in xpath(root, "./w:num")]
+    assert len(abstract_ids) == len(set(abstract_ids)), (
+        f"duplicate w:abstractNumId values: {abstract_ids}"
+    )
+    assert len(num_ids) == len(set(num_ids)), f"duplicate w:numId values: {num_ids}"
+
+    defined = set(abstract_ids)
+    for num in xpath(root, "./w:num"):
+        ref = num.find(qn("w:abstractNumId"))
+        if ref is None:
+            continue
+        referenced = ref.get(qn("w:val"))
+        assert referenced in defined, (
+            f"w:num {num.get(qn('w:numId'))!r} references undefined abstractNumId {referenced!r}"
+        )
+
+
 __all__ = [
     "assert_field_dirty",
     "assert_field_not_dirty",
     "assert_ids_unique",
+    "assert_numbering_well_formed",
     "assert_para_ids_unique",
     "assert_protected",
     "assert_style_defined",

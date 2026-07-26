@@ -31,6 +31,40 @@ Suite at the v0.4.0 release: 905 tests (895 pass, 10 LibreOffice-skipped),
 94% coverage; `mypy --strict`, `ruff`, and `mkdocs build --strict` all
 clean.
 
+## v0.5 — in progress
+
+### Custom numbering — shipped
+
+The largest remaining `python-docx` gap. It exposes a `NumberingPart`
+and `len()` of its definitions; there is no `CT_AbstractNum` and no
+`CT_Lvl`, so nothing in it can say what a list *looks like*. Landed in
+`numbering/`.
+
+Shipped:
+
+- **Define** — `define_list_definition` over `LevelDefinition`, plus
+  `define_bullet_list` / `define_numbered_list` presets using Word's own
+  glyph and format cycles.
+- **Apply** — `apply_list` / `remove_list`, the latter able to write the
+  `numId="0"` sentinel that suppresses numbering a *style* applies.
+- **Restart** — `restart_list`. OOXML has no paragraph-level "count from
+  1 again"; this adds a second `<w:num>` over the same
+  `<w:abstractNum>` with a `<w:startOverride>`, as Word does.
+- **Read** — `read_list_definitions` returning `ListDefinition` /
+  `ListLevel`, tolerant of dangling references and malformed ids.
+
+New plumbing: `NUMBERING_SPEC` (needed because
+`DocumentPart.numbering_part` fabricates through an unimplemented stub
+that raises), two sequential-allocation registries, and
+`assert_numbering_well_formed`.
+
+Verified against Word 2016 via `wordlive` — which caught a cramped
+outline where the hanging indent was narrower than the rendered
+`1.1.1.`, collapsing the separator tab. Now documented on
+`LevelDefinition.hanging`.
+
+Deferred to the backlog: linking a definition into a style definition.
+
 ## v0.4 — shipped
 
 ### Threaded comments — shipped
@@ -161,7 +195,12 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
 - **Table cell merging / borders / shading** beyond `python-docx`
   defaults. (Distinct from *page* borders, already shipped in
   `layout/borders.py`.)
-- **Custom numbering definitions** — a `numbering/` module.
+- **Link a numbering definition into a style** —
+  `w:style/w:pPr/w:numPr`, so `ensure_style("ListBullet")` produces a
+  style that actually bullets. Split out of the v0.5 numbering cycle
+  because `styles/modify.py` already owns writing into `w:style` and
+  carries `_STYLE_CHILD_ORDER`; duplicating that in `numbering/` would
+  put the same schema knowledge in two places. (`styles/`.)
 
 ## Considered, not on the roadmap
 

@@ -6,6 +6,35 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Custom numbering (`numbering/`)** — the largest remaining
+  python-docx gap. python-docx ships a `NumberingPart` and `len()` of
+  its definitions and nothing else: it has no `CT_AbstractNum` and no
+  `CT_Lvl`, so it cannot express a number format, level text, start
+  value, indent, or bullet glyph. Building a list has meant hand-writing
+  XML.
+  `define_list_definition` writes a `<w:abstractNum>` from a list of
+  `LevelDefinition`s plus the `<w:num>` instance that paragraphs
+  reference; `define_bullet_list` and `define_numbered_list` are presets
+  using Word's own glyph and format cycles. `apply_list` /
+  `remove_list` set paragraph membership — the latter's
+  `suppress_style_numbering` writes the `numId="0"` sentinel, the only
+  way to opt out of a list a *style* applies. `restart_list` begins a
+  fresh sequence, which OOXML has no paragraph-level way to express: it
+  adds a second `<w:num>` over the same `<w:abstractNum>` with a
+  `<w:startOverride>`, exactly as Word does. `read_list_definitions`
+  reads the part back as `ListDefinition` / `ListLevel`, including
+  definitions other tools wrote.
+  A new `docx_plus/examples/custom_numbering.py` builds a procedure, a
+  restarted sequence, a legal outline, and a three-level bullet list;
+  verified against Word 2016.
+- **`_testing.assert_numbering_well_formed`** — checks the three
+  invariants a lenient parser will not: that every `w:abstractNum`
+  precedes every `w:num` (`CT_Numbering`'s child order, which nothing in
+  python-docx maintains because nothing in it inserts an `abstractNum`),
+  that both id namespaces are unique, and that every instance resolves.
+
 ### Fixed
 
 - **`resolve_effective_formatting` no longer crashes on a document with
