@@ -199,8 +199,45 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   `w:style/w:pPr/w:numPr`, so `ensure_style("ListBullet")` produces a
   style that actually bullets. Split out of the v0.5 numbering cycle
   because `styles/modify.py` already owns writing into `w:style` and
-  carries `_STYLE_CHILD_ORDER`; duplicating that in `numbering/` would
-  put the same schema knowledge in two places. (`styles/`.)
+  carries `_STYLE_CHILD_ORDER` / `_PPR_CHILD_ORDER`; duplicating that in
+  `numbering/` would put the same schema knowledge in two places.
+  (`styles/`.)
+
+  Concretely, so this doesn't need re-deriving:
+
+  - The seam is documented in the code already —
+    `styles/modify.py` `_BUILTIN_STYLES` Tier D carries a comment saying
+    the `List*` styles omit `numPr` and that "callers wanting actual
+    auto-numbering should attach a numbering definition separately".
+    Asymmetry to fix: the *bundled template's* `ListBullet` does link
+    `numId` 1, so `ensure_style` on a document lacking the style
+    produces something weaker than a stock `Document()` already has.
+  - The work is a new key in `_write_paragraph_property`
+    (`modify.py:835`) plus an entry in `_validate_property_keys`
+    (`:818`), which currently rejects anything outside the
+    paragraph/run property sets. `_PPR_CHILD_ORDER` already reserves the
+    `numPr` slot; `_ordered_insert` places it.
+  - No cross-capability import is needed: linking is just writing
+    `w:numPr` with an int, so `styles/` never has to reach into
+    `numbering/`. That is why this lands in `styles/`, not here.
+- **Resolve style-supplied numbering in the cascade** — related, and
+  arguably the more surprising half. Layer 4 reads only the paragraph's
+  *direct* `w:numPr` (`styles/inspect.py:428`), never the one its style
+  supplies, so on a stock `Document()`:
+
+  ```python
+  p = doc.add_paragraph("bulleted", style="List Bullet")
+  resolve_effective_formatting(p).num_id   # -> None
+  ```
+
+  even though that style links `numId` 1 in the bundled template
+  (verified 2026-07-26). Every other property on `ResolvedFormatting`
+  walks the style chain, so `num_id` silently breaks the contract the
+  rest of the dataclass sets. Fixing it means resolving `numPr` through
+  the `basedOn` chain like the other pPr properties, and deciding what
+  `numId` `0` from a style should mean (the "no numbering" sentinel).
+  Wants its own tests; do it alongside or before the style-linking item
+  above, since that item makes the gap much easier to hit. (`styles/`.)
 
 ## Considered, not on the roadmap
 
