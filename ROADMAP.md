@@ -77,29 +77,59 @@ Two things keep it in charter:
 stays a verification tool for development, never an import. The linter
 is pure-Python and cross-platform like the rest of the library.
 
-### Stage 1 — resolver completion
+### Stage 1 — resolver completion — shipped
 
 The linter is the resolver plus clustering, so every hole in
 `resolve_effective_formatting` becomes a class of false positives. Two
-backlog items are really prerequisites, and are pulled into this cycle:
+backlog items turned out to be prerequisites rather than peers, and both
+landed here.
 
-- **Resolve style-supplied numbering in the cascade.** Layer 4
-  (`styles/inspect.py:448`) reads only the paragraph's *direct*
-  `w:numPr`, so a correctly-styled `List Bullet` paragraph reports
-  `num_id=None` — indistinguishable from one where a bullet glyph was
-  typed by hand. That makes the `manual-list` rule unimplementable, and
-  it is a live contract bug regardless: every other field on
-  `ResolvedFormatting` walks the style chain. Resolve `numPr` through
-  `basedOn` like the other pPr properties, decide what a style's
-  `numId="0"` sentinel means, and give style-supplied numbering its own
-  provenance layer so the linter can tell the two apart. See the
-  backlog entry for the full derivation.
-- **A cached document-wide sweep.** `resolve_effective_formatting` is
-  per-target and re-walks docDefaults and the style chain on every call;
-  a linter resolves every run in the document. Lands in `styles/` — it
-  is an optimization of the resolver, and the cascade knowledge stays in
-  one place — memoizing docDefaults and per-`styleId` chain results
-  across a single pass.
+**Style-supplied numbering — shipped.** Layer 4 read only the
+paragraph's *direct* `w:numPr`, so a correctly-styled `List Bullet`
+paragraph reported `num_id=None` — indistinguishable from one where a
+bullet glyph was typed by hand, which is exactly the distinction the
+`manual-list` rule turns on. It was a live contract bug regardless:
+every other field on `ResolvedFormatting` walks the style chain.
+Numbering now resolves through `basedOn`, nearest style winning.
+
+Three things worth recording:
+
+- **Reaching the definition at all had a second effect.** Once the
+  reference resolves, the `abstractNum` level's own `pPr` applies too,
+  so a `List Bullet` paragraph picks up its 360-twip indent for the
+  first time. That was not in the plan; it is correct per ECMA-376
+  17.7.2 and no existing test moved.
+- **`numId` and `ilvl` merge independently**, so a paragraph overriding
+  only the level keeps its style's list. The spec states no merge
+  semantics for a compound property across the style / direct boundary,
+  so this was settled against Word 2016: a `List Bullet` paragraph given
+  a bare `<w:ilvl w:val="2"/>` renders as a third-level bullet of the
+  style's own list, not as body text.
+- **`numId="0"` is surfaced, not flattened to `None`.** It is the
+  "explicitly not numbered" sentinel, so `None` now means "no numbering
+  information anywhere" and `0` means "deliberately suppressed" — which
+  is the difference between a paragraph nobody numbered and one someone
+  opted out. New `styleNumbering` provenance layer carries the supplying
+  `style_id`.
+
+**Cached document-wide sweep — shipped** as
+`styles.iter_resolved_paragraphs`, yielding `ResolvedParagraph` lazily in
+document order. Profiling drove the design: `load_theme` alone was 39% of
+per-call cost, re-parsing `theme1.xml` once per target. A private
+`_ResolverCache` memoizes only what does not vary with the target, giving
+**0.611 ms → 0.128 ms per target (4.8x)**.
+`resolve_effective_formatting` keeps its exact behaviour and now builds a
+throwaway cache, so both paths run one shared walk and cannot drift.
+
+Two walk details a naive implementation gets wrong, both worth keeping in
+mind for the rules: `doc.paragraphs` drops tables and `doc.tables` drops
+ordering, so document order needs `iter_inner_content`; and `row.cells`
+returns a merged cell once per grid column it spans, so a spanned cell's
+paragraphs double-count without a `w:tc` dedupe.
+
+Scoped out and documented: headers, footers, footnotes, endnotes, and
+comments. Only the main body is swept. `remap_styles` already carries the
+part-scanning pattern for when the rules need them.
 
 Deliberately **not** pulled in: the cell-formatting cascade resolver. It
 is the largest item on the backlog and it unlocks only the table rules.
