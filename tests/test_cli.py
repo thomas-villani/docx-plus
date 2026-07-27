@@ -455,3 +455,167 @@ def test_unknown_command_exits_2() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["frobnicate"])
     assert exc.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# skill — locate / read / install the packaged agent skill.
+# ---------------------------------------------------------------------------
+
+
+EXPECTED_TOPICS = {
+    "cli",
+    "comments",
+    "forms",
+    "layout",
+    "numbering",
+    "publishing",
+    "revisions",
+    "styles",
+    "tables",
+}
+
+
+class TestSkillPath:
+    def test_prints_an_existing_directory(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["skill", "path"]) == 0
+        printed = Path(capsys.readouterr().out.strip())
+        assert printed.is_dir()
+        assert (printed / "SKILL.md").is_file()
+
+    def test_points_inside_the_package(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The skill must resolve from the package, not the repo root."""
+        main(["skill", "path"])
+        printed = Path(capsys.readouterr().out.strip())
+        assert printed.parent.name == "docx_plus"
+
+
+class TestSkillList:
+    def test_lists_every_topic(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["skill", "list"]) == 0
+        assert set(capsys.readouterr().out.split()) == EXPECTED_TOPICS
+
+    def test_is_sorted(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main(["skill", "list"])
+        topics = capsys.readouterr().out.split()
+        assert topics == sorted(topics)
+
+
+class TestSkillShow:
+    def test_no_topic_prints_the_entry_point(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["skill", "show"]) == 0
+        out = capsys.readouterr().out
+        assert out.startswith("---")
+        assert "name: docx-plus" in out
+
+    def test_named_topic(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["skill", "show", "tables"]) == 0
+        assert "# Tables" in capsys.readouterr().out
+
+    def test_md_suffix_is_tolerated(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["skill", "show", "tables.md"]) == 0
+        assert "# Tables" in capsys.readouterr().out
+
+    def test_unknown_topic_lists_the_valid_ones(self, capsys: pytest.CaptureFixture[str]) -> None:
+        assert main(["skill", "show", "bogus"]) == 1
+        err = capsys.readouterr().err
+        assert "unknown topic 'bogus'" in err
+        assert "tables" in err
+
+
+class TestSkillInstall:
+    def test_writes_the_whole_tree(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        dest = tmp_path / "skills"
+        assert main(["skill", "install", "--dest", str(dest)]) == 0
+        installed = dest / "docx-plus"
+        assert (installed / "SKILL.md").is_file()
+        assert {p.stem for p in (installed / "reference").glob("*.md")} == EXPECTED_TOPICS
+        assert "installed 10 files" in capsys.readouterr().out
+
+    def test_content_matches_the_package(self, tmp_path: Path) -> None:
+        dest = tmp_path / "skills"
+        main(["skill", "install", "--dest", str(dest)])
+        main(["skill", "show", "numbering"])
+        packaged = (
+            Path(__file__).resolve().parent.parent
+            / "docx_plus"
+            / "skill"
+            / "reference"
+            / "numbering.md"
+        )
+        assert (dest / "docx-plus" / "reference" / "numbering.md").read_bytes() == (
+            packaged.read_bytes()
+        )
+
+    def test_refuses_to_overwrite(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        dest = tmp_path / "skills"
+        main(["skill", "install", "--dest", str(dest)])
+        capsys.readouterr()
+        assert main(["skill", "install", "--dest", str(dest)]) == 1
+        assert "pass --force to overwrite" in capsys.readouterr().err
+
+    def test_force_overwrites(self, tmp_path: Path) -> None:
+        dest = tmp_path / "skills"
+        main(["skill", "install", "--dest", str(dest)])
+        stray = dest / "docx-plus" / "stale.md"
+        stray.write_text("removed by a forced reinstall", encoding="utf-8")
+        assert main(["skill", "install", "--dest", str(dest), "--force"]) == 0
+        assert not stray.exists()
+
+    def test_user_and_dest_are_mutually_exclusive(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["skill", "install", "--user", "--dest", str(tmp_path)]) == 1
+        assert "mutually exclusive" in capsys.readouterr().err
+
+    def test_defaults_to_the_project_skills_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        assert main(["skill", "install"]) == 0
+        assert (tmp_path / ".claude" / "skills" / "docx-plus" / "SKILL.md").is_file()
+
+    def test_user_flag_targets_the_home_skills_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docx_plus.cli import skill as skill_cmd
+
+        monkeypatch.setattr(skill_cmd, "USER_SKILLS_DIR", tmp_path / "home" / "skills")
+        assert main(["skill", "install", "--user"]) == 0
+        assert (tmp_path / "home" / "skills" / "docx-plus" / "SKILL.md").is_file()
+
+
+class TestSkillFrontmatter:
+    """The frontmatter is what makes an agent discover the skill at all."""
+
+    def test_skill_md_has_name_and_description(self) -> None:
+        from docx_plus.cli.skill import _read, _skill_root
+
+        text = _read(_skill_root() / "SKILL.md")
+        head = text.split("---")[1]
+        assert "name: docx-plus" in head
+        assert "description:" in head
+
+    def test_every_topic_is_referenced_from_skill_md(self) -> None:
+        from docx_plus.cli.skill import _read, _skill_root, _topics
+
+        text = _read(_skill_root() / "SKILL.md")
+        missing = [t for t in _topics() if f"reference/{t}.md" not in text]
+        assert not missing, f"topics not linked from SKILL.md: {missing}"
+
+
+class TestSkillZipimportFallback:
+    """A zipped distribution has no on-disk path for `skill path` to print."""
+
+    def test_path_reports_a_clean_error(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from importlib.resources import files as resource_files
+
+        from docx_plus.cli import skill as skill_cmd
+
+        zipped = resource_files("docx_plus") / "skill" / "does-not-exist-on-disk"
+        monkeypatch.setattr(skill_cmd, "_skill_root", lambda: zipped)
+        assert main(["skill", "path"]) == 1
+        assert "zipped distribution" in capsys.readouterr().err

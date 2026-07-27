@@ -429,6 +429,7 @@ every subcommand and flag, lives in [`cli.md`](cli.md).
 |---|---|---|
 | `main(argv=None)` | function | Console entry point (`docx-plus = "docx_plus.cli:main"`; also `python -m docx_plus.cli`). Returns `0` on success, `1` on a handled library/CLI error, `2` when no command was given |
 | `build_parser()` | function | Construct the top-level `argparse.ArgumentParser` with every subcommand registered |
+| `docx-plus skill path\|list\|show\|install` | command | v0.5. Locate, read, or install the agent skill packaged at `docx_plus/skill/`. The one command that touches no `.docx`, so it takes `--dest` / `--user` / `--force` rather than `-o/--output` |
 
 ---
 

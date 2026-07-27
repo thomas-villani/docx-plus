@@ -8,6 +8,21 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The agent skill now ships in the wheel.** It lived at repo-level
+  `skills/docx-plus/` through v0.4, which meant `docs/SKILLS.md` claimed
+  the library "ships" it while linking only to GitHub blob URLs —
+  broken for anyone who had `pip install`ed rather than cloned. The tree
+  moved to `docx_plus/skill/`, which needed **no build configuration
+  change at all**: hatchling's `packages = ["docx_plus"]` already sweeps
+  non-`.py` files, the same reason `py.typed` ships. Verified by
+  building a wheel, unzipping it, and driving the result from a clean
+  venv with no source tree.
+- **`docx-plus skill`** — a new CLI command over that:
+  `install [--dest DIR | --user] [--force]` copies the tree into a
+  skills directory (defaulting to `./.claude/skills/`), and
+  `path` / `list` / `show [TOPIC]` locate or read it in place. The one
+  command that touches no `.docx`, so the `-o/--output` / `--in-place`
+  convention does not apply to it.
 - **Comment durable ids (`commentsIds.xml`)** — a comment has three
   identifiers and only this one survives an edit: `w:id` is a
   position-dependent index Word renumbers, and the `w14:paraId` the

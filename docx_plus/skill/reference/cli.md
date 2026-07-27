@@ -25,6 +25,8 @@ shell, CI step, or another non-Python tool.
 - **Exit codes:** `0` success; `1` for a handled error (bad path, missing
   output, un-coercible value, unknown tag or comment id — printed as
   `error: ...` on stderr); `2` for a usage error or no command.
+- **`skill` is the exception to all of the above** — it touches no `.docx`,
+  so it takes neither `--json` nor `-o/--output`.
 
 ## `inspect` — effective formatting
 
@@ -85,3 +87,20 @@ attached to, and a `[resolved]` marker; a comment with no anchor in the document
 body is flagged as orphaned. Resolution is **thread-wide**, so `resolve` /
 `reopen` accept any comment id in the thread. An unknown id is a clean
 `error: ...` (exit 1).
+
+## `skill` — the packaged agent skill
+
+```bash
+docx-plus skill install                  # -> ./.claude/skills/docx-plus
+docx-plus skill install --user           # -> ~/.claude/skills/docx-plus
+docx-plus skill install --dest DIR       # -> DIR/docx-plus
+docx-plus skill path                     # where the packaged copy lives
+docx-plus skill list                     # the reference topics
+docx-plus skill show tables              # print one topic to stdout
+```
+
+This is the file you are reading. It ships **inside the wheel** at
+`docx_plus/skill/`, so `pip install docx-plus` is enough — no repository
+clone. `install` refuses to overwrite an existing installation without
+`--force`, so upgrading the library never silently clobbers local edits.
+`--user` and `--dest` are mutually exclusive.

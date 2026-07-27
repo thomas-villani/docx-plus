@@ -26,13 +26,38 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
 | `publishing/` | TOC, captions, table of figures |
 | `tables/` | Table / cell borders, table / row / cell shading, merge + unmerge, `w:hMerge` normalization, direct-formatting read (v0.5) |
 | `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
-| `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4) |
+| `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4), `skill` (path / list / show / install the packaged agent skill) (v0.5) |
 
 Suite at the v0.4.0 release: 905 tests (895 pass, 10 LibreOffice-skipped),
 94% coverage; `mypy --strict`, `ruff`, and `mkdocs build --strict` all
 clean.
 
 ## v0.5 — in progress
+
+### Agent skill packaging — shipped
+
+The decision the v0.3 CLI unblocked and v0.4 deferred. The skill moved
+from repo-level `skills/docx-plus/` into `docx_plus/skill/`, so it ships
+in the wheel, and a `docx-plus skill` command
+(`path` / `list` / `show` / `install`) puts it where an agent will find
+it.
+
+Two things worth recording:
+
+- **The move needed no build configuration.** Hatchling's
+  `packages = ["docx_plus"]` already sweeps non-`.py` files — the reason
+  `py.typed` ships — and the sdist `include` already listed
+  `docx_plus/`. Confirmed by building a wheel, unzipping it (all ten
+  Markdown files present), installing into a clean venv with no source
+  tree, and driving `skill path` / `list` / `install` from there.
+- **`docs/SKILLS.md` was making a false claim.** It said the library
+  "ships" the skill while linking exclusively to GitHub blob URLs, which
+  is broken for anyone who `pip install`ed. That is now true rather than
+  aspirational, and the page documents the CLI instead of a clone.
+
+Its table had also drifted — missing the `numbering` and `tables`
+topics added earlier in this cycle. The suite now asserts every topic
+file is linked from `SKILL.md`, so a new page cannot land orphaned.
 
 ### Comment durable ids + author presence — shipped
 
@@ -241,9 +266,9 @@ Read commands take `--json`; mutating commands require `-o/--output`
 (or an explicit `--in-place`) so the input is never overwritten by
 accident.
 
-Still open: a console entry point now exists, so the deferred
-**packaging decision for the agent `SKILL.md`** (currently repo-level
-only, kept out of the wheel) can be revisited — left for a later cycle.
+The deferred **packaging decision for the agent `SKILL.md`** this
+unblocked was taken in v0.5: the skill moved into the package and got a
+`docx-plus skill` subcommand.
 
 ## Backlog — bounded, unscheduled
 
