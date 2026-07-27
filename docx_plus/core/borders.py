@@ -80,10 +80,11 @@ class Border:
 
             The default ``24`` — 1/3 inch — is a *page*-border default:
             it is what Word's UI emits for "Whole document, Box, Default
-            settings" paired with ``offset_from="page"``. Word writes
-            ``w:space="0"`` on table and cell borders, so
-            :mod:`docx_plus.tables` overrides it rather than inheriting
-            this default.
+            settings" paired with ``offset_from="page"``. Word's UI does
+            not expose the setting for tables at all and always writes
+            ``w:space="0"`` there, so :mod:`docx_plus.tables` ignores
+            this field and writes ``0`` rather than letting a page
+            default leak onto a table edge.
 
     Raises:
         ValueError: If ``color`` is not ``"auto"`` or a six-hex-digit

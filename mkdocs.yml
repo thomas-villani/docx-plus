@@ -76,6 +76,10 @@ nav:
       - docx_plus.publishing.toc: reference/publishing-toc.md
       - docx_plus.publishing.captions: reference/publishing-captions.md
       - docx_plus.publishing.figures: reference/publishing-figures.md
+      - docx_plus.tables.borders: reference/tables-borders.md
+      - docx_plus.tables.shading: reference/tables-shading.md
+      - docx_plus.tables.merge: reference/tables-merge.md
+      - docx_plus.tables.read: reference/tables-read.md
   - Test Gaps: TEST_GAPS.md
 
 plugins:

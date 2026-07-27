@@ -35,6 +35,7 @@ CAPABILITIES = {
     "numbering",
     "publishing",
     "revisions",
+    "tables",
 }
 
 
