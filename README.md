@@ -350,6 +350,8 @@ $ docx-plus inspect report.docx --provenance     # effective formatting per para
 $ docx-plus restyle draft.docx --target Heading1 --target Title -o clean.docx
 $ docx-plus controls list form.docx --json       # every content control
 $ docx-plus controls set form.docx --tag name --value "Ada Lovelace" -o filled.docx
+$ docx-plus comments list draft.docx --unresolved  # open comment threads
+$ docx-plus skill install                          # drop the agent skill into .claude/skills/
 ```
 
 Read commands (`inspect`, `controls list`) take `--json`; so does
@@ -408,9 +410,10 @@ Full docs (rendered by [MkDocs](https://www.mkdocs.org) +
 - [API Index](https://thomas-villani.github.io/docx-plus/API/) —
   hand-curated index of every public symbol with links to the
   auto-generated reference
-- **Agent skill** for LLM coding agents:
-  [`skills/docx-plus/`](skills/docx-plus/SKILL.md) — point Claude Code (or any
-  agent) at it to generate `docx_plus` automation. Overview at
+- **Agent skill** for LLM coding agents — ships inside the package at
+  [`docx_plus/skill/`](docx_plus/skill/SKILL.md), so `pip install` is enough.
+  Drop it where Claude Code (or any agent) will find it with
+  `docx-plus skill install`. Overview at
   [docs/SKILLS](https://thomas-villani.github.io/docx-plus/SKILLS/)
 - [Test Gaps](https://thomas-villani.github.io/docx-plus/TEST_GAPS/) —
   honest accounting of where the test suite has real holes (snapshot

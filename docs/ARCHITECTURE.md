@@ -115,7 +115,12 @@ docx_plus/
 │   ├── inspect.py           # inspect subcommand — effective formatting dump
 │   ├── restyle.py           # restyle subcommand — remap_styles onto canonical ids
 │   ├── controls.py          # controls subcommand — list / set / clear control values
+│   ├── comments.py          # comments subcommand — list / resolve / reopen threads
+│   ├── skill.py             # skill subcommand — path / list / show / install — v0.5
 │   └── _io.py               # CliError + shared load/save/output helpers
+├── skill/                   # packaged agent skill (Markdown, ships in the wheel) — v0.5
+│   ├── SKILL.md             # entry point: frontmatter + capability map
+│   └── reference/           # one topic file per capability, loaded on demand
 ├── examples/                # runnable demo scripts
 │   ├── inspect_document.py, restyle_existing.py, build_form.py, populate_form.py
 │   ├── add_comments.py, multi_column_layout.py, bookmarks_and_xrefs.py,
@@ -968,13 +973,16 @@ library: `build_parser()` registers one subparser per subcommand, and
 success, `1` for a handled `DocxPlusError` (printed to stderr), and `2`
 when no command is given.
 
-Three subcommands, each wrapping one tested library function:
+Five subcommands, four of them wrapping one tested library function
+each:
 
 - `inspect` — dump effective per-paragraph formatting
   (`styles.resolve_effective_formatting`).
 - `restyle` — remap styles onto canonical ids (`styles.remap_styles`).
 - `controls` — list / set / clear content-control values
   (`controls`).
+- `comments` — list / resolve / reopen comment threads (`comments`).
+- `skill` — locate, read, or install the packaged agent skill (v0.5).
 
 Read commands take `--json`; mutating commands require `-o/--output`
 (or an explicit `--in-place`) so the input is never overwritten by
@@ -984,6 +992,42 @@ accident. Shared load/save plumbing and the `CliError` type live in
 The CLI is the **one** layer that legitimately imports across
 capabilities — it composes `styles/` and `controls/` by design — and is
 the documented exception to the §8 no-cross-imports invariant.
+
+### `skill` — the packaged agent skill (v0.5)
+
+The LLM-facing guide lived at repo-level `skills/docx-plus/` through
+v0.4, which meant `docs/SKILLS.md` claimed the library "ships" it while
+linking only to GitHub blob URLs — broken for anyone who had
+`pip install`ed. v0.5 moved the tree to `docx_plus/skill/`.
+
+**That move needed no build configuration at all.** Hatchling's
+`packages = ["docx_plus"]` already sweeps non-`.py` files — the reason
+`py.typed` ships — and the sdist `include` already lists `docx_plus/`.
+Verified by building a wheel and unzipping it: all ten Markdown files
+present, then installed into a clean venv with no source tree and
+driven through the CLI from there.
+
+`cli/skill.py` is the one command that neither reads nor writes a
+`.docx`, so the `-o/--output` / `--in-place` convention does not apply;
+it takes `--dest` / `--user` plus a `--force` overwrite guard instead.
+
+Two implementation notes:
+
+- Resources are addressed as `files("docx_plus") / "skill"`, **not**
+  `files("docx_plus.skill")`. The latter resolves through the
+  namespace-package machinery and yields a `MultiplexedPath`, whose
+  `str()` is `MultiplexedPath('…')` — useless as the output of
+  `skill path`. Anchoring on the real package and navigating in gives a
+  plain `Path`.
+- `_copy_tree` walks the `Traversable` API rather than calling
+  `shutil.copytree`, so `skill install` works even from a zipimported
+  distribution where there is no source directory to copy from.
+  `skill path` is the only action that cannot serve that case, and it
+  raises a `CliError` saying so.
+
+The suite asserts that every reference topic is linked from `SKILL.md`
+and that the frontmatter carries the `name:` / `description:` an agent
+needs to discover the skill, so a new topic page cannot land orphaned.
 
 ---
 

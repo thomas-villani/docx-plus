@@ -14,9 +14,10 @@ usage: docx-plus [-h] [--version] <command> ...
   restyle   remap a document's styles onto canonical style ids
   controls  list, set, or clear content-control values
   comments  list comment threads, or resolve / reopen them
+  skill     locate, read, or install the packaged agent skill
 ```
 
-Two conventions hold across every command:
+Two conventions hold across every command that touches a `.docx`:
 
 - **Read commands take `--json`.** `inspect`, `controls list`, and
   `comments list` default to human-readable text; `--json` emits structured
@@ -25,6 +26,9 @@ Two conventions hold across every command:
   `controls set` / `clear`, and `comments resolve` / `reopen` require an
   explicit `-o/--output` path, or the `--in-place` flag to opt into
   overwriting the source file.
+
+`skill` is the exception to both: it neither reads nor writes a `.docx`, so it
+takes neither `--json` nor `-o/--output`.
 
 Exit codes: `0` on success, `1` for a handled error (bad path, missing output,
 un-coercible value, unknown control tag, unknown comment id), `2` for a usage
@@ -132,3 +136,42 @@ resolved the thread containing comment 3; wrote triaged.docx
 - `comments resolve FILE ID -o OUT` / `comments reopen FILE ID -o OUT` — toggle
   a thread's resolved state. Resolution is thread-wide in Word, so naming any
   comment in a thread moves the whole thread; an unknown id is a clean error.
+
+## `skill`
+
+The library ships an [agent skill](SKILLS.md) — an LLM-facing guide — inside
+the package at `docx_plus/skill/`. This command puts it where an agent will
+find it.
+
+```console
+$ docx-plus skill install
+installed 10 files to .claude/skills/docx-plus
+
+$ docx-plus skill list
+cli
+comments
+forms
+layout
+numbering
+publishing
+revisions
+styles
+tables
+
+$ docx-plus skill show tables | head -3
+# Tables — borders, shading, merging
+```
+
+- `skill install [--dest DIR | --user] [--force]` — copy the tree into a skills
+  directory. Defaults to `./.claude/skills/`; `--user` targets
+  `~/.claude/skills/`; `--dest` names any other skills root. The skill lands at
+  `<root>/docx-plus`. An existing installation is left alone unless `--force`
+  is given, so upgrading the library never silently clobbers local edits.
+  `--user` and `--dest` are mutually exclusive.
+- `skill path` — print the directory holding the packaged copy.
+- `skill list` — the reference topics available to `show`.
+- `skill show [TOPIC]` — print `SKILL.md`, or one reference topic, to stdout. A
+  trailing `.md` on the topic is tolerated.
+
+Because the skill ships in the wheel, `pip install docx-plus` is enough — there
+is no need to clone the repository to get it.
