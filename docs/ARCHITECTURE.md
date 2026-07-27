@@ -1365,10 +1365,18 @@ complete (released through `v0.2.1`). v0.3 then shipped its two headline
 targets: **tracked changes (read/write)** in `revisions/` (§7.11) and the
 **`docx-plus` CLI** in `cli/` (§7.12). v0.4 shipped **threaded comments**
 in `comments/threads.py` over `comments/_extended.py` (§7.6.1), with the
-`commentsExtended.xml` part and the `comments` CLI subcommand.
+`commentsExtended.xml` part and the `comments` CLI subcommand. v0.5
+shipped **custom numbering** in `numbering/`, **table formatting** in
+`tables/`, comment durable ids and author presence, `STYLEREF` and
+caption cross-references, and moved the agent skill into the wheel
+behind a `docx-plus skill` command.
 
-The authoritative roadmap for everything deferred to the post-v0.4
-backlog — targeted work, bounded backlog, and dependency-gated items
-(custom numbering definitions, `STYLEREF` / caption cross-references,
-bibliography / CXML data binding, …) — lives in `ROADMAP.md` at the repo
-root.
+v0.6 is scoped to the **linter** — a new `lint/` composing layer that
+sits where `cli/` sits, above the capability modules, reporting findings
+over the style cascade and producing an inspectable fix plan. The cycle
+is non-mutating; applying that plan is v0.7.
+
+The authoritative roadmap for that cycle and for everything on the
+backlog — bounded items and dependency-gated ones (the cell-formatting
+cascade resolver, bibliography / CXML data binding, theme writing, …) —
+lives in `ROADMAP.md` at the repo root.

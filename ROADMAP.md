@@ -8,10 +8,10 @@ things `python-docx` can't. Every item below either fills a documented
 `python-docx` gap or rounds out a surface already started here. Ideas that
 don't fit that charter are routed to sibling projects, not absorbed.
 
-## Current state — v0.4.0 released
+## Current state — v0.5.0 released
 
 Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
-(2026-07-26). Shipped capability modules:
+(2026-07-26), `v0.5.0` (2026-07-27). Shipped capability modules:
 
 | Module | Surface |
 |---|---|
@@ -25,14 +25,136 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
 | `notes/` | Footnotes + endnotes — add / edit / read |
 | `publishing/` | TOC, captions, table of figures |
 | `tables/` | Table / cell borders, table / row / cell shading, merge + unmerge, `w:hMerge` normalization, direct-formatting read (v0.5) |
+| `numbering/` | Custom list definitions — define / apply / restart / read; bullet + numbered presets (v0.5) |
 | `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
 | `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4), `skill` (path / list / show / install the packaged agent skill) (v0.5) |
 
-Suite at the v0.4.0 release: 905 tests (895 pass, 10 LibreOffice-skipped),
-94% coverage; `mypy --strict`, `ruff`, and `mkdocs build --strict` all
-clean.
+Suite at the v0.5.0 release: 1278 tests (1266 pass, 12
+LibreOffice-skipped), 95% coverage; `mypy --strict`, `ruff`, and
+`mkdocs build --strict` all clean.
 
-## v0.5 — in progress
+Post-release, on `docs/public-facing-polish`: community health files
+(`CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue forms,
+PR template), a README rewritten for arrivals from PyPI, corrected
+version claims, expanded package metadata, and the social preview card.
+No library API change.
+
+## v0.6 — planned: the linter (`lint/`)
+
+The flagship for the cycle, and the first surface here that is a *tool*
+rather than a capability. Cleaning up formatting after the content is
+settled is the most tedious part of professional `.docx` work, and it is
+exactly the job the style cascade resolver was built to reason about.
+
+**v0.6 writes nothing.** The cycle ends at report → plan: findings, and
+an inspectable plan describing what a fix *would* change. Applying that
+plan is v0.7. This is a deliberate boundary — it forces the fix model to
+be designed while nothing can yet corrupt a document, and it means the
+whole release is non-mutating.
+
+### Charter note — why this is in scope
+
+Every module shipped so far fills a documented `python-docx` gap:
+python-docx cannot write `w:tblBorders`, so `tables/` does. The linter
+fills no such gap. It is the first layer here with an *opinion*, which
+is a real departure from "lean extension" and is recorded rather than
+assumed.
+
+Two things keep it in charter:
+
+- **It is a composing layer, not a capability.** `lint/` sits where
+  `cli/` sits — above the capability modules, allowed to import across
+  them (SPEC §9.1 forbids that only between siblings). Capabilities
+  reach OOXML; composing layers reach capabilities. `lint/` adds no new
+  OOXML knowledge of its own.
+- **Mechanism ships; opinions are selectable.** The library provides a
+  `Rule` protocol, a registry, and a small built-in set. `docx_plus`
+  reports that forty paragraphs resolve identically under three style
+  ids; it does not assert that this is wrong. Users select and write
+  rules.
+
+**No Word / COM dependency.** `wordlive` informs the *ideas* here — it
+stays a verification tool for development, never an import. The linter
+is pure-Python and cross-platform like the rest of the library.
+
+### Stage 1 — resolver completion
+
+The linter is the resolver plus clustering, so every hole in
+`resolve_effective_formatting` becomes a class of false positives. Two
+backlog items are really prerequisites, and are pulled into this cycle:
+
+- **Resolve style-supplied numbering in the cascade.** Layer 4
+  (`styles/inspect.py:448`) reads only the paragraph's *direct*
+  `w:numPr`, so a correctly-styled `List Bullet` paragraph reports
+  `num_id=None` — indistinguishable from one where a bullet glyph was
+  typed by hand. That makes the `manual-list` rule unimplementable, and
+  it is a live contract bug regardless: every other field on
+  `ResolvedFormatting` walks the style chain. Resolve `numPr` through
+  `basedOn` like the other pPr properties, decide what a style's
+  `numId="0"` sentinel means, and give style-supplied numbering its own
+  provenance layer so the linter can tell the two apart. See the
+  backlog entry for the full derivation.
+- **A cached document-wide sweep.** `resolve_effective_formatting` is
+  per-target and re-walks docDefaults and the style chain on every call;
+  a linter resolves every run in the document. Lands in `styles/` — it
+  is an optimization of the resolver, and the cascade knowledge stays in
+  one place — memoizing docDefaults and per-`styleId` chain results
+  across a single pass.
+
+Deliberately **not** pulled in: the cell-formatting cascade resolver. It
+is the largest item on the backlog and it unlocks only the table rules.
+Blocking the most valuable rules on the most expensive prerequisite is
+the wrong trade; table rules ship in a later wave once it lands.
+
+### Stage 2 — `lint/`, read-only
+
+Engine: `Finding`, `Severity`, a `Rule` protocol, and a registry, over
+the stage-1 sweep.
+
+Built-in rules, all scoped to paragraphs / runs / styles so none of them
+waits on the cell cascade:
+
+| Rule | What it catches |
+|---|---|
+| `redundant-direct-formatting` | a run's direct `rPr` setting a property to the value it already inherits |
+| `duplicate-styles` | two or more style ids resolving to identical formatting (`find_matching_style` is the seed) |
+| `unused-styles` | defined, referenced nowhere (reference scanning already exists in `remap_styles` / `delete_style`) |
+| `fake-heading` | a `Normal` paragraph formatted to look like a heading, with no outline level |
+| `manual-list` | list-like literal text (`1.`, `a)`, `•`) with no `numPr` — *needs stage 1* |
+| `direct-numbering-override` | a paragraph's direct `numPr` fighting the one its style supplies — *needs stage 1* |
+| `spacing-by-empty-paragraph` | runs of empty paragraphs standing in for `spaceAfter` |
+| `indent-by-whitespace` | leading tabs / spaces standing in for a real indent |
+| `font-outliers` | thinly-populated effective font / size combinations against a dominant set |
+| `mixed-language` | inconsistent `w:lang`, which quietly wrecks spellcheck |
+
+### Stage 3 — report → plan
+
+`plan_fixes(findings)` returns a `FixPlan`: an ordered, inspectable,
+serializable list of edits, each with a target, a description, and a
+safety class. Conflict detection between edits from different rules
+targeting the same run belongs here. **Nothing applies it in v0.6.**
+
+The **high-level "restyle" planner** on the backlog is this plan's
+engine for the style-related rules — computing the minimal cascade
+modification that reaches a target `ResolvedFormatting`. Designing it
+against a plan that cannot execute is the cheap place to do it.
+
+### CLI
+
+`docx-plus lint FILE [--rules ...] [--json]` and
+`docx-plus plan FILE [--json]`. Both are read commands, so both take
+`--json` and neither needs `-o/--output` — the mutating-command
+convention is untouched this cycle.
+
+## v0.7 — sketched: the regularizer
+
+Applies a `FixPlan`. Each rule that is safely invertible gains an
+autofix; `docx-plus regularize FILE -o OUT` re-enters the
+mutating-command convention, dry-run by default. Sequenced after a
+release of real-world lint output, because detection is safe and
+rewriting someone's formatting is where the risk lives.
+
+## v0.5 — shipped
 
 ### Agent skill packaging — shipped
 
@@ -286,7 +408,6 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   SDTs, vs. the inline `w:placeholder` text `controls/` already supports.
 - **Password-protected forms** — legacy hash algorithm, paired with
   `protect_document`. (`protection/`.)
-- **linter** -- can use some of the ideas from `wordlive` to build a linter/regularizer for docx files.
 
 ## Backlog — larger or dependency-gated
 
@@ -301,7 +422,9 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   out the surface.
 - **High-level "restyle" planner** — inverse of the inspector: take a
   target `ResolvedFormatting` and compute the minimal cascade modification
-  to reach it. Large design space.
+  to reach it. Large design space. **Scheduled into v0.6 stage 3**, where
+  it is the fix engine behind the style-related lint rules; designing it
+  against a plan that cannot yet execute is the cheap place to do it.
 - **Sections / headers / footers first-class API** — wraps the
   `python-docx` primitives behind a `docx_plus`-native surface
   (`sections/`).
@@ -311,6 +434,8 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   `w:tcPr`. `tables/read.py` reports direct formatting only, and
   `styles/inspect.py` scopes this out in the same terms while resolving
   the paragraph and run cascade. The largest single item on this list.
+  **Gates the linter's table rules**, and was deliberately kept out of
+  v0.6 for that reason — see the v0.6 stage 1 note.
 - **Link a numbering definition into a style** —
   `w:style/w:pPr/w:numPr`, so `ensure_style("ListBullet")` produces a
   style that actually bullets. Split out of the v0.5 numbering cycle
@@ -337,7 +462,9 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
     `w:numPr` with an int, so `styles/` never has to reach into
     `numbering/`. That is why this lands in `styles/`, not here.
 - **Resolve style-supplied numbering in the cascade** — related, and
-  arguably the more surprising half. Layer 4 reads only the paragraph's
+  arguably the more surprising half. **Scheduled into v0.6 stage 1** as a
+  linter prerequisite; the derivation below is the implementation note.
+  Layer 4 reads only the paragraph's
   *direct* `w:numPr` (`styles/inspect.py:428`), never the one its style
   supplies, so on a stock `Document()`:
 
