@@ -17,11 +17,17 @@ Every comment written here is also registered as an unresolved thread
 root in ``commentsExtended.xml`` — see
 :mod:`docx_plus.comments._extended` for why that part exists and
 :mod:`docx_plus.comments.threads` for the reply / resolve surface built
-on top of it.
+on top of it — and given a ``w16cid:durableId`` in ``commentsIds.xml``,
+its only identifier stable across edits
+(:mod:`docx_plus.comments._ids`).
+
+Author presence (``people.xml``) is *not* written here; it is cosmetic
+and needs an identity the library cannot invent. See
+:mod:`docx_plus.comments.people`.
 
 This module imports only from ``docx_plus.core`` and the siblings
-``docx_plus.comments.registry`` / ``docx_plus.comments._extended``
-(SPEC §9.1).
+``docx_plus.comments.registry`` / ``docx_plus.comments._extended`` /
+``docx_plus.comments._ids`` (SPEC §9.1).
 """
 
 from __future__ import annotations
@@ -36,8 +42,8 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from lxml import etree
 
-from docx_plus.comments import _extended
-from docx_plus.comments.registry import CommentIdRegistry
+from docx_plus.comments import _extended, _ids
+from docx_plus.comments.registry import CommentIdRegistry, DurableIdRegistry
 from docx_plus.core import DocxPlusError
 from docx_plus.core.ids import ParaIdRegistry
 from docx_plus.core.ns import qn
@@ -83,6 +89,7 @@ def add_comment(
     initials: str | None = None,
     id_registry: CommentIdRegistry | None = None,
     para_id_registry: ParaIdRegistry | None = None,
+    durable_id_registry: DurableIdRegistry | None = None,
 ) -> CommentRef:
     """Anchor a comment to a run, paragraph, or run range.
 
@@ -98,6 +105,15 @@ def add_comment(
     it authors, and it is what makes the comment immediately usable with
     :func:`~docx_plus.comments.reply_to_comment` and
     :func:`~docx_plus.comments.resolve_comment`.
+
+    It is also given a ``w16cid:durableId`` in ``commentsIds.xml`` — the
+    comment's only identifier stable across edits, since ``w:id`` is a
+    position-dependent index Word renumbers and ``w14:paraId`` changes
+    whenever the body is rewritten. Read it back through
+    :attr:`~docx_plus.comments.AnchoredComment.durable_id`.
+
+    Author presence (``people.xml``) is deliberately *not* written —
+    see :func:`~docx_plus.comments.set_author_presence`.
 
     Args:
         target: Where the comment anchors.
@@ -128,6 +144,10 @@ def add_comment(
             for the same reason as ``id_registry``. A fresh
             :class:`~docx_plus.core.ids.ParaIdRegistry` is constructed
             from the target's document if not supplied.
+        durable_id_registry: Pre-existing ``w16cid:durableId`` allocator,
+            shared for the same reason again. A fresh
+            :class:`DurableIdRegistry` is constructed from the target's
+            document if not supplied.
 
     Returns:
         A :class:`CommentRef` with the assigned comment id and a handle
@@ -168,6 +188,7 @@ def add_comment(
         para_id_registry = ParaIdRegistry(doc)
     key = _extended.stamp_para_ids(body, para_id_registry)
     _extended.upsert_comment_ex(doc, key, done=False)
+    _ids.upsert_comment_id(doc, key, registry=durable_id_registry)
 
     return CommentRef(comment_id=comment_id, body_element=body)
 
@@ -235,19 +256,24 @@ def clear_all_comments(doc: Document, *, remove_part: bool = False) -> None:
     ``<w:commentRangeStart>``, ``<w:commentRangeEnd>``, and
     ``<w:commentReference>`` marker regardless of id, then walks
     ``comments.xml`` once removing every ``<w:comment>`` entry, then
-    ``commentsExtended.xml`` once removing every ``<w15:commentEx>``
-    thread entry. Idempotent: a document with no comments is a no-op.
+    ``commentsExtended.xml`` and ``commentsIds.xml`` once each removing
+    every thread and durable-id entry. Idempotent: a document with no
+    comments is a no-op.
+
+    ``people.xml`` is left alone — see
+    :func:`~docx_plus.comments.clear_author_presence` for why author
+    entries are not pruned automatically.
 
     Args:
         doc: The python-docx :class:`~docx.document.Document` to scrub.
-        remove_part: When ``False`` (default) the now-empty comments and
-            commentsExtended parts are left in place so a subsequent
-            :func:`add_comment` reuses them without re-creating the
-            relationships. When ``True`` both parts and their
-            relationships are torn down entirely, so the saved document
-            carries no comment parts at all — useful when a consumer
-            dislikes an empty-but-related part, and the cleaner state for
-            a document that is done with comments.
+        remove_part: When ``False`` (default) the now-empty comments,
+            commentsExtended, and commentsIds parts are left in place so
+            a subsequent :func:`add_comment` reuses them without
+            re-creating the relationships. When ``True`` all three parts
+            and their relationships are torn down entirely, so the saved
+            document carries no comment parts at all — useful when a
+            consumer dislikes an empty-but-related part, and the cleaner
+            state for a document that is done with comments.
     """
     body = doc.element.body
 
@@ -262,6 +288,7 @@ def clear_all_comments(doc: Document, *, remove_part: bool = False) -> None:
         _remove_reference_marker(ref)
 
     _extended.clear_comments_ex(doc, remove_part=remove_part)
+    _ids.clear_comment_ids(doc, remove_part=remove_part)
 
     try:
         comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))
@@ -327,6 +354,7 @@ def _delete_one_comment(doc: Document, comment_id: int, para_id: str) -> None:
         _remove_reference_marker(ref)
 
     _extended.drop_comment_ex(doc, para_id)
+    _ids.drop_comment_id(doc, para_id)
 
     try:
         comments_part = cast("XmlPart", doc.part.part_related_by(RT.COMMENTS))

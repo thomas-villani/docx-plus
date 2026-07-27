@@ -19,7 +19,7 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
 | `controls/` | Content controls — `FormBuilder`, read / set / clear values |
 | `fields/` | Simple + complex fields, `mark_fields_dirty` |
 | `protection/` | `protect_document` |
-| `comments/` | Anchored comments — add / edit / delete / clear, over runs, paragraphs, run ranges; threads — reply, resolve / reopen, nested read (v0.4) |
+| `comments/` | Anchored comments — add / edit / delete / clear, over runs, paragraphs, run ranges; threads — reply, resolve / reopen, nested read (v0.4); durable ids + author presence (v0.5) |
 | `layout/` | Columns, mid-document section breaks, even/odd headers, line numbering, page borders |
 | `bookmarks/` | Bookmarks + `REF` / `PAGEREF` cross-references |
 | `notes/` | Footnotes + endnotes — add / edit / read |
@@ -33,6 +33,36 @@ Suite at the v0.4.0 release: 905 tests (895 pass, 10 LibreOffice-skipped),
 clean.
 
 ## v0.5 — in progress
+
+### Comment durable ids + author presence — shipped
+
+The two side-parts split out of the v0.4 cycle. Both were verified
+against a file **Word 2016 authored itself** — driven over COM, saved,
+unzipped, and read — before a line was written, which was the right call
+twice over:
+
+- **All four content-type / relationship URIs guessed in the groundwork
+  PR turned out exact.** No corrections needed.
+- **`w16cid:durableId` is hex, not decimal.** The plan specified a
+  decimal collector and a decimal registry. Word writes
+  `ST_LongHexNumber` — the same 8-uppercase-digit form as
+  `w14:paraId` — so `DurableIdRegistry` reuses the existing hex
+  machinery and the feature added *less* core code than budgeted.
+- **`w15:person` is not a bare element.** It carries a
+  `<w15:presenceInfo>` child with `providerId` and `userId`.
+
+Durable ids are written automatically, because they are a comment's only
+identifier stable across edits and Word regenerates missing ones anyway.
+Author presence is **opt-in** (`set_author_presence`): it is cosmetic,
+and registering an author means inventing a `userId` for someone the
+library knows nothing about.
+
+Round-trip verified: Word opened a document written here and resaved it
+preserving both `paraId` and `durableId` byte-for-byte, plus a
+non-default `providerId="AD"` presence entry, and added no parts of its
+own.
+
+Deferred: `commentsExtensible.xml` — see the backlog.
 
 ### Table borders / shading / merging — shipped
 
@@ -219,11 +249,14 @@ only, kept out of the wheel) can be revisited — left for a later cycle.
 
 Each reuses existing plumbing; pull into a cycle as priority dictates.
 
-- **Comment durable ids + author presence** — `commentsIds.xml`
-  (`w16cid` durable ids for comment permalinks) and `people.xml`
-  (`w15:people` presence info). Neither is needed for threading or
-  resolution — Word regenerates the first and the second is cosmetic —
-  so both were split out of the v0.4 cycle. (`comments/`.)
+- **`commentsExtensible.xml`** — a *fifth* comment side-part
+  (`w16cex`, 2018), discovered while verifying the v0.5 work against a
+  Word-authored file. Keys off `w16cid:durableId` and carries
+  `w16cex:dateUtc`, which exists because `w:comment/@w:date` is local
+  time. Low priority: `commentsIds.xml` predates it by two years, so
+  writing one without the other is a state Word itself produced for
+  years — and Word added no such part when resaving a file of ours that
+  lacked it. (`comments/`.)
 - **Glossary placeholder text** — the "formal" placeholder mechanism for
   SDTs, vs. the inline `w:placeholder` text `controls/` already supports.
 - **Password-protected forms** — legacy hash algorithm, paired with

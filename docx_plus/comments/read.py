@@ -8,8 +8,9 @@ attached to, plus its position in the thread graph.
 For the nested view — roots with their replies grouped — see
 :func:`docx_plus.comments.read_threads`.
 
-This module imports only from ``docx_plus.core`` and the sibling
-``docx_plus.comments._extended`` (SPEC §9.1).
+This module imports only from ``docx_plus.core`` and the siblings
+``docx_plus.comments._extended`` / ``docx_plus.comments._ids``
+(SPEC §9.1).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.opc.part import XmlPart
 from lxml import etree
 
-from docx_plus.comments import _extended
+from docx_plus.comments import _extended, _ids
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
 
@@ -57,6 +58,14 @@ class AnchoredComment:
             threading information to read.
         resolved: Whether the comment's thread is marked resolved
             (``w15:done``). ``False`` when the extended part is absent.
+        durable_id: The ``w16cid:durableId`` from ``commentsIds.xml`` as
+            8 uppercase hex digits, or ``None`` when the part is absent
+            or has no entry for this comment. **This is the only one of
+            a comment's three identifiers that is stable across edits:**
+            ``comment_id`` is a position-dependent index Word renumbers,
+            and the ``w14:paraId`` the thread graph uses changes whenever
+            the body is rewritten. Use it to cite a comment from outside
+            the document.
     """
 
     comment_id: int
@@ -68,6 +77,7 @@ class AnchoredComment:
     paragraph_index: int
     parent_id: int | None = None
     resolved: bool = False
+    durable_id: str | None = None
 
 
 def read_comments(doc: Document) -> list[AnchoredComment]:
@@ -94,6 +104,8 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
     body = doc.element.body
     paragraph_elements = list(xpath(body, ".//w:p"))
     thread_state = _extended.thread_state(doc)
+    thread_keys, _ = _extended.key_maps(doc)
+    durable_ids = _ids.durable_id_map(doc)
 
     result: list[AnchoredComment] = []
     for comment_el in xpath(comments_root, "./w:comment"):
@@ -113,6 +125,8 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
 
         anchored_text, paragraph_index = _anchor_lookup(body, paragraph_elements, str(cid))
         parent_id, resolved = thread_state.get(cid, (None, False))
+        thread_key = thread_keys.get(cid)
+        durable_id = durable_ids.get(thread_key) if thread_key else None
 
         result.append(
             AnchoredComment(
@@ -125,6 +139,7 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
                 paragraph_index=paragraph_index,
                 parent_id=parent_id,
                 resolved=resolved,
+                durable_id=durable_id,
             )
         )
     return result

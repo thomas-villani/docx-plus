@@ -6,6 +6,7 @@ phases introduce call sites (SPEC §10).
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, cast
 
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
@@ -14,10 +15,14 @@ from lxml import etree
 from docx_plus.controls.read import ControlType, _classify_sdt
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import xpath
+from docx_plus.core.parts import RT_COMMENTS_IDS
 
 if TYPE_CHECKING:
     from docx.document import Document
     from docx.opc.part import XmlPart
+
+#: ECMA-376 ST_LongHexNumber as Word renders it: 8 uppercase hex digits.
+_LONG_HEX_RE = re.compile(r"^[0-9A-F]{8}$")
 
 
 def assert_ids_unique(doc: Document) -> None:
@@ -78,6 +83,53 @@ def assert_para_ids_unique(doc: Document) -> None:
 
     duplicates = {value: count for value, count in seen.items() if count > 1}
     assert not duplicates, f"duplicate w14:paraId values: {duplicates}"
+
+
+def assert_durable_ids_well_formed(doc: Document) -> None:
+    """Assert ``commentsIds.xml`` satisfies the invariants Word relies on.
+
+    Three things, none of which a lenient consumer will complain about
+    but all of which defeat the part's purpose:
+
+    1. Every ``w16cid:durableId`` is unique. A shared id makes two
+       comments indistinguishable to anything citing them.
+    2. Every ``w16cid:paraId`` is unique, so an entry resolves to one
+       comment rather than several.
+    3. Both are 8 uppercase hex digits — ``ST_LongHexNumber``, the
+       rendering Word writes. A decimal value parses but is not what
+       Word round-trips.
+
+    A document with no ids part passes: the part is optional, and Word
+    regenerates missing entries on open.
+
+    Args:
+        doc: python-docx Document to inspect.
+
+    Raises:
+        AssertionError: If any of the three invariants is violated.
+    """
+    try:
+        part = cast("XmlPart", doc.part.part_related_by(RT_COMMENTS_IDS))
+    except KeyError:
+        return
+
+    para_ids: list[str] = []
+    durable_ids: list[str] = []
+    for entry in xpath(part.element, "./w16cid:commentId"):
+        for attr, bucket in (
+            ("w16cid:paraId", para_ids),
+            ("w16cid:durableId", durable_ids),
+        ):
+            raw = entry.get(qn(attr))
+            assert raw is not None, f"<w16cid:commentId> missing {attr}"
+            assert _LONG_HEX_RE.match(raw), (
+                f"{attr} {raw!r} is not 8 uppercase hex digits (ST_LongHexNumber)"
+            )
+            bucket.append(raw)
+
+    for label, values in (("durableId", durable_ids), ("paraId", para_ids)):
+        duplicates = {v for v in values if values.count(v) > 1}
+        assert not duplicates, f"duplicate w16cid:{label} values: {sorted(duplicates)}"
 
 
 def assert_style_defined(doc: Document, style_id: str) -> None:
@@ -252,6 +304,7 @@ def assert_numbering_well_formed(doc: Document) -> None:
 __all__ = [
     "assert_field_dirty",
     "assert_field_not_dirty",
+    "assert_durable_ids_well_formed",
     "assert_ids_unique",
     "assert_numbering_well_formed",
     "assert_para_ids_unique",

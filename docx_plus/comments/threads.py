@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from lxml import etree
 
-from docx_plus.comments import _extended
+from docx_plus.comments import _extended, _ids
 from docx_plus.comments.anchor import (
     CommentNotFoundError,
     CommentRef,
@@ -34,7 +34,7 @@ from docx_plus.comments.anchor import (
     _build_reference_run,
 )
 from docx_plus.comments.read import AnchoredComment, read_comments
-from docx_plus.comments.registry import CommentIdRegistry
+from docx_plus.comments.registry import CommentIdRegistry, DurableIdRegistry
 from docx_plus.core.ids import ParaIdRegistry
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import el
@@ -72,6 +72,7 @@ def reply_to_comment(
     initials: str | None = None,
     id_registry: CommentIdRegistry | None = None,
     para_id_registry: ParaIdRegistry | None = None,
+    durable_id_registry: DurableIdRegistry | None = None,
 ) -> CommentRef:
     """Add a reply beneath an existing comment.
 
@@ -95,6 +96,8 @@ def reply_to_comment(
             editing session.
         para_id_registry: Pre-existing ``w14:paraId`` allocator to share
             across an editing session.
+        durable_id_registry: Pre-existing ``w16cid:durableId`` allocator
+            to share across an editing session.
 
     Returns:
         A :class:`~docx_plus.comments.CommentRef` for the new reply.
@@ -147,6 +150,12 @@ def reply_to_comment(
     # reply would reference a key with no entry.
     _extended.upsert_comment_ex(doc, parent_key)
     _extended.upsert_comment_ex(doc, reply_key, parent_para_id=parent_key, done=False)
+
+    # Same reasoning for the durable id: a parent written before this
+    # library existed has none, and a reply is a poor excuse to leave
+    # the thread root uncitable.
+    _ids.upsert_comment_id(doc, parent_key, registry=durable_id_registry)
+    _ids.upsert_comment_id(doc, reply_key, registry=durable_id_registry)
 
     _mirror_anchors(doc, parent_id, comment_id)
 

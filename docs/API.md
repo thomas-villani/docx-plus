@@ -237,25 +237,33 @@ password-protected forms are v0.2 (SPEC §1).
 ### `docx_plus.comments`
 
 Anchored, threaded comments — the body-side range markers python-docx
-skips, the comment body in `comments.xml`, and the thread graph in
-`commentsExtended.xml`. Architecture walkthrough in
-[`ARCHITECTURE.md` §7.6](ARCHITECTURE.md#76-anchored-comments).
+skips, the comment body in `comments.xml`, the thread graph in
+`commentsExtended.xml`, and — v0.5 — durable ids in `commentsIds.xml`
+plus author presence in `people.xml`. Architecture walkthroughs in
+[`ARCHITECTURE.md` §7.6](ARCHITECTURE.md#76-anchored-comments) and
+[§7.6.2](ARCHITECTURE.md#762-durable-comment-ids-and-author-presence).
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `add_comment(target, text, *, author="", initials=None, id_registry=None, para_id_registry=None)` | function | Anchor a comment to a `Run`, `Paragraph` (≥1 run required), or `(Run, Run)` tuple. Writes `commentRangeStart` / `commentRangeEnd` / the `CommentReference` marker run, the `<w:comment>` body, and — v0.4 — a `w14:paraId` stamp plus an unresolved `<w15:commentEx>` thread entry |
-| `reply_to_comment(doc, parent_id, text, *, author="", initials=None, id_registry=None, para_id_registry=None)` | function | v0.4. Add a reply beneath an existing comment, mirroring the parent's anchor range. Raises `CommentNotFoundError` if `parent_id` is missing |
+| `add_comment(target, text, *, author="", initials=None, id_registry=None, para_id_registry=None, durable_id_registry=None)` | function | Anchor a comment to a `Run`, `Paragraph` (≥1 run required), or `(Run, Run)` tuple. Writes `commentRangeStart` / `commentRangeEnd` / the `CommentReference` marker run, the `<w:comment>` body, a `w14:paraId` stamp plus an unresolved `<w15:commentEx>` thread entry (v0.4), and a `w16cid:durableId` entry (v0.5). Does **not** write `people.xml` |
+| `reply_to_comment(doc, parent_id, text, *, author="", initials=None, id_registry=None, para_id_registry=None, durable_id_registry=None)` | function | v0.4. Add a reply beneath an existing comment, mirroring the parent's anchor range. Raises `CommentNotFoundError` if `parent_id` is missing |
 | `resolve_comment(doc, comment_id)` | function | v0.4. Mark the whole thread containing `comment_id` resolved (`w15:done="1"`) |
 | `reopen_comment(doc, comment_id)` | function | v0.4. The inverse — mark the thread unresolved |
 | `edit_comment(doc, comment_id, text)` | function | Replace the body text of an existing comment in place. Preserves `w:author` / `w:date` / `w:initials`, the body-side anchors, and the `w14:paraId` that holds the thread together. Raises `CommentNotFoundError` if id missing |
 | `delete_comment(doc, comment_id, *, include_replies=True)` | function | Remove every trace (range markers, reference run, body, thread entry). `include_replies=True` (default) also deletes the subtree, as Word does; `False` promotes orphaned replies to roots. Idempotent — missing id is a no-op |
-| `clear_all_comments(doc, *, remove_part=False)` | function | Bulk delete every comment and thread entry. `remove_part=True` tears down both the comments and commentsExtended parts. Idempotent on an empty document |
+| `clear_all_comments(doc, *, remove_part=False)` | function | Bulk delete every comment, thread entry, and durable id. `remove_part=True` tears down the comments, commentsExtended, and commentsIds parts. Leaves `people.xml` alone. Idempotent on an empty document |
 | `read_comments(doc)` | function | List every comment paired with the document text it anchors. Returns `list[AnchoredComment]` |
 | `read_threads(doc)` | function | v0.4. The same comments grouped into threads. Returns `list[CommentThread]` |
 | `CommentRef` | dataclass (frozen) | `comment_id`, `body_element` — handle returned by `add_comment` |
-| `AnchoredComment` | dataclass (frozen) | `comment_id`, `author`, `initials`, `timestamp`, `text`, `anchored_text`, `paragraph_index`, `parent_id`, `resolved` |
+| `AnchoredComment` | dataclass (frozen) | `comment_id`, `author`, `initials`, `timestamp`, `text`, `anchored_text`, `paragraph_index`, `parent_id`, `resolved`, `durable_id` |
 | `CommentThread` | dataclass (frozen) | v0.4. `root`, `replies`, `resolved` |
 | `CommentIdRegistry(doc)` | class | Per-document comment-id allocator. Subclasses the internal `_IdRegistryBase` and seeds from the comments part + any orphaned body anchors |
+| `DurableIdRegistry(doc)` | class | v0.5. Per-document `w16cid:durableId` allocator, seeded from `commentsIds.xml` alone. **Hex, not decimal** — use `next_hex()`. Verified against a Word-authored file |
+| `set_author_presence(doc, author, *, provider_id="None", user_id=None)` | function | v0.5. Write an author's `people.xml` entry. Idempotent per author; an empty name is a no-op and creates no part. `user_id` defaults to `author`. **Opt-in** — `add_comment` never calls it, since a fabricated directory identity is worse than an absent one |
+| `read_author_presence(doc)` | function | v0.5. `list[AuthorPresence]` in document order. `[]` when the part is absent |
+| `clear_author_presence(doc, *, remove_part=False)` | function | v0.5. Drop every author entry. Not wired into `delete_comment` — Word keeps stale authors, and pruning needs the author ref-counted across surviving comments |
+| `AuthorPresence` | dataclass (frozen) | v0.5. `author` (the only join to `comments.xml`), `provider_id`, `user_id` |
+| `LOCAL_PROVIDER` | constant | v0.5. `"None"` — what Word writes for an author with no directory behind them |
 | `CommentNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `edit_comment` / `reply_to_comment` / `resolve_comment` on a missing id |
 | `CommentTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` |
 

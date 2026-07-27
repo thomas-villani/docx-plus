@@ -144,6 +144,56 @@ for c in read_comments(Document("review.docx")):
 
 Type alias: `CommentTarget = Run | Paragraph | tuple[Run, Run]`.
 
+## Citing a comment across edits — `durable_id`
+
+A comment has three identifiers and **only one is stable**:
+
+| Identifier | Stability |
+|---|---|
+| `comment_id` (`w:id`) | A position-dependent index Word renumbers freely |
+| `w14:paraId` | Changes whenever the comment body is rewritten |
+| `durable_id` (`w16cid:durableId`) | Stable for the life of the comment |
+
+If you are storing a reference to a comment anywhere outside the
+document — a review tracker, a permalink, a diff between two revisions
+— use `durable_id`. Anything else will silently point at the wrong
+comment later.
+
+```python
+for c in read_comments(doc):
+    print(c.durable_id, c.text)      # e.g. '33EF1546'
+```
+
+Written automatically by `add_comment` / `reply_to_comment`. `None` on
+documents written before v0.5, by python-docx, or by anything other
+than Word 2016+. Share a `DurableIdRegistry` via
+`durable_id_registry=` when inserting many comments at once.
+
+## Author presence — `people.xml`
+
+Optional and **cosmetic**: it drives the presence dot beside a comment
+in Word's reviewing pane. Comments, threading, and resolution all work
+without it, so `add_comment` deliberately does not write it — doing so
+would mean inventing a directory identity for an author the library
+knows nothing about.
+
+```python
+from docx_plus.comments import set_author_presence, read_author_presence
+
+set_author_presence(doc, "Reviewer")                    # providerId="None"
+set_author_presence(doc, "Ana Silva", provider_id="AD",
+                    user_id="S::ana@example.com::4f2c...")
+
+read_author_presence(doc)   # -> [AuthorPresence(author=..., provider_id=..., user_id=...)]
+```
+
+The **author name is the only join** to `comments.xml` — pass exactly
+the string used as `author=` on that person's comments.
+
+Stale authors are not pruned when their comments are deleted (Word
+doesn't either). `clear_author_presence(doc, remove_part=True)` is the
+escape hatch.
+
 From the shell: `docx-plus comments list FILE [--unresolved] [--json]`, and
 `docx-plus comments resolve|reopen FILE ID -o OUT`. See `reference/cli.md`.
 

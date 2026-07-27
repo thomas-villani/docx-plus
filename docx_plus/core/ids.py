@@ -177,6 +177,22 @@ class _IdRegistryBase:
                 return candidate
         return self.next_sequential()
 
+    def next_hex(self) -> str:
+        """Issue a fresh value as 8 uppercase hex digits.
+
+        The rendering ECMA-376 calls ``ST_LongHexNumber``, used by every
+        Word-extension id that is a 32-bit opaque handle rather than a
+        counter — ``w14:paraId`` and ``w16cid:durableId`` among them.
+        Word treats ``00000000`` and anything at or above ``0x80000000``
+        as invalid, which is exactly the ``[1, 2**31 - 1]`` range
+        :meth:`next` already mints from.
+
+        Returns:
+            A new value such as ``"3F2A19C4"``, guaranteed distinct from
+            every value seen on this registry.
+        """
+        return f"{self.next():08X}"
+
     def next_sequential(self) -> int:
         """Issue the lowest unused value at or above :attr:`_MIN_ID`.
 
@@ -259,11 +275,9 @@ class ParaIdRegistry(_IdRegistryBase):
     therefore seeds from the document body *and* every part that can
     carry paragraphs with a ``paraId`` — comments, footnotes, endnotes.
 
-    Word writes ``paraId`` as 8 uppercase hex digits and treats
-    ``00000000`` and anything at or above ``0x80000000`` as invalid. That
-    is exactly the ``[1, 2**31 - 1]`` range :meth:`next` already mints
-    from, so this subclass only adds the hex rendering
-    (:meth:`next_hex`) and the seeding query.
+    Word writes ``paraId`` as 8 uppercase hex digits — the rendering
+    :meth:`~_IdRegistryBase.next_hex` provides — so this subclass adds
+    only the seeding query.
     """
 
     _SEED_PART_RELATIONSHIPS = (RT.COMMENTS, RT.FOOTNOTES, RT.ENDNOTES)
@@ -278,15 +292,6 @@ class ParaIdRegistry(_IdRegistryBase):
             except KeyError:
                 continue
             self._collect_hex_id_attrs(part.element, ".//w:p", "w14:paraId")
-
-    def next_hex(self) -> str:
-        """Issue a fresh ``paraId`` as 8 uppercase hex digits.
-
-        Returns:
-            A new ``paraId`` string such as ``"3F2A19C4"``, guaranteed
-            distinct from every value seen on this registry.
-        """
-        return f"{self.next():08X}"
 
 
 class BookmarkIdRegistry(_IdRegistryBase):

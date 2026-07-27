@@ -8,6 +8,37 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Comment durable ids (`commentsIds.xml`)** — a comment has three
+  identifiers and only this one survives an edit: `w:id` is a
+  position-dependent index Word renumbers, and the `w14:paraId` the
+  thread graph keys off changes whenever the body is rewritten. Word
+  2016 added the part for exactly this reason, and anything citing a
+  comment from outside the document — a permalink, a review tracker, a
+  diff between two revisions — needs it.
+  `add_comment` and `reply_to_comment` now write an entry (Word
+  regenerates missing ones anyway, so emitting them moves output toward
+  native); `delete_comment` and `clear_all_comments` remove it; the
+  value surfaces as `AnchoredComment.durable_id`. `DurableIdRegistry`
+  allocates. Both take an optional `durable_id_registry` to share across
+  a batch.
+  **The id is hex, not decimal** — `ST_LongHexNumber`, the same
+  8-uppercase-digit form as `w14:paraId`. That was established by having
+  Word 2016 author a commented file and reading it back, which also
+  confirmed all four content-type and relationship URIs.
+- **Comment author presence (`people.xml`)** — `set_author_presence` /
+  `read_author_presence` / `clear_author_presence` over a new
+  `AuthorPresence` record, writing the `<w15:person>` /
+  `<w15:presenceInfo>` pair that drives the presence indicator in Word's
+  reviewing pane.
+  **Opt-in by design:** `add_comment` does *not* write this part.
+  Registering an author means inventing a `userId` for someone the
+  library knows nothing about, and a fabricated directory identity is
+  worse than an absent one. The part is cosmetic — comments, threading,
+  and resolution all work without it. Stale authors are not pruned on
+  delete, matching Word.
+- **`_testing.assert_durable_ids_well_formed`** — checks that every
+  `durableId` and `paraId` in `commentsIds.xml` is unique and is 8
+  uppercase hex digits.
 - **Table formatting (`tables/`)** — the half of tables python-docx
   omits. It models structure well — rows, columns, cells, widths, and a
   working `_Cell.merge` — and appearance not at all: there is no
@@ -112,6 +143,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`_IdRegistryBase.next_hex()`** — the `ST_LongHexNumber` rendering
+  moved up from `ParaIdRegistry`, since `w16cid:durableId` uses the
+  identical form. `ParaIdRegistry.next_hex` is unchanged for callers.
 - **`BookmarkIdRegistry` moved from `docx_plus.bookmarks.registry` to
   `docx_plus.core.ids`** and is re-exported from its old home, so
   existing imports are unaffected. Forced by SPEC §9.1: `publishing` needs
