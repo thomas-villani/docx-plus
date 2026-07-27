@@ -19,7 +19,7 @@ from pathlib import Path
 
 from docx import Document
 
-from docx_plus.core.oxml import sub
+from docx_plus.core.oxml import el, insert_before_first_anchor, sub
 
 
 def build_empty(path: Path) -> Path:
@@ -185,7 +185,7 @@ def build_numbered(path: Path) -> Path:
     numbering_root = doc.part.numbering_part.element
     # Use IDs above python-docx's default range (the bundled template uses
     # 0-8) to avoid colliding with built-in styles like ListBullet.
-    abstract = sub(numbering_root, "w:abstractNum", **{"w:abstractNumId": "100"})
+    abstract = el("w:abstractNum", **{"w:abstractNumId": "100"})
     lvl = sub(abstract, "w:lvl", **{"w:ilvl": "0"})
     sub(lvl, "w:start", **{"w:val": "1"})
     sub(lvl, "w:numFmt", **{"w:val": "decimal"})
@@ -194,6 +194,10 @@ def build_numbered(path: Path) -> Path:
     sub(lvl_ppr, "w:ind", **{"w:left": "720", "w:hanging": "360"})
     lvl_rpr = sub(lvl, "w:rPr")
     sub(lvl_rpr, "w:b")
+    # CT_Numbering is `numPicBullet*, abstractNum*, num*`, and the template
+    # already holds nine `w:num` entries — appending would put this
+    # `abstractNum` after them. Lenient parsers accept it, Word need not.
+    insert_before_first_anchor(numbering_root, abstract, ("w:num", "w:numIdMacAtCleanup"))
 
     num = sub(numbering_root, "w:num", **{"w:numId": "100"})
     sub(num, "w:abstractNumId", **{"w:val": "100"})

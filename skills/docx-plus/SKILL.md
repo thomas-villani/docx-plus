@@ -7,7 +7,8 @@ description: >-
   controls: text / dropdown / date / checkbox), anchored and threaded comments
   (replies, resolve / reopen), tracked changes (insertions / deletions, accept /
   reject), style-cascade inspection and Word-native style creation /
-  modification, bookmarks and cross-references, multi-column layout, page
+  modification, bookmarks and cross-references, custom bullet / numbered /
+  multilevel list definitions, multi-column layout, page
   borders, line numbering, page-number and date fields, and document protection.
   Also ships a `docx-plus` command-line interface (inspect formatting, remap
   styles, edit content-control values, triage comment threads) for driving the
@@ -93,6 +94,7 @@ copy-pasteable guide to that module's public API.
 | Inspect why a paragraph looks the way it does; create / modify / apply styles; resolve theme colors | `styles`         | `reference/styles.md`       |
 | Table of contents, figure/table captions, table of figures, footnotes, endnotes, bookmarks, cross-references, page-number/date/generic fields | `publishing`, `notes`, `bookmarks`, `fields` | `reference/publishing.md`   |
 | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders | `layout`         | `reference/layout.md`       |
+| Bulleted / numbered / multilevel lists, custom level formats, restarting numbering | `numbering`      | `reference/numbering.md`    |
 | Anchored review comments that "show in document" correctly; reply threads; resolve / reopen | `comments`        | `reference/comments.md`     |
 | Track changes: mark insertions / deletions, read revisions, accept / reject | `revisions`       | `reference/revisions.md`    |
 | Drive the library from a shell / CI: inspect formatting, remap styles, edit control values, triage comments | `cli` (`docx-plus`) | `reference/cli.md`          |
@@ -140,6 +142,9 @@ doc.save("out.docx")
   (`mark_fields_dirty` lives here).
 - `reference/layout.md` — columns, section breaks, even/odd headers, line
   numbering, page borders.
+- `reference/numbering.md` — custom list definitions: bullet / numbered
+  presets, multilevel outlines, applying to paragraphs, restarting a
+  sequence, reading definitions back.
 - `reference/comments.md` — anchored comments (add / edit / delete / read) and
   threads (reply, resolve / reopen, read nested).
 - `reference/revisions.md` — tracked changes: enable/disable track-changes mode,

@@ -69,6 +69,10 @@ nav:
       - docx_plus.notes.write: reference/notes-write.md
       - docx_plus.notes.read: reference/notes-read.md
       - docx_plus.notes.registry: reference/notes-registry.md
+      - docx_plus.numbering.define: reference/numbering-define.md
+      - docx_plus.numbering.apply: reference/numbering-apply.md
+      - docx_plus.numbering.read: reference/numbering-read.md
+      - docx_plus.numbering.registry: reference/numbering-registry.md
       - docx_plus.publishing.toc: reference/publishing-toc.md
       - docx_plus.publishing.captions: reference/publishing-captions.md
       - docx_plus.publishing.figures: reference/publishing-figures.md

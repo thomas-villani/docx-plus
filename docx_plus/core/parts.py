@@ -143,12 +143,44 @@ _W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml"
 _W15_NS = "http://schemas.microsoft.com/office/word/2012/wordml"
 _W16CID_NS = "http://schemas.microsoft.com/office/word/2016/wordml/cid"
 _MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+_R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
 def _empty_root(local_name: str) -> bytes:
     return (
         b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         b"<w:" + local_name.encode() + b' xmlns:w="' + _W_NS.encode() + b'"/>'
+    )
+
+
+def _root_with_build_prefixes(local_name: str) -> bytes:
+    """Return a root pre-declaring every prefix :func:`el` builds with.
+
+    :data:`docx_plus.core.ns.BUILD_NSMAP` is stamped onto every element
+    the library constructs. When the containing root declares only ``w``,
+    lxml has to repeat the other four declarations on *each* child, so a
+    part fills up with redundant ``xmlns:w14``/``r``/``mc``/``a``
+    attributes. Declaring them once here is both smaller and closer to
+    what Word writes — its own ``numbering.xml`` root carries sixteen.
+
+    ``mc:Ignorable`` names ``w14`` so a consumer that does not understand
+    the 2010 extensions drops it rather than rejecting the part.
+
+    Note:
+        ``footnotes.xml`` / ``endnotes.xml`` have the same redundancy for
+        the same reason. They are left alone here to keep the byte output
+        of existing documents stable; only the v0.5 numbering part opts
+        in.
+    """
+    return (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        b"<w:" + local_name.encode() + b' xmlns:w="' + _W_NS.encode() + b'"'
+        b' xmlns:w14="' + _W14_NS.encode() + b'"'
+        b' xmlns:r="' + _R_NS.encode() + b'"'
+        b' xmlns:mc="' + _MC_NS.encode() + b'"'
+        b' xmlns:a="' + _A_NS.encode() + b'"'
+        b' mc:Ignorable="w14"/>'
     )
 
 
@@ -271,7 +303,7 @@ NUMBERING_SPEC = PartSpec(
     partname="/word/numbering.xml",
     content_type=CT.WML_NUMBERING,
     relationship_type=RT.NUMBERING,
-    root_xml=_empty_root("numbering"),
+    root_xml=_root_with_build_prefixes("numbering"),
 )
 
 FOOTNOTES_SPEC = PartSpec(

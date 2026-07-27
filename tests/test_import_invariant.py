@@ -32,6 +32,7 @@ CAPABILITIES = {
     "layout",
     "bookmarks",
     "notes",
+    "numbering",
     "publishing",
     "revisions",
 }
