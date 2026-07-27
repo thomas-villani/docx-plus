@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#0d1226"/><stop offset="100%" stop-color="#141b3a"/>
+  </linearGradient>
+  <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#818cf8"/>
+    <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.1"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#818cf8" stop-opacity="0.20"/>
+    <stop offset="55%" stop-color="#818cf8" stop-opacity="0.07"/>
+    <stop offset="100%" stop-color="#818cf8" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+<rect width="1280" height="640" fill="url(#bg)"/>
+<circle cx="1180" cy="90" r="340" fill="url(#glow)"/>
+
+<!-- left column -->
+<text x="72" y="196" font-family="Segoe UI, Arial, sans-serif" font-size="80" font-weight="700"
+      fill="#ffffff">docx<tspan fill="#818cf8">_plus</tspan></text>
+<rect x="74" y="222" width="150" height="5" rx="2.5" fill="url(#rule)"/>
+
+<text x="72" y="288" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#94a3b8">OOXML-level extensions for</text>
+<text x="72" y="328" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#ffffff">python-docx</text>
+
+<text x="72" y="390" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#94a3b8">The style cascade, content controls, comments,</text>
+<text x="72" y="418" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#94a3b8">and tracked changes python-docx can&#8217;t reach.</text>
+
+<rect x="72" y="452" width="102" height="40" rx="20" fill="#1e2547" stroke="#818cf8" stroke-opacity="0.25"/><text x="123" y="479" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#c7d2fe" text-anchor="middle">cascade</text>
+<rect x="186" y="452" width="112" height="40" rx="20" fill="#1e2547" stroke="#818cf8" stroke-opacity="0.25"/><text x="242" y="479" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#c7d2fe" text-anchor="middle">controls</text>
+<rect x="310" y="452" width="112" height="40" rx="20" fill="#1e2547" stroke="#818cf8" stroke-opacity="0.25"/><text x="366" y="479" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#c7d2fe" text-anchor="middle">comments</text>
+<rect x="434" y="452" width="122" height="40" rx="20" fill="#1e2547" stroke="#818cf8" stroke-opacity="0.25"/><text x="495" y="479" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#c7d2fe" text-anchor="middle">revisions</text>
+
+<text x="72" y="580" font-family="Cascadia Mono, Consolas, monospace" font-size="22" fill="#38bdf8">pip install docx-plus</text>
+<text x="1208" y="580" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#94a3b8"
+      text-anchor="end">MIT &#183; Python 3.10+</text>
+
+<!-- code panel -->
+<rect x="656" y="150" width="576" height="366" rx="16" fill="#080d1e" fill-opacity="0.8"
+      stroke="#818cf8" stroke-opacity="0.22"/>
+<circle cx="686" cy="180" r="6" fill="#ef4444" fill-opacity="0.7"/>
+<circle cx="708" cy="180" r="6" fill="#fbbf24" fill-opacity="0.7"/>
+<circle cx="730" cy="180" r="6" fill="#4ade80" fill-opacity="0.7"/>
+<line x1="656" y1="206" x2="1232" y2="206" stroke="#818cf8" stroke-opacity="0.14"/>
+<text x="686" y="248" font-family="Cascadia Mono, Consolas, monospace" font-size="21" xml:space="preserve"><tspan fill="#94a3b8"># python-docx stops at the surface.</tspan></text>
+<text x="686" y="312" font-family="Cascadia Mono, Consolas, monospace" font-size="21" xml:space="preserve"><tspan fill="#ffffff">fmt = </tspan><tspan fill="#38bdf8">resolve_effective_formatting</tspan><tspan fill="#ffffff">(</tspan></text>
+<text x="686" y="344" font-family="Cascadia Mono, Consolas, monospace" font-size="21" xml:space="preserve"><tspan fill="#ffffff">    p, include_provenance=</tspan><tspan fill="#f472b6">True</tspan><tspan fill="#ffffff">)</tspan></text>
+<text x="686" y="408" font-family="Cascadia Mono, Consolas, monospace" font-size="21" xml:space="preserve"><tspan fill="#ffffff">fmt.font_size</tspan><tspan fill="#94a3b8">            # 13.0</tspan></text>
+<text x="686" y="440" font-family="Cascadia Mono, Consolas, monospace" font-size="21" xml:space="preserve"><tspan fill="#ffffff">fmt.provenance[</tspan><tspan fill="#4ade80">'font_size'</tspan><tspan fill="#ffffff">]</tspan></text>
+<text x="686" y="472" font-family="Cascadia Mono, Consolas, monospace" font-size="21" xml:space="preserve"><tspan fill="#94a3b8"># layer='paragraphStyle'</tspan></text>
+<text x="686" y="504" font-family="Cascadia Mono, Consolas, monospace" font-size="21" xml:space="preserve"><tspan fill="#94a3b8"># style_id='Heading2'</tspan></text>
+</svg>
