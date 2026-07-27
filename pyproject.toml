@@ -130,7 +130,7 @@ exclude_lines = [
 ]
 
 [tool.bumpversion]
-# `bump-my-version bump {major|minor|patch}` updates the two version
+# `bump-my-version bump {major|minor|patch}` updates the three version
 # sources below, then commits and tags. CHANGELOG.md is maintained by hand.
 # Run with --dry-run -v first to preview; the tree must be clean to bump.
 current_version = "0.4.0"
@@ -153,3 +153,15 @@ replace = 'version = "{new_version}"'
 filename = "docx_plus/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
+
+# uv.lock records this project's own version in its `docx-plus` package entry.
+# Bump it here so the release commit is self-consistent; otherwise the next
+# `uv` invocation re-locks and leaves a stray uv.lock diff after every release.
+# The search is anchored on the name line because other locked packages can
+# legitimately sit at the same version number (ast-serialize was at 0.4.0 too).
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+search = '''name = "docx-plus"
+version = "{current_version}"'''
+replace = '''name = "docx-plus"
+version = "{new_version}"'''

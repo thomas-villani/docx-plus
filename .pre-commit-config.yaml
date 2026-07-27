@@ -10,18 +10,25 @@
 #
 # Run against everything on demand:
 #     uv run pre-commit run --all-files
+#
+# `--frozen` is load-bearing, not cosmetic. Without it, plain `uv run` re-locks
+# `uv.lock` on the way to invoking ruff. During a `bump-my-version bump` commit
+# the project version has just changed, so that re-lock rewrites uv.lock mid-hook
+# — and pre-commit, which diffs the whole worktree around each hook, reports
+# "files were modified by this hook" against ruff-format even though ruff itself
+# changed nothing. `--frozen` uses the lockfile as-is and never writes it.
 repos:
   - repo: local
     hooks:
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format
+        entry: uv run --frozen ruff format
         language: system
         types_or: [python, pyi]
         require_serial: true
       - id: ruff-check
         name: ruff check
-        entry: uv run ruff check --fix
+        entry: uv run --frozen ruff check --fix
         language: system
         types_or: [python, pyi]
         require_serial: true
