@@ -33,6 +33,31 @@ clean.
 
 ## v0.5 — in progress
 
+### Cross-references to non-bookmark targets — shipped
+
+The backlog called this "mostly instruction grammar over existing
+plumbing". That was true for one half and wrong for the other, which is
+worth recording:
+
+- **`STYLEREF` was instruction grammar** — it already worked through
+  `add_field`. What landed is the typed wrapper
+  `fields.add_style_reference`, style-name validation, the switch
+  surface, and an outline-level shorthand.
+- **Caption references were not.** A `REF` field cannot point at a `SEQ`
+  field, only at a bookmark, and `add_caption` created none — so "see
+  Figure 3" was not expressible at all, with or without new grammar. The
+  fix is `bookmark_name` on `add_caption`, which required promoting
+  bookmark emission into `core` (SPEC §9.1 blocks `publishing` from
+  importing `bookmarks`) and a bookmark *name* registry, which did not
+  exist.
+
+Also filled in the rest of `add_cross_reference`'s switches (`\n` `\r`
+`\w` `\p` `\t` `\#` `MERGEFORMAT`), which had only ever supported `\h`,
+and added the bookmark-name validation it was missing.
+
+Verified against Word 2016: `REF` to a caption bookmark resolves to
+`Figure 1`, `PAGEREF` to `1`, `\p` to `above`, and the header `STYLEREF`
+renders `Architecture` on page 1 and `Operations` on page 2.
 ### Custom numbering — shipped
 
 The largest remaining `python-docx` gap. It exposes a `NumberingPart`
@@ -158,12 +183,6 @@ only, kept out of the wheel) can be revisited — left for a later cycle.
 
 Each reuses existing plumbing; pull into a cycle as priority dictates.
 
-- **Cross-references to non-bookmark targets** — `STYLEREF` for
-  heading-text references, plus references *to* an existing caption
-  ("see Figure 3"). Smaller than it first looks: `SEQ` authoring already
-  shipped in `publishing/captions.py`, so what is left is the instruction
-  grammar over the existing complex-field plumbing. (`bookmarks/` or a
-  new `crossref/`.)
 - **Comment durable ids + author presence** — `commentsIds.xml`
   (`w16cid` durable ids for comment permalinks) and `people.xml`
   (`w15:people` presence info). Neither is needed for threading or

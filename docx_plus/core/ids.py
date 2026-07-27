@@ -16,6 +16,14 @@ whole *package* rather than within a single part. It reuses the same
 31-bit allocator because that happens to be exactly the range Word
 accepts for a ``paraId``.
 
+:class:`BookmarkNameRegistry` is the odd one out entirely — bookmarks are
+addressed by *name*, and nothing else in the format is. It lives here
+because two capability packages need it: ``bookmarks`` owns the public
+``add_bookmark``, and ``publishing`` has to bookmark a caption to make it
+referenceable, since a ``REF`` field can only point at a bookmark.
+``BookmarkIdRegistry`` sits alongside it for the same reason (it was in
+``bookmarks/registry.py`` through v0.4 and is still re-exported there).
+
 SPEC §3, IMPLEMENTATION.md §7.
 """
 
@@ -281,4 +289,123 @@ class ParaIdRegistry(_IdRegistryBase):
         return f"{self.next():08X}"
 
 
-__all__ = ["DuplicateIdError", "IdRangeError", "IdRegistry", "ParaIdRegistry"]
+class BookmarkIdRegistry(_IdRegistryBase):
+    """Tracks issued bookmark ``w:id`` values for one document-edit session.
+
+    The body-side ``<w:bookmarkStart>`` / ``<w:bookmarkEnd>`` elements
+    both carry the id on a direct ``@w:id`` attribute, not as a
+    ``<w:id w:val=...>`` child the way SDTs do.
+    """
+
+    def _seed_from_document(self, doc: Document) -> None:
+        body = doc.element.body
+        self._collect_id_attrs(body, ".//w:bookmarkStart")
+        self._collect_id_attrs(body, ".//w:bookmarkEnd")
+
+
+class DuplicateBookmarkNameError(DocxPlusError, ValueError):
+    """Raised when a bookmark name is already in use in the document.
+
+    Subclasses ``ValueError`` so existing ``except ValueError:`` clauses
+    still catch it; also subclasses :class:`DocxPlusError` per SPEC §9.7.
+    """
+
+
+#: Word's own auto-generated cross-reference bookmark names are ``_Ref``
+#: plus nine digits. The leading underscore is what makes them *hidden* —
+#: Word omits underscore-prefixed bookmarks from its Bookmark dialog, so
+#: machine-generated caption anchors do not clutter the user's list.
+_REF_NAME_DIGITS = 9
+_MAX_REF_SUFFIX = 10**_REF_NAME_DIGITS - 1
+
+
+class BookmarkNameRegistry:
+    """Tracks bookmark *names* in use, and mints Word-style hidden ones.
+
+    Bookmarks are the one thing in the format addressed by name rather
+    than by id, and nothing prevents a document from carrying two with
+    the same ``w:name``. That is worth guarding: a duplicate makes a
+    ``REF`` ambiguous and makes
+    :func:`~docx_plus.bookmarks.delete_bookmark` remove both.
+
+    Deliberately *not* an :class:`_IdRegistryBase` subclass — the keys are
+    strings, and most of them (``sec_1``, ``intro``) have no numeric part
+    to allocate from at all.
+
+    Lifecycle: one instance per document-edit session, like every other
+    registry here (SPEC §9.4).
+    """
+
+    def __init__(self, doc: Document) -> None:
+        """Scan ``doc`` for bookmark names already in use.
+
+        Args:
+            doc: A python-docx :class:`~docx.document.Document`.
+        """
+        self._names: set[str] = set()
+        for start in xpath(doc.element.body, ".//w:bookmarkStart"):
+            name = start.get(qn("w:name"))
+            if name is not None:
+                self._names.add(str(name))
+
+    def __contains__(self, name: str) -> bool:
+        """Whether ``name`` is already in use."""
+        return name in self._names
+
+    def reserve(self, name: str) -> str:
+        """Claim ``name``, asserting it is not already taken.
+
+        Args:
+            name: The bookmark name to claim.
+
+        Returns:
+            ``name`` (echoed so the call composes inline).
+
+        Raises:
+            DuplicateBookmarkNameError: If ``name`` is already in use.
+        """
+        if name in self._names:
+            raise DuplicateBookmarkNameError(f"bookmark name {name!r} is already in use")
+        self._names.add(name)
+        return name
+
+    def next_ref_name(self) -> str:
+        """Mint an unused hidden name in Word's ``_Ref`` + 9-digit form.
+
+        Use this for anchors the user never names themselves — a caption
+        being made referenceable, for instance. The leading underscore
+        keeps it out of Word's Bookmark dialog.
+
+        Returns:
+            A fresh name such as ``"_Ref418320715"``.
+
+        Raises:
+            RuntimeError: If the space is exhausted (effectively
+                impossible — included for completeness).
+        """
+        for _ in range(64):
+            candidate = f"_Ref{secrets.randbelow(_MAX_REF_SUFFIX) + 1:0{_REF_NAME_DIGITS}d}"
+            if candidate not in self._names:
+                self._names.add(candidate)
+                return candidate
+        for suffix in range(1, _MAX_REF_SUFFIX + 1):  # pragma: no cover - unreachable
+            candidate = f"_Ref{suffix:0{_REF_NAME_DIGITS}d}"
+            if candidate not in self._names:
+                self._names.add(candidate)
+                return candidate
+        raise RuntimeError("bookmark name registry exhausted the _Ref space")
+
+    def issued(self) -> frozenset[str]:
+        """Return an immutable snapshot of every name in use."""
+        return frozenset(self._names)
+
+
+__all__ = [
+    "BookmarkIdRegistry",
+    "BookmarkNameRegistry",
+    "DuplicateBookmarkNameError",
+    "DuplicateIdError",
+    "IdRangeError",
+    "IdRegistry",
+    "ParaIdRegistry",
+]

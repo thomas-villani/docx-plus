@@ -6,6 +6,7 @@ rather than calling ``lxml.etree`` directly. SPEC §9.2.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
 
@@ -181,6 +182,38 @@ def build_complex_field(
     return begin_run
 
 
+# Word's bookmark name rules: letter or underscore first, then letters,
+# digits, or underscores; max 40 chars. Worth validating because names
+# with spaces or punctuation are rejected by Word's UI but accepted in
+# raw OOXML, which turns into a confusing unresolved cross-reference
+# rather than an error at authoring time.
+_BOOKMARK_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,39}$")
+
+
+def validate_bookmark_name(name: str, *, arg_name: str = "name") -> str:
+    """Check ``name`` against Word's bookmark-name grammar.
+
+    Shared by the three places that accept one: ``bookmarks.add_bookmark``
+    (which creates it), ``bookmarks.add_cross_reference`` (which
+    references it), and ``publishing.add_caption`` (which brackets a
+    caption with one). A name only Word's UI would reject produces a
+    silently unresolved field, so all three check up front.
+
+    Args:
+        name: The candidate bookmark name.
+        arg_name: Caller's parameter name, woven into the error message.
+
+    Returns:
+        ``name`` (echoed so the call composes inline).
+
+    Raises:
+        ValueError: If ``name`` does not match the grammar.
+    """
+    if not _BOOKMARK_NAME_RE.match(name):
+        raise ValueError(f"{arg_name} {name!r} must match {_BOOKMARK_NAME_RE.pattern}")
+    return name
+
+
 def build_bookmark(
     start_anchor: etree._Element,
     end_anchor: etree._Element,
@@ -349,5 +382,6 @@ __all__ = [
     "ordered_insert",
     "remove",
     "sub",
+    "validate_bookmark_name",
     "xpath",
 ]

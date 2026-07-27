@@ -12,7 +12,6 @@ This module imports only from ``docx_plus.core`` and the sibling
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -22,19 +21,13 @@ from lxml import etree
 
 from docx_plus.bookmarks.registry import BookmarkIdRegistry
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import build_bookmark, remove, xpath
+from docx_plus.core.oxml import build_bookmark, remove, validate_bookmark_name, xpath
 
 if TYPE_CHECKING:
     from docx.document import Document
 
 
 BookmarkTarget = Run | Paragraph | tuple[Run, Run]
-
-# Word's bookmark name rules: letter or underscore first, then letters,
-# digits, or underscores; max 40 chars. We validate to keep cross-refs
-# resolvable — names with spaces or punctuation are silently rejected by
-# Word's UI but accepted in raw OOXML, which leads to confusing failures.
-_BOOKMARK_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,39}$")
 
 
 @dataclass(frozen=True)
@@ -97,8 +90,7 @@ def add_bookmark(
         >>> p = doc.add_paragraph("Section 1 intro")
         >>> ref = add_bookmark(p, "section_1_intro")
     """
-    if not _BOOKMARK_NAME_RE.match(name):
-        raise ValueError(f"bookmark name {name!r} must match {_BOOKMARK_NAME_RE.pattern}")
+    validate_bookmark_name(name, arg_name="bookmark name")
 
     start_anchor, end_anchor, doc = _normalize_target(target)
 
