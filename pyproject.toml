@@ -1,15 +1,33 @@
 [project]
 name = "docx_plus"
 version = "0.5.0"
-description = "OOXML-level extensions for python-docx: style cascade, controls, fields, comments, layout, bookmarks, notes, publishing."
+description = "OOXML-level extensions for python-docx: style cascade, content controls, comments, tracked changes, fields, tables, numbering, and publishing."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "MIT" }
 requires-python = ">=3.10"
-authors = [{ name = "Tom Villani, PhD", email = "tomrhobus@gmail.com" }]
-keywords = ["docx", "ooxml", "word", "python-docx", "styles", "forms"]
+authors = [{ name = "Tom Villani, PhD", email = "thomas.villani@gmail.com" }]
+keywords = [
+    "docx",
+    "ooxml",
+    "openxml",
+    "word",
+    "microsoft-word",
+    "python-docx",
+    "styles",
+    "forms",
+    "content-controls",
+    "comments",
+    "tracked-changes",
+    "footnotes",
+    "bookmarks",
+    "table-of-contents",
+    "document-automation",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -17,8 +35,11 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Office/Business",
+    "Topic :: Office/Business :: Office Suites",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup :: XML",
     "Typing :: Typed",
 ]
 dependencies = [
@@ -31,6 +52,7 @@ Homepage = "https://github.com/thomas-villani/docx-plus"
 Documentation = "https://thomas-villani.github.io/docx-plus/"
 Repository = "https://github.com/thomas-villani/docx-plus"
 Issues = "https://github.com/thomas-villani/docx-plus/issues"
+Changelog = "https://github.com/thomas-villani/docx-plus/blob/main/CHANGELOG.md"
 
 [project.scripts]
 docx-plus = "docx_plus.cli:main"
@@ -69,6 +91,8 @@ include = [
     "docx_plus/",
     "tests/",
     "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "LICENSE",
     "SPEC.md",
     "pyproject.toml",
@@ -101,6 +125,9 @@ ignore = [
 "tests/**" = ["D"]
 "docx_plus/_testing/**" = ["D"]
 "docx_plus/examples/**" = ["D"]
+# One-off design script, not library code. E501 is unavoidable here: the long
+# lines are inside an SVG literal, where wrapping hurts more than it helps.
+".github/assets/**" = ["D", "E501"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

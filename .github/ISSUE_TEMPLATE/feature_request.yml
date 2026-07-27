@@ -1,0 +1,63 @@
+name: Feature request
+description: Propose a new capability or an extension to an existing one.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `docx_plus` is a lean **extension layer for python-docx** — not a
+        document-authoring framework and not a Word automation tool. Features
+        that fit either fill a documented python-docx gap or round out a
+        surface already started here.
+
+        Please skim [`ROADMAP.md`](https://github.com/thomas-villani/docx-plus/blob/main/ROADMAP.md)
+        first — it records what is already backlogged and what has been
+        explicitly considered and declined.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >
+        Describe the task, not the API you have in mind. What does the document
+        need to look like, and what is stopping you?
+      placeholder: >
+        I need to attach a bibliography to a generated report so Word can
+        renumber the citations itself.
+    validations:
+      required: true
+
+  - type: textarea
+    id: gap
+    attributes:
+      label: Why can't python-docx do this today?
+      description: >
+        What have you tried? If there is a known python-docx issue or a
+        StackOverflow answer recommending raw `lxml` surgery, link it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: api
+    attributes:
+      label: Proposed API
+      description: Optional — what would the call look like if it existed?
+      render: python
+
+  - type: input
+    id: ooxml
+    attributes:
+      label: Relevant OOXML elements or ECMA-376 section
+      description: Optional, but it speeds things up considerably if you know.
+      placeholder: "w:bibliography, ECMA-376 Part 1 §17.16"
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you be willing to contribute this?
+      options:
+        - "No, just requesting"
+        - "Maybe, with guidance"
+        - "Yes, I'd like to open a PR"
+    validations:
+      required: false

@@ -1,48 +1,52 @@
 # docx_plus
 
-OOXML-level extensions for [python-docx](https://python-docx.readthedocs.io/) —
-the library every python-docx power user ends up writing badly: hardened
-helpers for OOXML operations that sit just past python-docx's
-abstraction boundary.
+OOXML-level extensions for [python-docx](https://python-docx.readthedocs.io/).
 
-Status: **v0.5.0 released** — published 2026-07-27 on
+python-docx is an excellent library that stops at a well-defined
+boundary. Past that boundary — the style cascade, content controls,
+anchored comments, tracked changes, custom numbering, table borders —
+the usual answer is a StackOverflow snippet that reaches into
+`element._p` and builds raw `lxml` by hand. Everyone writing serious
+document automation ends up with a private, half-tested pile of that
+code.
+
+`docx_plus` is that pile, done properly: typed, tested against documents
+Word itself authored, and schema-strict about where elements are allowed
+to go. It **composes with python-docx** rather than replacing it — you
+keep your `Document` object and reach for `docx_plus` only where you
+need to.
+
+## Install
+
+```bash
+pip install docx-plus
+```
+
+```bash
+uv add docx-plus
+```
+
+Requires Python 3.10+. The only dependencies are `python-docx` and
+`lxml`. Current release: **v0.5.0**, published 2026-07-27 on
 [PyPI](https://pypi.org/project/docx-plus/).
 
 ## Capabilities
 
-- **Style cascade** — read the effective formatting that would apply to
-  any paragraph/run/cell, with per-field provenance; modify styles in
-  the Word-native way rather than scattering direct formatting.
-- **Content controls** — text / dropdown / date / checkbox controls
-  via `FormBuilder`; round-trip read/write of values; form protection.
-- **Fields** — PAGE / NUMPAGES / DATE / generic complex fields; mark
-  fields dirty so Word recalculates them on next open.
-- **Protection** — enforce form-fill, read-only, comments-only, or
-  tracked-changes mode at the document level.
-- **Anchored comments** (v0.2) — the body-side range markers
-  python-docx skips, so "show in document" actually works.
-- **Threaded comments** (v0.4) — replies, thread-wide resolve / reopen,
-  and nested reads over the `commentsExtended.xml` part.
-  (Module: `docx_plus/comments/threads.py`.)
-- **Layout** (v0.2) — multi-column sections, mid-document section
-  breaks, distinct even/odd headers.
-- **Bookmarks + cross-references** (v0.2) — paired body markers plus
-  `REF` / `PAGEREF` fields.
-- **Footnotes + endnotes** (v0.2) — separate `footnotes.xml` /
-  `endnotes.xml` parts; insert + edit in-place.
-- **Layout: line numbers + page borders** (v0.2) — marginal line
-  numbering and decorative page borders.
-- **Conditional table-style formatting** (v0.2) — the cascade
-  applies `<w:tblStylePr>` branches (first row, banded rows, corners)
-  in ECMA-376 17.7.6.5 precedence order.
-- **Publishing** (v0.2) — Table of Contents, figure / table captions
-  via `SEQ`, and a downstream Table of Figures.
-- **Tracked changes** (v0.3) — mark runs as insertions / deletions,
-  read revisions, accept / reject, and toggle track-changes mode.
-  (Module: `docx_plus/revisions/`.)
-- **Command line** (v0.3) — a `docx-plus` console command —
-  `inspect`, `restyle`, `controls`, and `comments` (v0.4) — over the
-  library. (Module: `docx_plus/cli/`.)
+| Capability | Detail |
+|---|---|
+| **[Style cascade](ARCHITECTURE.md#2-the-cascade-resolver)** | Effective formatting for any paragraph / run / cell through the full six-layer cascade, with per-field provenance. Create, modify, and remap styles; materialise any of 107 latent Word built-ins. |
+| **[Content controls](ARCHITECTURE.md#6-content-controls)** | Text / dropdown / date / checkbox controls via `FormBuilder`; round-trip read and write of values. |
+| **[Comments](ARCHITECTURE.md#76-anchored-comments)** | Anchored comments with the body-side range markers python-docx skips, so "show in document" works. Threading — reply / resolve / reopen (v0.4) — plus durable ids and author presence (v0.5). |
+| **[Tracked changes](ARCHITECTURE.md#711-tracked-changes)** | Mark runs as insertions / deletions, read revisions with author and timestamp, accept / reject, toggle track-changes mode (v0.3). |
+| **[Fields](ARCHITECTURE.md#7-fields-and-protection)** | `PAGE` / `NUMPAGES` / `DATE` and generic complex fields; mark fields dirty so Word recalculates on next open. |
+| **[Tables](ARCHITECTURE.md#714-table-formatting)** | Table / row / cell borders and shading, merge and unmerge, `w:hMerge` normalization, direct-formatting reads (v0.5). Conditional `<w:tblStylePr>` branches resolve in ECMA-376 17.7.6.5 precedence order. |
+| **[Numbering](ARCHITECTURE.md#713-custom-numbering)** | Custom bullet and multi-level numbered list definitions, applied and restarted per paragraph (v0.5). |
+| **[Layout](ARCHITECTURE.md#77-layout)** | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders (v0.2). |
+| **[Bookmarks](ARCHITECTURE.md#78-bookmarks-and-cross-references)** | Paired body markers plus `REF` / `PAGEREF` cross-references (v0.2). |
+| **[Notes](ARCHITECTURE.md#79-footnotes-and-endnotes)** | Footnotes and endnotes over the separate `footnotes.xml` / `endnotes.xml` parts; insert and edit in place (v0.2). |
+| **[Publishing](ARCHITECTURE.md#710-publishing)** | Table of Contents, figure / table captions via `SEQ`, Table of Figures (v0.2). |
+| **[Protection](ARCHITECTURE.md#7-fields-and-protection)** | Form-fill, read-only, comments-only, or tracked-changes enforcement at the document level. |
+| **[Command line](cli.md)** | `docx-plus inspect / restyle / controls / comments / skill` over the library. |
 
 ## Where to start
 
@@ -239,20 +243,35 @@ mark_fields_dirty(doc)   # Word populates TOC / SEQ / ToF on open
 
 See [`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
 
-## Roadmap
+## Project status
 
-| Phase | Capability | Status |
-|---|---|---|
-| 1 | Foundation | ✓ complete |
-| 2 | Style inspection | ✓ complete |
-| 3 | Style modification | ✓ complete |
-| 3.5 | Style remapping | ✓ complete |
-| 4 | Content controls | ✓ complete |
-| 5 | Fields + protection | ✓ complete |
-| 6 | Polish (examples, smoke tests, CI doc build) | ✓ complete |
-| v0.2 | Comments, layout, bookmarks/cross-refs, notes, `core/parts` | ✓ complete |
-| v0.2 expansion | Toggle props, in-place edits, line numbering, page borders, conditional table styles, `publishing/` | ✓ complete |
-| v0.3 | Tracked changes — mark / read / accept / reject, track-changes toggle (`revisions/`) | ✓ shipped (v0.3) |
-| v0.3 | CLI — `docx-plus` console command: `inspect`, `restyle`, `controls` (`cli/`) | ✓ shipped (v0.3) |
-| v0.4 | Threaded comments — reply / resolve / reopen / nested read, `commentsExtended.xml` (`comments/threads.py`) | ✓ shipped (v0.4) |
-| v0.4 | CLI — `docx-plus comments list / resolve / reopen` | ✓ shipped (v0.4) |
+**v0.5.0** — beta, and shipping. 1,266 tests, 95% coverage, `mypy
+--strict` clean with zero ignores. CI runs Python 3.10–3.13 on Linux
+plus a Windows job, and a lower-bound dependency job pinned to
+`python-docx==1.0.0` / `lxml==4.9.0`.
+
+The API is stable in practice but pre-1.0: breaking changes are possible
+on minor versions and are called out in the
+[changelog](https://github.com/thomas-villani/docx-plus/blob/main/CHANGELOG.md).
+
+| Release | Shipped |
+|---|---|
+| v0.1.0 | Foundation (`core/`), style inspection / modification / remapping, content controls, fields, protection |
+| v0.2.0 | Comments, layout, bookmarks, notes, `core/parts`; toggle properties, in-place edits, line numbering, page borders, conditional table styles, `publishing/` |
+| v0.3.0 | Tracked changes (`revisions/`) and the `docx-plus` CLI (`inspect`, `restyle`, `controls`) |
+| v0.4.0 | Threaded comments over `commentsExtended.xml`, and `docx-plus comments` |
+| v0.5.0 | Table formatting (`tables/`), custom numbering (`numbering/`), comment durable ids and author presence, the agent skill in the wheel behind `docx-plus skill` |
+
+[`ROADMAP.md`](https://github.com/thomas-villani/docx-plus/blob/main/ROADMAP.md)
+is the live record of what is shipped, backlogged, and deliberately
+declined. On the backlog: content-control data binding to Custom XML
+Parts, bibliography and `BIBLIOGRAPHY` fields, theme writing, glossary
+placeholder text, password-protected forms, and a document linter.
+
+## Contributing
+
+See
+[`CONTRIBUTING.md`](https://github.com/thomas-villani/docx-plus/blob/main/CONTRIBUTING.md)
+for the development setup, quality gates, and conventions — including
+the expectation that new OOXML output is verified against a file Word
+itself authored.

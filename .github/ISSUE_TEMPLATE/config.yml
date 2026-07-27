@@ -1,0 +1,17 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/thomas-villani/docx-plus/discussions
+    about: >
+      Not sure whether something is a bug? Asking how to accomplish a document
+      task? Start a discussion — it is the better venue and stays searchable.
+
+  - name: Documentation
+    url: https://thomas-villani.github.io/docx-plus/
+    about: >
+      The API index, architecture notes, and CLI reference. The cascade
+      algorithm and OOXML invariants are documented in some depth.
+
+  - name: Report a security vulnerability
+    url: https://github.com/thomas-villani/docx-plus/security/advisories/new
+    about: Please report vulnerabilities privately, not as a public issue.
