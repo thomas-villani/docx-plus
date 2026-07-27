@@ -13,6 +13,8 @@ from pathlib import Path
 
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.text.paragraph import Paragraph
+from lxml import etree
 
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
@@ -142,3 +144,226 @@ def test_numbering_paragraph_without_numpr_skips_layer(
     prov = resolved.provenance or {}
     # No numbering-layer entries appear.
     assert not any(src.layer == "numbering" for src in prov.values())
+
+
+# --------------------------------------------------------------------------
+# Style-supplied numbering.
+#
+# Layer 4 used to read only the paragraph's *direct* w:numPr, so a correctly
+# styled list paragraph reported num_id=None — indistinguishable from one
+# where a bullet glyph was typed by hand, and a break in the contract every
+# other ResolvedFormatting field keeps (they all walk the style chain).
+# --------------------------------------------------------------------------
+
+
+def _ppr(parent: etree._Element) -> etree._Element:
+    """Return ``parent``'s ``w:pPr``, creating it if absent."""
+    existing = parent.find(qn("w:pPr"))
+    return existing if existing is not None else sub(parent, "w:pPr")
+
+
+def _set_num_pr(parent: etree._Element, *, num_id: str | None, ilvl: str | None) -> None:
+    """Write a ``w:pPr/w:numPr`` onto a style or paragraph element."""
+    num_pr = sub(_ppr(parent), "w:numPr")
+    if ilvl is not None:
+        sub(num_pr, "w:ilvl", **{"w:val": ilvl})
+    if num_id is not None:
+        sub(num_pr, "w:numId", **{"w:val": num_id})
+
+
+def _add_style(
+    doc: Document,
+    style_id: str,
+    *,
+    based_on: str | None = None,
+    num_id: str | None = None,
+) -> None:
+    """Append a paragraph style to styles.xml, optionally carrying numbering.
+
+    Built as raw lxml rather than through ``create_style`` because linking
+    a numbering definition into a style is a separate, still-unshipped
+    writer; the resolver reads the XML either way.
+    """
+    style_el = sub(doc.styles.element, "w:style", **{"w:type": "paragraph", "w:styleId": style_id})
+    sub(style_el, "w:name", **{"w:val": style_id})
+    if based_on is not None:
+        sub(style_el, "w:basedOn", **{"w:val": based_on})
+    if num_id is not None:
+        _set_num_pr(style_el, num_id=num_id, ilvl=None)
+
+
+def _apply_style(para: Paragraph, style_id: str) -> None:
+    """Point a paragraph at a style by ``w:pStyle``.
+
+    Deliberately not ``para.style = doc.styles[...]``: python-docx's style
+    factory needs its own ``CT_Style`` class, which hand-built elements
+    aren't. The resolver reads ``w:pStyle`` regardless.
+    """
+    sub(_ppr(para._p), "w:pStyle", **{"w:val": style_id})
+
+
+def _set_paragraph_numbering(
+    para: Paragraph, *, num_id: str | None, ilvl: str | None = None
+) -> None:
+    """Give a paragraph a direct w:numPr."""
+    _set_num_pr(para._p, num_id=num_id, ilvl=ilvl)
+
+
+def test_style_supplied_numbering_resolves() -> None:
+    """A stock ``List Bullet`` paragraph reports the numId its style supplies.
+
+    Regression for the documented gap: this returned ``None`` before, even
+    though the bundled template links ``numId`` 1 on that style.
+    """
+    doc = Document()
+    para = doc.add_paragraph("bulleted", style="List Bullet")
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.num_id == 1
+    assert resolved.num_level == 0
+    prov = resolved.provenance or {}
+    assert prov["num_id"].layer == "styleNumbering"
+    assert prov["num_id"].style_id == "ListBullet"
+    assert prov["num_id"].chain_depth == 0
+
+
+def test_style_supplied_numbering_applies_level_formatting() -> None:
+    """The abstractNum level's own pPr flows in for a style-supplied reference too.
+
+    Reaching the numbering definition at all is what was previously
+    impossible, so the indent it contributes never applied either.
+    """
+    doc = Document()
+    para = doc.add_paragraph("bulleted", style="List Bullet")
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.indent_left == 360
+    prov = resolved.provenance or {}
+    # The *level's* formatting is the numbering layer regardless of how the
+    # reference was reached; only the reference itself is style-attributed.
+    assert prov["indent_left"].layer == "numbering"
+
+
+def test_direct_numpr_overrides_style_supplied() -> None:
+    """A paragraph's own numId wins over the one its style supplies."""
+    doc = Document()
+    para = doc.add_paragraph("item", style="List Bullet")
+    _set_paragraph_numbering(para, num_id="77")
+
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.num_id == 77
+    prov = resolved.provenance or {}
+    assert prov["num_id"].layer == "numbering"
+    assert prov["num_id"].style_id is None
+
+
+def test_direct_ilvl_merges_with_style_supplied_numid() -> None:
+    """numId and ilvl resolve independently — a demoted item keeps its style's list.
+
+    Both w:numPr children are optional per ECMA-376 17.3.1.19, so a
+    paragraph overriding only the level must still inherit the numId.
+    """
+    doc = Document()
+    para = doc.add_paragraph("sub-item", style="List Bullet")
+    _set_paragraph_numbering(para, num_id=None, ilvl="2")
+
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.num_id == 1  # inherited from ListBullet
+    assert resolved.num_level == 2  # overridden directly
+    prov = resolved.provenance or {}
+    assert prov["num_id"].layer == "styleNumbering"
+    assert prov["num_level"].layer == "numbering"
+
+
+def test_style_numbering_walks_basedon_chain() -> None:
+    """Numbering is inherited through basedOn like every other pPr property."""
+    doc = Document()
+    _add_style(doc, "BaseList", num_id="42")
+    _add_style(doc, "DerivedList", based_on="BaseList")
+
+    para = doc.add_paragraph("item")
+    _apply_style(para, "DerivedList")
+
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.num_id == 42
+    prov = resolved.provenance or {}
+    assert prov["num_id"].style_id == "BaseList"
+    assert prov["num_id"].chain_depth == 1
+
+
+def test_nearest_style_in_chain_wins() -> None:
+    """The most specific style supplying a numId wins, matching every other property."""
+    doc = Document()
+    _add_style(doc, "OuterList", num_id="10")
+    _add_style(doc, "InnerList", based_on="OuterList", num_id="20")
+
+    para = doc.add_paragraph("item")
+    _apply_style(para, "InnerList")
+
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.num_id == 20
+    prov = resolved.provenance or {}
+    assert prov["num_id"].style_id == "InnerList"
+    assert prov["num_id"].chain_depth == 0
+
+
+def test_numid_zero_sentinel_suppresses_style_numbering() -> None:
+    """A direct numId=0 is surfaced as 0, not flattened to None.
+
+    ECMA-376 17.9.18: zero is the "explicitly not numbered" sentinel and the
+    only way to opt out of numbering a style applies. Reporting it faithfully
+    is what lets a caller tell deliberate suppression from a paragraph that
+    was never numbered — and it must not drag the level's indent in with it.
+    """
+    doc = Document()
+    para = doc.add_paragraph("opted out", style="List Bullet")
+    _set_paragraph_numbering(para, num_id="0")
+
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.num_id == 0
+    prov = resolved.provenance or {}
+    assert prov["num_id"].layer == "numbering"
+    # The suppressed style's level formatting must not leak through.
+    assert resolved.indent_left != 360
+
+
+def test_style_supplied_numid_zero_also_surfaces() -> None:
+    """The sentinel resolves through the style chain too."""
+    doc = Document()
+    _add_style(doc, "NoNumberList", num_id="0")
+
+    para = doc.add_paragraph("item")
+    _apply_style(para, "NoNumberList")
+
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+
+    assert resolved.num_id == 0
+    prov = resolved.provenance or {}
+    assert prov["num_id"].layer == "styleNumbering"
+
+
+def test_ilvl_with_no_numid_anywhere_resolves_nothing() -> None:
+    """An ilvl with no numId behind it references nothing and is dropped."""
+    doc = Document()
+    para = doc.add_paragraph("orphan")
+    _set_paragraph_numbering(para, num_id=None, ilvl="3")
+
+    resolved = resolve_effective_formatting(para)
+
+    assert resolved.num_id is None
+    assert resolved.num_level is None
+
+
+def test_unstyled_paragraph_reports_no_numbering() -> None:
+    """The common case stays unaffected: no style numbering, no numPr, no result."""
+    doc = Document()
+    resolved = resolve_effective_formatting(doc.add_paragraph("plain"), include_provenance=True)
+
+    assert resolved.num_id is None
+    prov = resolved.provenance or {}
+    assert not any(src.layer in ("numbering", "styleNumbering") for src in prov.values())
