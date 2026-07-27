@@ -6,6 +6,45 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Community health files** — `CONTRIBUTING.md`, `SECURITY.md`,
+  `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), YAML issue forms for
+  bug reports and feature requests, and a pull request template. The
+  contributing guide records the release process and the
+  verify-against-Word expectation that had until now been folklore; the
+  security policy is explicit that `protect_document` is an editing
+  convention and **not** a security boundary, and that the realistic
+  XML/ZIP attack surface belongs to `lxml` and `python-docx` upstream.
+- **`Changelog` project URL** — PyPI renders it as a sidebar link.
+  `CHANGELOG.md` and `CONTRIBUTING.md` now ship in the sdist.
+
+### Changed
+
+- **README rewritten for new users.** It opened with a fifteen-bullet
+  feature list and its only install instructions were "Install
+  (development)" — clone the repo and `uv sync`. Six versions have been
+  on PyPI since v0.1.0 and `pip install docx-plus` appeared nowhere,
+  which is the one thing a reader arriving from the package page needs.
+  It now leads with the problem the library solves, a runnable example,
+  and the install command; the feature list is a capability table
+  linked into the architecture docs; and the quickstart keeps the five
+  most-used surfaces rather than reprinting all twelve. Repo-relative
+  links are absolute GitHub URLs so they resolve on PyPI too.
+- **Stale version claims corrected.** The capability list was headed
+  "v0.1 through v0.4" and `docs/index.md` stopped its roadmap table at
+  v0.4, so v0.5's `tables/` and `numbering/` were invisible outside the
+  collapsed build-history block. The "What's next" section still
+  described v0.2 in the present tense.
+- **Package metadata** — keywords expanded from six to fifteen to cover
+  the differentiating surfaces (content controls, tracked changes,
+  footnotes, bookmarks), and five classifiers added
+  (`Environment :: Console`, `Topic :: Text Processing :: Markup :: XML`,
+  and others).
+- **Docs site** — `repo_url` / `edit_uri` set, so Material renders the
+  GitHub link and per-page "edit" actions; changelog and contributing
+  guide added to the nav.
+
 ## [0.5.0] - 2026-07-27
 
 ### Added

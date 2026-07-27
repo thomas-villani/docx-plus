@@ -1,16 +1,24 @@
 site_name: docx_plus
-site_description: OOXML-level extensions for python-docx — style cascade, controls, fields, comments, tracked changes, layout, bookmarks, notes, publishing.
+site_description: OOXML-level extensions for python-docx — style cascade, content controls, comments, tracked changes, fields, tables, numbering, and publishing.
 site_author: Tom Villani, PhD
+site_url: https://thomas-villani.github.io/docx-plus/
+
+repo_url: https://github.com/thomas-villani/docx-plus
+repo_name: thomas-villani/docx-plus
+edit_uri: edit/main/docs/
 
 docs_dir: docs
 
 theme:
   name: material
+  icon:
+    repo: fontawesome/brands/github
   features:
     - navigation.sections
     - navigation.expand
     - navigation.top
     - content.code.copy
+    - content.action.edit
     - search.highlight
     - search.suggest
   palette:
@@ -33,6 +41,8 @@ nav:
   - API Index: API.md
   - CLI: cli.md
   - Agent Skill: SKILLS.md
+  - Changelog: https://github.com/thomas-villani/docx-plus/blob/main/CHANGELOG.md
+  - Contributing: https://github.com/thomas-villani/docx-plus/blob/main/CONTRIBUTING.md
   - Reference:
       - docx_plus.core.errors: reference/core-errors.md
       - docx_plus.core.ns: reference/core-ns.md

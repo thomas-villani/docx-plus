@@ -1,0 +1,97 @@
+name: Bug report
+description: Something in docx_plus behaves incorrectly or produces bad OOXML.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The single most useful thing you can attach is a
+        **minimal `.docx`** that reproduces the problem, or the offending XML
+        fragment from `word/document.xml`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead?
+      placeholder: |
+        `resolve_effective_formatting` reports font_size=None for a paragraph
+        that is clearly 14pt in Word.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: >
+        The smallest script that shows the problem. If it needs an input
+        document, please attach one (drag and drop it into this field) or
+        include the code that builds it.
+      render: python
+      placeholder: |
+        from docx import Document
+        from docx_plus.styles import resolve_effective_formatting
+
+        doc = Document("repro.docx")
+        print(resolve_effective_formatting(doc.paragraphs[0]))
+    validations:
+      required: true
+
+  - type: textarea
+    id: xml
+    attributes:
+      label: Relevant OOXML
+      description: >
+        Optional but very helpful — the offending fragment from
+        `word/document.xml`, `word/styles.xml`, or whichever part is involved.
+        A `.docx` is a ZIP; `unzip -p file.docx word/document.xml` will get you
+        there.
+      render: xml
+
+  - type: input
+    id: docx-plus-version
+    attributes:
+      label: docx_plus version
+      placeholder: "0.5.0"
+    validations:
+      required: true
+
+  - type: input
+    id: deps
+    attributes:
+      label: python-docx / lxml / Python versions
+      description: "`uv run python -c \"import docx, lxml.etree, sys; print(docx.__version__, lxml.etree.__version__, sys.version)\"`"
+      placeholder: "1.1.2 / 5.2.1 / 3.12.4"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 / macOS 14 / Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: input
+    id: word-version
+    attributes:
+      label: Word version (if the bug is about how Word renders the output)
+      description: >
+        OOXML edge cases are often version-specific, so this matters more than
+        it looks. LibreOffice or Google Docs is also worth naming.
+      placeholder: "Word 2016 / Microsoft 365 / LibreOffice 24.2"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am on the latest release of `docx_plus`.
+          required: true
+        - label: >
+            I checked that this is a `docx_plus` bug and not a python-docx one
+            (i.e. the same operation done purely through python-docx behaves
+            correctly).
+          required: false
