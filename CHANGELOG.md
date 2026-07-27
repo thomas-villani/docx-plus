@@ -45,6 +45,41 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GitHub link and per-page "edit" actions; changelog and contributing
   guide added to the nav.
 
+### Fixed
+
+- **`resolve_effective_formatting` now resolves style-supplied
+  numbering.** Cascade layer 4 read only the paragraph's *direct*
+  `w:numPr`, so on a stock `Document()` a paragraph styled
+  `List Bullet` reported `num_id=None` even though the bundled template
+  links `numId` 1 on that style. Every other field on
+  `ResolvedFormatting` walks the style chain, so `num_id` silently broke
+  the contract the rest of the dataclass sets — and it made a
+  correctly-styled list paragraph indistinguishable from one where a
+  bullet glyph was typed by hand. Numbering now resolves through the
+  `basedOn` chain, nearest style winning. Reaching the definition at all
+  also means the `abstractNum` level's own `pPr` applies, so such a
+  paragraph picks up its indent for the first time.
+  `w:numId` and `w:ilvl` resolve **independently**: a paragraph
+  overriding only the level keeps its style's list rather than losing
+  numbering. ECMA-376 does not state merge semantics for a compound
+  property across the style / direct boundary, so this was settled
+  against Word 2016 — a `List Bullet` paragraph given a bare
+  `<w:ilvl w:val="2"/>` renders as a third-level bullet of the style's
+  own list.
+  A resolved `num_id` of **`0` is surfaced rather than flattened to
+  `None`**: it is the ECMA-376 17.9.18 "explicitly not numbered"
+  sentinel, the only way to opt out of numbering a style applies and
+  what `numbering.remove_list(suppress_style_numbering=True)` already
+  writes, so `None` now means "no numbering information anywhere" and
+  `0` means "deliberately suppressed".
+- **New `styleNumbering` provenance layer** on `FormattingSource`,
+  carrying the `style_id` that supplied the reference and its
+  `chain_depth`. A distinct layer rather than a `numbering` entry with a
+  `style_id` set, because `Layer` describes where in the cascade a value
+  sat and a style's `numPr` is overridden by a direct one. The
+  formatting the numbering *level* contributes stays `numbering`, whose
+  precedence is the same either way.
+
 ## [0.5.0] - 2026-07-27
 
 ### Added

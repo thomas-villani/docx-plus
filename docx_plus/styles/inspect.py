@@ -862,11 +862,11 @@ def _apply_numbering(
     treating ``w:numPr`` as atomic — would mean a partial one silently
     strips the style's list rather than demoting within it.
 
-    That merge rule is the one part of this resolver inferred rather than
-    read off a Word-authored file: the spec does not state merge semantics
-    for a compound property across the style / direct boundary. The common
-    cases (both children present, or neither) resolve identically under
-    either reading.
+    The spec does not state merge semantics for a compound property across
+    the style / direct boundary, so this was settled against Word 2016: a
+    ``List Bullet`` paragraph given a bare ``<w:ilvl w:val="2"/>`` renders
+    as a third-level bullet of the style's own list, not as unnumbered
+    body text.
     """
     num_id: int | None = None
     ilvl: int | None = None
