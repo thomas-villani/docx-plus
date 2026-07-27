@@ -261,8 +261,11 @@ def test_direct_numpr_overrides_style_supplied() -> None:
 def test_direct_ilvl_merges_with_style_supplied_numid() -> None:
     """numId and ilvl resolve independently — a demoted item keeps its style's list.
 
-    Both w:numPr children are optional per ECMA-376 17.3.1.19, so a
-    paragraph overriding only the level must still inherit the numId.
+    Both w:numPr children are optional per ECMA-376 17.3.1.19, and the spec
+    does not state merge semantics across the style / direct boundary.
+    Verified against Word 2016: a ``List Bullet`` paragraph carrying a bare
+    ``<w:ilvl w:val="2"/>`` renders as a third-level bullet of the style's
+    own list (marker U+F0B7), not as unnumbered body text.
     """
     doc = Document()
     para = doc.add_paragraph("sub-item", style="List Bullet")
