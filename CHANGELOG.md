@@ -8,6 +8,27 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Custom numbering (`numbering/`)** — the largest remaining
+  python-docx gap. python-docx ships a `NumberingPart` and `len()` of
+  its definitions and nothing else: it has no `CT_AbstractNum` and no
+  `CT_Lvl`, so it cannot express a number format, level text, start
+  value, indent, or bullet glyph. Building a list has meant hand-writing
+  XML.
+  `define_list_definition` writes a `<w:abstractNum>` from a list of
+  `LevelDefinition`s plus the `<w:num>` instance that paragraphs
+  reference; `define_bullet_list` and `define_numbered_list` are presets
+  using Word's own glyph and format cycles. `apply_list` /
+  `remove_list` set paragraph membership — the latter's
+  `suppress_style_numbering` writes the `numId="0"` sentinel, the only
+  way to opt out of a list a *style* applies. `restart_list` begins a
+  fresh sequence, which OOXML has no paragraph-level way to express: it
+  adds a second `<w:num>` over the same `<w:abstractNum>` with a
+  `<w:startOverride>`, exactly as Word does. `read_list_definitions`
+  reads the part back as `ListDefinition` / `ListLevel`, including
+  definitions other tools wrote.
+  A new `docx_plus/examples/custom_numbering.py` builds a procedure, a
+  restarted sequence, a legal outline, and a three-level bullet list;
+  verified against Word 2016.
 - **`fields.add_style_reference`** — the `STYLEREF` field, which resolves
   to the text of the nearest paragraph carrying a given style and is the
   one cross-reference that needs no bookmark at all. Word re-evaluates it
@@ -42,68 +63,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`core.validate_bookmark_name`** — the name grammar, now shared by the
   three surfaces that accept a bookmark name instead of living privately
   in `bookmarks/anchor.py`.
-
-### Changed
-
-- **`BookmarkIdRegistry` moved from `docx_plus.bookmarks.registry` to
-  `docx_plus.core.ids`** and is re-exported from its old home, so
-  existing imports are unaffected. Forced by SPEC §9.1: `publishing` needs
-  it to bookmark a caption and cannot import from a sibling capability.
-- **Custom numbering (`numbering/`)** — the largest remaining
-  python-docx gap. python-docx ships a `NumberingPart` and `len()` of
-  its definitions and nothing else: it has no `CT_AbstractNum` and no
-  `CT_Lvl`, so it cannot express a number format, level text, start
-  value, indent, or bullet glyph. Building a list has meant hand-writing
-  XML.
-  `define_list_definition` writes a `<w:abstractNum>` from a list of
-  `LevelDefinition`s plus the `<w:num>` instance that paragraphs
-  reference; `define_bullet_list` and `define_numbered_list` are presets
-  using Word's own glyph and format cycles. `apply_list` /
-  `remove_list` set paragraph membership — the latter's
-  `suppress_style_numbering` writes the `numId="0"` sentinel, the only
-  way to opt out of a list a *style* applies. `restart_list` begins a
-  fresh sequence, which OOXML has no paragraph-level way to express: it
-  adds a second `<w:num>` over the same `<w:abstractNum>` with a
-  `<w:startOverride>`, exactly as Word does. `read_list_definitions`
-  reads the part back as `ListDefinition` / `ListLevel`, including
-  definitions other tools wrote.
-  A new `docx_plus/examples/custom_numbering.py` builds a procedure, a
-  restarted sequence, a legal outline, and a three-level bullet list;
-  verified against Word 2016.
-- **`_testing.assert_numbering_well_formed`** — checks the three
-  invariants a lenient parser will not: that every `w:abstractNum`
-  precedes every `w:num` (`CT_Numbering`'s child order, which nothing in
-  python-docx maintains because nothing in it inserts an `abstractNum`),
-  that both id namespaces are unique, and that every instance resolves.
-
-### Fixed
-
-- **`resolve_effective_formatting` no longer crashes on a document with
-  no `numbering.xml`.** `doc.part.numbering_part` fabricates a missing
-  part through `NumberingPart.new()`, which is an unimplemented stub in
-  python-docx that raises a bare `NotImplementedError`. The cascade's
-  `_numbering_root` reached it through `getattr(..., None)`, which
-  swallows only `AttributeError`, so any paragraph carrying a `w:numPr`
-  without the part behind it raised — the state LibreOffice, Pandoc, and
-  stripped templates all produce. The resolver now reads the
-  relationship directly and treats an absent part as "no numbering
-  information", which is what it already did for a dangling `numId`.
-
-### Changed
-
-- **`MissingPartError` is documented as unraised.**
-  `resolve_effective_formatting` promised it for an unresolvable
-  numbering reference; nothing ever raised it, and the tolerant
-  behaviour is correct — Word degrades the same way. The docstring now
-  says so. The exception is retained as a public symbol.
-- **`Border` moved from `docx_plus.layout` to `docx_plus.core.borders`**,
-  where table and cell borders can share the identical `CT_Border`
-  shape. `docx_plus.layout.Border` re-exports it, so existing imports
-  are unaffected. It also gained the `size` range check and `style`
-  validation its docstring had claimed since v0.2 but never enforced.
-
-### Added
-
 - **`core.ordered_insert`** — idempotent schema-ordered insertion given a
   parent's full child sequence. Promoted out of `styles/modify.py` so the
   numbering writer can share it; SPEC §9.1 forbids that sibling import.
@@ -120,6 +79,41 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   specs for `/word/numbering.xml`, `/word/commentsIds.xml`, and
   `/word/people.xml`, with the `w16cid` namespace and the `CT_` / `RT_`
   URI constants for the two Microsoft extension parts.
+- **`_testing.assert_numbering_well_formed`** — checks the three
+  invariants a lenient parser will not: that every `w:abstractNum`
+  precedes every `w:num` (`CT_Numbering`'s child order, which nothing in
+  python-docx maintains because nothing in it inserts an `abstractNum`),
+  that both id namespaces are unique, and that every instance resolves.
+
+### Changed
+
+- **`BookmarkIdRegistry` moved from `docx_plus.bookmarks.registry` to
+  `docx_plus.core.ids`** and is re-exported from its old home, so
+  existing imports are unaffected. Forced by SPEC §9.1: `publishing` needs
+  it to bookmark a caption and cannot import from a sibling capability.
+- **`Border` moved from `docx_plus.layout` to `docx_plus.core.borders`**,
+  where table and cell borders can share the identical `CT_Border`
+  shape. `docx_plus.layout.Border` re-exports it, so existing imports
+  are unaffected. It also gained the `size` range check and `style`
+  validation its docstring had claimed since v0.2 but never enforced.
+- **`MissingPartError` is documented as unraised.**
+  `resolve_effective_formatting` promised it for an unresolvable
+  numbering reference; nothing ever raised it, and the tolerant
+  behaviour is correct — Word degrades the same way. The docstring now
+  says so. The exception is retained as a public symbol.
+
+### Fixed
+
+- **`resolve_effective_formatting` no longer crashes on a document with
+  no `numbering.xml`.** `doc.part.numbering_part` fabricates a missing
+  part through `NumberingPart.new()`, which is an unimplemented stub in
+  python-docx that raises a bare `NotImplementedError`. The cascade's
+  `_numbering_root` reached it through `getattr(..., None)`, which
+  swallows only `AttributeError`, so any paragraph carrying a `w:numPr`
+  without the part behind it raised — the state LibreOffice, Pandoc, and
+  stripped templates all produce. The resolver now reads the
+  relationship directly and treats an absent part as "no numbering
+  information", which is what it already did for a dangling `numId`.
 
 ## [0.4.0] - 2026-07-26
 
