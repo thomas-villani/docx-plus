@@ -45,7 +45,7 @@ can't reach.
   remapping), `controls` (list / set / clear control values), and
   `comments` (list / resolve / reopen threads) (v0.4).
 
-> **Status:** v0.4.0 is the current release, published on 2026-07-26 to
+> **Status:** v0.5.0 is the current release, published on 2026-07-27 to
 > [PyPI](https://pypi.org/project/docx-plus/). Read [`SPEC.md`](SPEC.md) for
 > the API contract and [`IMPLEMENTATION.md`](IMPLEMENTATION.md) for the
 > build plan.
@@ -393,6 +393,10 @@ these.
 - **v0.4.0** — complete: threaded comments (`comments/threads.py` over
   `comments/_extended.py`), the `commentsExtended.xml` part, and
   `docx-plus comments`.
+- **v0.5.0** — complete: table formatting (`tables/`), custom numbering
+  (`numbering/`), comment durable ids and author presence
+  (`commentsIds.xml` / `people.xml`), and the agent skill shipping in the
+  wheel behind `docx-plus skill`.
 
 The per-phase log with dates lives in `IMPLEMENTATION.md` §12.
 

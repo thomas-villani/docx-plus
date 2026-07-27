@@ -1315,8 +1315,8 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **905 tests** at the v0.4.0 release
-  (895 pass; 10 LibreOffice round-trips skip without `soffice`).
+  I/O beyond reading fixtures. **1278 tests** at the v0.5.0 release
+  (1266 pass; 12 LibreOffice round-trips skip without `soffice`).
   Of these, 631 were collected at v0.2.0: v0.1's surface (319 tests)
   plus the v0.2 cycle — `core/parts` (13), `comments/` (35),
   `layout/` (47), `bookmarks/` + cross-refs (26), `notes/` (34),

@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-27
+
 ### Added
 
 - **The agent skill now ships in the wheel.** It lived at repo-level
@@ -751,7 +753,8 @@ first-class API, anchored comments, footnotes / endnotes, bookmarks
 and cross-references, table cell shading / borders, theme writing,
 password-protected forms, content-control binding to Custom XML Parts.
 
-[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/thomas-villani/docx-plus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thomas-villani/docx-plus/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thomas-villani/docx-plus/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/thomas-villani/docx-plus/compare/v0.2.0...v0.2.1
