@@ -95,6 +95,7 @@ copy-pasteable guide to that module's public API.
 | Table of contents, figure/table captions, table of figures, footnotes, endnotes, bookmarks, cross-references, page-number/date/generic fields | `publishing`, `notes`, `bookmarks`, `fields` | `reference/publishing.md`   |
 | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders | `layout`         | `reference/layout.md`       |
 | Bulleted / numbered / multilevel lists, custom level formats, restarting numbering | `numbering`      | `reference/numbering.md`    |
+| Table borders, cell / row / table shading, merging and unmerging cells | `tables`          | `reference/tables.md`       |
 | Anchored review comments that "show in document" correctly; reply threads; resolve / reopen | `comments`        | `reference/comments.md`     |
 | Track changes: mark insertions / deletions, read revisions, accept / reject | `revisions`       | `reference/revisions.md`    |
 | Drive the library from a shell / CI: inspect formatting, remap styles, edit control values, triage comments | `cli` (`docx-plus`) | `reference/cli.md`          |
@@ -145,6 +146,9 @@ doc.save("out.docx")
 - `reference/numbering.md` — custom list definitions: bullet / numbered
   presets, multilevel outlines, applying to paragraphs, restarting a
   sequence, reading definitions back.
+- `reference/tables.md` — table and cell borders, cell / row / table shading,
+  merging and unmerging, normalizing legacy `w:hMerge` spans, and reading
+  direct table formatting back.
 - `reference/comments.md` — anchored comments (add / edit / delete / read) and
   threads (reply, resolve / reopen, read nested).
 - `reference/revisions.md` — tracked changes: enable/disable track-changes mode,

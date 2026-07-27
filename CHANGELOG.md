@@ -8,6 +8,31 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Table formatting (`tables/`)** — the half of tables python-docx
+  omits. It models structure well — rows, columns, cells, widths, and a
+  working `_Cell.merge` — and appearance not at all: there is no
+  `CT_Border`, `CT_TblBorders`, `CT_TcBorders`, or `CT_Shd` class in
+  the package and none of those tags is registered, so ruling a table
+  or shading a header row has meant writing OOXML by hand.
+  `set_table_borders` / `set_cell_borders` write `<w:tblBorders>` and
+  `<w:tcBorders>` over the same `Border` dataclass page borders use,
+  including the inside edges and the cell diagonals; both pin
+  `w:space` to `0`, because `Border`'s default of `24` is a *page*
+  value Word's table UI cannot even produce. `set_table_shading` /
+  `set_cell_shading` / `set_row_shading` write `<w:shd>` — the last of
+  those writes through to every cell, because `CT_TrPr` has no
+  shading child and Word does the same.
+  `merge_cells` wraps python-docx's own merge in a typed error rather
+  than re-implementing it; `unmerge_cell` is the inverse, which
+  python-docx lacks entirely — nothing in it removes a `w:gridSpan` or
+  a `w:vMerge`, so a merge was one-way. `normalize_horizontal_merges`
+  rewrites legacy `<w:hMerge>` spans as `<w:gridSpan>`, the only form
+  python-docx's grid model understands; verified rendering-preserving
+  against Word 2016, where the converted file rasterises byte-for-byte
+  identically. `read_table_formatting` reads it all back — direct
+  formatting only, since the table-style cascade stays out of scope.
+  A new `docx_plus/examples/table_formatting.py` builds a ruled,
+  shaded, merged budget table.
 - **Custom numbering (`numbering/`)** — the largest remaining
   python-docx gap. python-docx ships a `NumberingPart` and `len()` of
   its definitions and nothing else: it has no `CT_AbstractNum` and no

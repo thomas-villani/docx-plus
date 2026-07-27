@@ -41,6 +41,7 @@ WRITES_DOCX = [
     ("docx_plus.examples.track_changes", "tracked.docx"),
     ("docx_plus.examples.threaded_comments", "threaded.docx"),
     ("docx_plus.examples.custom_numbering", "numbering.docx"),
+    ("docx_plus.examples.table_formatting", "tables.docx"),
 ]
 
 

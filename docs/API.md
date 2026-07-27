@@ -362,6 +362,30 @@ next open. Architecture walkthrough in
 | `add_caption(paragraph, label, *, caption_type="Figure", numbering="ARABIC", bookmark_name=None, bookmark_id_registry=None)` | function | Label text run + `SEQ <caption_type> \* <numbering>` complex field. `caption_type` must match the `\c` switch on a downstream Table of Figures. v0.5: `bookmark_name` brackets the label + number in a bookmark, which is the **only** way to make the caption referenceable — a `REF` cannot target a `SEQ` field |
 | `add_table_of_figures(paragraph, *, caption_type="Figure", hyperlink=True)` | function | Append a `TOC \c "<caption_type>"` complex field that collects matching captions |
 
+### `docx_plus.tables`
+
+Table **appearance** — the half python-docx omits. It models rows,
+columns, cells, widths, and a working `_Cell.merge`, but has no
+`CT_Border`, `CT_TblBorders`, `CT_TcBorders`, or `CT_Shd` class and
+registers none of those tags. New in v0.5. Architecture walkthrough in
+[`ARCHITECTURE.md` §7.14](ARCHITECTURE.md#714-table-formatting).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `set_table_borders(table, *, all_edges=None, top=None, bottom=None, left=None, right=None, inside_h=None, inside_v=None)` | function | Write `<w:tblBorders>`. Full replacement, not a merge; naming no edges removes the element. `all_edges` covers all six; an explicit edge overrides it. **`Border.space` is ignored** — Word writes `w:space="0"` on tables and its UI cannot produce anything else |
+| `set_cell_borders(cell, *, all_edges=None, top=None, bottom=None, left=None, right=None, tl2br=None, tr2bl=None)` | function | Write `<w:tcBorders>`. Same semantics. `all_edges` covers the four sides only — the diagonals are a "crossed-out cell" mark, never what a caller means by "all borders" |
+| `Shading(fill="auto", pattern="clear", color="auto")` | dataclass | Frozen. `fill` is the background, `pattern` an `ST_Shd` value drawn over it, `color` that pattern's foreground. A solid fill is the default `pattern="clear"` with only `fill` set. Validates all three at construction |
+| `set_table_shading(table, shading)` | function | Write `<w:shd>` on `<w:tblPr>`. `None` removes it |
+| `set_cell_shading(cell, shading)` | function | The same on `<w:tcPr>` |
+| `set_row_shading(row, shading)` | function | **`CT_TrPr` has no `w:shd` child** — there is no row-level shading in the format. Writes through to every cell, as Word does. Iterates `<w:tc>` elements, not `Row.cells`, so a spanning cell is visited once |
+| `shading_attrs(shading)` | function | Serialize to the `CT_Shd` attribute mapping |
+| `merge_cells(start, end)` | function | Thin wrapper over `_Cell.merge`, translating `InvalidSpanError` into `InvalidMergeError`. Returns the top-left cell of the region, which need not be `start` |
+| `unmerge_cell(cell)` | function | The inverse, which python-docx lacks entirely — nothing in it removes a `w:gridSpan` or `w:vMerge`. Works from any cell in the region including a vertical continuation. Content stays in the anchor; widths divide evenly, since the originals were summed away by the merge. Idempotent |
+| `normalize_horizontal_merges(table, *, discard_content=False)` | function | Rewrite legacy `<w:hMerge>` spans as `<w:gridSpan>`, which is the only form python-docx's grid model understands. Rendering-preserving (verified against Word 2016). Refuses by default to drop text in a continuation cell — invisible in Word, so keeping it would surface hidden content. Returns the number of regions converted |
+| `read_table_formatting(table)` | function | `TableFormatting` — style id, table borders/shading, and a `CellFormatting` per `<w:tc>`. **Direct formatting only**; the table-style cascade is not resolved, so a `Table Grid` table reads back with no borders |
+| `TableFormatting` / `CellFormatting` | dataclass | Frozen. `CellFormatting.column` is a *grid offset*, not an index into `Row.cells`. One entry per `<w:tc>`, so a merged cell appears once |
+| `InvalidMergeError` | exception | `DocxPlusError` + `ValueError` |
+
 ### `docx_plus.revisions`
 
 Tracked changes — read, author, and resolve OOXML revision marks

@@ -24,6 +24,7 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
 | `bookmarks/` | Bookmarks + `REF` / `PAGEREF` cross-references |
 | `notes/` | Footnotes + endnotes — add / edit / read |
 | `publishing/` | TOC, captions, table of figures |
+| `tables/` | Table / cell borders, table / row / cell shading, merge + unmerge, `w:hMerge` normalization, direct-formatting read (v0.5) |
 | `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
 | `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4) |
 
@@ -32,6 +33,41 @@ Suite at the v0.4.0 release: 905 tests (895 pass, 10 LibreOffice-skipped),
 clean.
 
 ## v0.5 — in progress
+
+### Table borders / shading / merging — shipped
+
+Landed as a new `tables/` capability. The backlog entry bundled three
+things at very different states, which is worth recording:
+
+- **Borders and shading were 100% greenfield.** python-docx has no
+  `CT_Border`, `CT_TblBorders`, `CT_TcBorders`, or `CT_Shd` class and
+  registers none of those tags. Structurally they are `set_page_borders`
+  again, over the `Border` dataclass promoted into `core/` in the
+  groundwork PR.
+- **Merging already worked.** `_Cell.merge` is fully implemented,
+  including the non-rectangular check. `merge_cells` only translates its
+  `InvalidSpanError` into a `DocxPlusError` subclass. What was genuinely
+  missing is the *inverse*: nothing in python-docx removes a
+  `w:gridSpan` or a `w:vMerge`, so a merge was one-way. That is
+  `unmerge_cell`.
+- **`w:hMerge` was a third thing entirely.** OOXML has two horizontal
+  merge encodings and python-docx models only `w:gridSpan`, so a table
+  written with `w:hMerge` reads back as separate cells Word draws as
+  one. `normalize_horizontal_merges` converts between them.
+
+Verified against Word 2016: the example opens with no repair prompt and
+renders the banner span, header shading, inside rules, and the
+double-rule callout as intended; an `hMerge` fixture and its normalized
+form rasterise byte-for-byte identically. Word's own COM object model
+turned out to share python-docx's blind spot, reporting six cells for
+the `hMerge` fixture and five after conversion while laying both out the
+same way.
+
+Deferred: the **cell-formatting cascade** (table style →
+`w:tblStylePr` conditional branch → direct `w:tcPr`).
+`read_table_formatting` reports direct formatting only, so a
+`Table Grid` table reads back with no borders. That resolver is larger
+than every writer in this cycle put together — see the backlog.
 
 ### Cross-references to non-bookmark targets — shipped
 
@@ -211,9 +247,12 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
 - **Sections / headers / footers first-class API** — wraps the
   `python-docx` primitives behind a `docx_plus`-native surface
   (`sections/`).
-- **Table cell merging / borders / shading** beyond `python-docx`
-  defaults. (Distinct from *page* borders, already shipped in
-  `layout/borders.py`.)
+- **Cell-formatting cascade resolver** — resolve a cell's effective
+  borders, shading, and margins through table style → `w:tblStylePr`
+  conditional branch (first row / last column / banding) → direct
+  `w:tcPr`. `tables/read.py` reports direct formatting only, and
+  `styles/inspect.py` scopes this out in the same terms while resolving
+  the paragraph and run cascade. The largest single item on this list.
 - **Link a numbering definition into a style** —
   `w:style/w:pPr/w:numPr`, so `ensure_style("ListBullet")` produces a
   style that actually bullets. Split out of the v0.5 numbering cycle
