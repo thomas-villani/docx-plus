@@ -681,8 +681,81 @@ elements. An element outside those prefixes declares just its own, so
 adding `w15` did not stamp a stray `xmlns:w15` onto every element the
 library writes.
 
-Deferred: `commentsIds.xml` (`w16cid` durable ids, which Word
-regenerates) and `people.xml` (`w15:people` author presence, cosmetic).
+---
+
+## §7.6.2 Durable comment ids and author presence
+
+v0.5 added the last two comment side-parts Word writes. Every URI and
+element shape below was verified against a file **Word 2016 authored
+itself** — driven over COM, saved, unzipped, and read — not inferred
+from the spec.
+
+### `commentsIds.xml` — the only stable identifier
+
+A comment has three ids and only one of them survives an edit:
+
+| Identifier | Where | Stability |
+|---|---|---|
+| `w:id` | `comments.xml` | A position-dependent index Word renumbers |
+| `w14:paraId` | body paragraph | Changes when the body is rewritten |
+| `w16cid:durableId` | `commentsIds.xml` | Stable for the comment's life |
+
+Anything citing a comment from outside the document — a permalink, an
+external review tracker, a diff between two revisions — needs the third,
+which is why Word 2016 added the part.
+
+Two facts about it were **wrong in the original plan** and are worth
+recording, since both would have shipped:
+
+1. **`durableId` is hex, not decimal.** It is `ST_LongHexNumber` — the
+   same 8-uppercase-digit rendering as `w14:paraId`. Word wrote
+   `33EF1546` / `31436C50` / `50E18CF9`. The plan called for a decimal
+   collector and a decimal registry; instead `DurableIdRegistry` reuses
+   the existing `_collect_hex_id_attrs` / `next_hex` machinery, so the
+   feature added *less* core code than budgeted, not more.
+2. **There is a fifth part.** `commentsExtensible.xml` (`w16cex`, 2018)
+   keys off `durableId` and carries `dateUtc`, because `w:comment/@w:date`
+   is local time. Out of scope here: `commentsIds` predates it by two
+   years, so writing one without the other is a state Word itself
+   produced for years — and Word did not add it when resaving a file of
+   ours that lacked it. Tracked in `ROADMAP.md`.
+
+Entries key off `w14:paraId` exactly as `commentsExtended.xml` does, so
+`comments/_ids.py` reuses `_extended.py`'s `stamp_para_ids` /
+`thread_key` / `key_maps` rather than building a second bridge from
+comment ids to part entries. `upsert_comment_id` never reissues an
+existing id — that would defeat the part's whole purpose, breaking every
+reference already taken against the old value.
+
+Writing is automatic (`add_comment`, `reply_to_comment`) because Word
+regenerates missing entries anyway, so emitting them moves output toward
+native rather than away from it.
+
+### `people.xml` — presence, and why it is opt-in
+
+`<w15:person w15:author="…">` carries a `<w15:presenceInfo>` child with
+a `providerId` (`"AD"`, `"Windows Live"`, `"Office365"`, or `"None"`)
+and a provider-scoped `userId`. It drives the presence dot beside a
+comment in the reviewing pane.
+
+**`add_comment` deliberately does not write it.** Registering an author
+means inventing a `userId` for someone the library knows nothing about,
+and a fabricated directory identity is worse than an absent one. The
+part is purely cosmetic — comments, threading, and resolution all work
+without it — so `comments/people.py` exposes it as an explicit
+`set_author_presence` call instead.
+
+The **author name is the only join** to `comments.xml`; the part carries
+no comment ids. And stale authors are **not** pruned on delete: Word
+does not prune them either, and doing so would need the author
+ref-counted across every surviving comment.
+
+### Verified round-trip
+
+Opening a document this library wrote, then resaving it from Word,
+preserved both `paraId` and `durableId` byte-for-byte, and preserved
+`people.xml` including a non-default `providerId="AD"` entry. Word added
+no parts of its own.
 
 ---
 
