@@ -45,6 +45,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GitHub link and per-page "edit" actions; changelog and contributing
   guide added to the nav.
 
+- **`styles.iter_resolved_paragraphs`** — a document-wide cascade sweep,
+  resolving every paragraph and run against one shared cache and yielding
+  lazily in document order. `resolve_effective_formatting` answers "what
+  does *this* paragraph render as", rebuilding the theme, the styles part,
+  and each `basedOn` chain on every call; asking it about a whole document
+  re-does that work per target, and profiling put `load_theme` alone at
+  39% of per-call cost. Sharing those lookups is **~5x faster per
+  target** (0.61 ms → 0.13 ms on a 1500-paragraph document), which is what
+  makes whole-document analysis practical.
+  Results come back as `ResolvedParagraph` (paragraph, index, formatting,
+  runs, `table_depth`) and `ResolvedRun`. The walk uses python-docx's
+  `iter_inner_content`, so paragraphs and tables stay interleaved in
+  document order — `doc.paragraphs` drops the tables and `doc.tables`
+  drops the ordering. Nested tables are descended, and a merged cell is
+  visited **once** rather than once per grid column it spans, which a
+  naive `row.cells` walk gets wrong. `include_runs=False`,
+  `include_tables=False`, and `include_provenance=True` tune the cost.
+  Headers, footers, and notes are out of scope for now; only the main
+  document body is swept.
+
 ### Fixed
 
 - **`resolve_effective_formatting` now resolves style-supplied

@@ -351,37 +351,59 @@ def resolve_effective_formatting(
         >>> resolved.font_size  # e.g. 11.0 from docDefaults
         11.0
     """
+    # Classify first so a wrong-typed target raises TypeError from
+    # _classify_target, before _document_of reaches for ``.part`` and turns
+    # it into an AttributeError. _resolve_with_cache classifies again; three
+    # isinstance checks are nothing against a full cascade walk.
+    _classify_target(target)
+    return _resolve_with_cache(
+        _ResolverCache.for_document(_document_of(target)),
+        target,
+        include_provenance=include_provenance,
+        table_context=table_context,
+    )
+
+
+def _resolve_with_cache(
+    cache: _ResolverCache,
+    target: Paragraph | Run | _Cell,
+    *,
+    include_provenance: bool = False,
+    table_context: TableContext | None = None,
+) -> ResolvedFormatting:
+    """Resolve ``target`` against an existing cache.
+
+    The whole of :func:`resolve_effective_formatting` apart from building
+    the cache, so a document-wide sweep shares one walk implementation
+    rather than a parallel copy that could drift.
+    """
     target_kind, target_el = _classify_target(target)
-    doc = _document_of(target)
-    styles_root = doc.styles.element
-    theme = load_theme(doc)
 
     # ``partial`` is set lazily — only when a theme reference actually fails
     # to resolve (inside _resolve_color / _resolve_font_theme). A missing
     # theme part is not, on its own, an incomplete resolution: a document
     # with no theme refs resolves fully even without a theme (SPEC §4).
-    acc = _Accumulator(theme=theme, want_provenance=include_provenance)
+    acc = _Accumulator(theme=cache.theme, want_provenance=include_provenance)
 
     # _classify_target returns the underlying element alongside the kind, so
     # the union-attr access happens once where isinstance has already narrowed
     # the type — no per-branch type: ignore needed here.
     if target_kind == "paragraph":
         ctx = table_context or _derive_table_context_from_element(target_el)
-        _apply_paragraph_cascade(acc, doc, styles_root, target_el, table_context=ctx)
+        _apply_paragraph_cascade(acc, cache, target_el, table_context=ctx)
     elif target_kind == "run":
         paragraph_element = _enclosing_paragraph(target_el)
         ctx = table_context or _derive_table_context_from_element(paragraph_element)
         _apply_paragraph_cascade(
             acc,
-            doc,
-            styles_root,
+            cache,
             paragraph_element,
             run_element=target_el,
             table_context=ctx,
         )
     else:  # cell
         ctx = table_context or _derive_table_context_from_element(target_el)
-        _apply_cell_cascade(acc, styles_root, target_el, table_context=ctx)
+        _apply_cell_cascade(acc, cache, target_el, table_context=ctx)
 
     return acc.freeze()
 
@@ -435,28 +457,134 @@ class _Accumulator:
 
 
 # --------------------------------------------------------------------------
+# Per-document memo for the inputs a cascade walk re-reads.
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class _ResolverCache:
+    """Memoizes the document-level lookups a cascade walk repeats.
+
+    Everything held here is immutable for the lifetime of a resolve: the
+    styles part, the theme, the numbering part, and the per-``styleId``
+    lookups derived from them. :func:`resolve_effective_formatting` builds
+    a throwaway instance per call, so single-target cost is unchanged; a
+    document-wide sweep builds one and amortises it across every target.
+
+    This exists because the per-call cost is dominated by work that does
+    not vary with the target. Profiling 1500 paragraphs put ``load_theme``
+    alone at 39% of resolve time — re-parsing ``theme1.xml`` once per
+    target — with most of the rest in repeated ``w:style`` xpath lookups.
+    """
+
+    doc: Document
+    styles_root: etree._Element
+    theme: ThemeColors | None
+    _styles: dict[str, etree._Element | None] = field(default_factory=dict)
+    _chains: dict[str, list[tuple[str, etree._Element]]] = field(default_factory=dict)
+    _names: dict[str, str | None] = field(default_factory=dict)
+    _links: dict[str, str | None] = field(default_factory=dict)
+    _abstract_nums: dict[int, etree._Element | None] = field(default_factory=dict)
+    _numbering_root: etree._Element | None = None
+    _numbering_read: bool = False
+    _doc_defaults: tuple[etree._Element | None, etree._Element | None] | None = None
+
+    @classmethod
+    def for_document(cls, doc: Document) -> _ResolverCache:
+        """Build a cache over ``doc``, parsing the theme once."""
+        return cls(doc=doc, styles_root=doc.styles.element, theme=load_theme(doc))
+
+    def style(self, style_id: str) -> etree._Element | None:
+        """The ``w:style`` element for ``style_id``, or None if undefined."""
+        if style_id not in self._styles:
+            matches = xpath(self.styles_root, "./w:style[@w:styleId=$sid]", sid=style_id)
+            self._styles[style_id] = matches[0] if matches else None
+        return self._styles[style_id]
+
+    def chain(self, leaf_style_id: str) -> list[tuple[str, etree._Element]]:
+        """The basedOn chain from ``leaf_style_id``, leaf-first.
+
+        A cycle or over-deep chain raises out of here every time rather
+        than being memoized — the failure is a property of the styles
+        part, so re-raising costs nothing and keeps the cache holding
+        only well-formed results.
+        """
+        cached = self._chains.get(leaf_style_id)
+        if cached is None:
+            cached = _collect_style_chain(self, leaf_style_id)
+            self._chains[leaf_style_id] = cached
+        return cached
+
+    def style_name(self, style_id: str) -> str | None:
+        """The ``w:name`` of ``style_id`` as Word displays it."""
+        if style_id not in self._names:
+            style_el = self.style(style_id)
+            name_el = style_el.find(qn("w:name")) if style_el is not None else None
+            self._names[style_id] = name_el.get(qn("w:val")) if name_el is not None else None
+        return self._names[style_id]
+
+    def linked_style_id(self, style_id: str) -> str | None:
+        """The ``w:link`` companion character style of ``style_id``, if any."""
+        if style_id not in self._links:
+            style_el = self.style(style_id)
+            link_el = style_el.find(qn("w:link")) if style_el is not None else None
+            self._links[style_id] = link_el.get(qn("w:val")) if link_el is not None else None
+        return self._links[style_id]
+
+    def doc_defaults(self) -> tuple[etree._Element | None, etree._Element | None]:
+        """The ``(rPr, pPr)`` under ``w:docDefaults``, either possibly None."""
+        if self._doc_defaults is None:
+            defaults = self.styles_root.find(qn("w:docDefaults"))
+            if defaults is None:
+                self._doc_defaults = (None, None)
+            else:
+                rpr_default = defaults.find(qn("w:rPrDefault"))
+                ppr_default = defaults.find(qn("w:pPrDefault"))
+                self._doc_defaults = (
+                    rpr_default.find(qn("w:rPr")) if rpr_default is not None else None,
+                    ppr_default.find(qn("w:pPr")) if ppr_default is not None else None,
+                )
+        return self._doc_defaults
+
+    def numbering_root(self) -> etree._Element | None:
+        """The ``w:numbering`` root, or None if the part is absent."""
+        if not self._numbering_read:
+            self._numbering_root = _read_numbering_root(self.doc)
+            self._numbering_read = True
+        return self._numbering_root
+
+    def abstract_num(self, num_id: int) -> etree._Element | None:
+        """The ``w:abstractNum`` a ``w:num`` id resolves to, or None."""
+        if num_id not in self._abstract_nums:
+            numbering_root = self.numbering_root()
+            self._abstract_nums[num_id] = (
+                None if numbering_root is None else _resolve_abstract_num(numbering_root, num_id)
+            )
+        return self._abstract_nums[num_id]
+
+
+# --------------------------------------------------------------------------
 # Cascade entry points.
 # --------------------------------------------------------------------------
 
 
 def _apply_paragraph_cascade(
     acc: _Accumulator,
-    doc: Document,
-    styles_root: etree._Element,
+    cache: _ResolverCache,
     p_element: etree._Element,
     run_element: etree._Element | None = None,
     table_context: TableContext | None = None,
 ) -> None:
     """Walk layers 1, 3, 4, 5 (and 6 if run_element) for a paragraph target."""
     # Layer 1: docDefaults
-    _apply_doc_defaults(acc, styles_root)
+    _apply_doc_defaults(acc, cache)
 
     # Layer 2: table style (if inside a table)
     enclosing_tc = _enclosing_cell(p_element)
     if enclosing_tc is not None:
         table_element = _enclosing_table(enclosing_tc)
         if table_element is not None:
-            _apply_table_style_chain(acc, styles_root, table_element, table_context=table_context)
+            _apply_table_style_chain(acc, cache, table_element, table_context=table_context)
 
     # Layer 3: paragraph style chain
     p_style_id = _paragraph_style_id(p_element)
@@ -466,19 +594,19 @@ def _apply_paragraph_cascade(
             p_style_id,
             FormattingSource(layer="paragraphStyle", style_id=p_style_id, chain_depth=0),
         )
-        style_name = _style_name(styles_root, p_style_id)
+        style_name = cache.style_name(p_style_id)
         if style_name is not None:
             acc.set(
                 "style_name",
                 style_name,
                 FormattingSource(layer="paragraphStyle", style_id=p_style_id, chain_depth=0),
             )
-        _apply_style_chain(acc, styles_root, p_style_id, "paragraphStyle")
+        _apply_style_chain(acc, cache, p_style_id, "paragraphStyle")
 
     # Layer 4: numbering — the paragraph's own w:numPr, or the nearest one
     # its style chain supplies. The latter is how Word's stock List Bullet /
     # List Number styles number anything at all.
-    _apply_numbering(acc, doc, styles_root, p_element, p_style_id)
+    _apply_numbering(acc, cache, p_element, p_style_id)
 
     # Layer 5: direct paragraph formatting
     direct_ppr = p_element.find(qn("w:pPr"))
@@ -492,16 +620,16 @@ def _apply_paragraph_cascade(
     if run_element is not None:
         # Linked character style (for Run targets only), per SPEC §4.
         if p_style_id is not None:
-            linked_id = _linked_style_id(styles_root, p_style_id)
+            linked_id = cache.linked_style_id(p_style_id)
             if linked_id is not None:
-                _apply_style_chain(acc, styles_root, linked_id, "linkedCharStyle")
+                _apply_style_chain(acc, cache, linked_id, "linkedCharStyle")
 
         # Run-level rStyle reference (character style applied to one run).
         # Per ECMA-376 17.3.2.29 this is a style layer that sits BELOW direct
         # run formatting — direct rPr on the run must override it.
         run_style_id = _run_style_id(run_element)
         if run_style_id is not None:
-            _apply_style_chain(acc, styles_root, run_style_id, "runStyle")
+            _apply_style_chain(acc, cache, run_style_id, "runStyle")
 
         # Layer 6: direct run formatting (highest precedence for the run).
         run_rpr = run_element.find(qn("w:rPr"))
@@ -511,20 +639,20 @@ def _apply_paragraph_cascade(
 
 def _apply_cell_cascade(
     acc: _Accumulator,
-    styles_root: etree._Element,
+    cache: _ResolverCache,
     tc_element: etree._Element,
     table_context: TableContext | None = None,
 ) -> None:
     """Resolve formatting for a table cell — table style chain only, for now.
 
-    Takes no ``doc`` parameter (unlike :func:`_apply_paragraph_cascade`):
-    cells carry no paragraph-level numbering, so the doc-aware numbering
-    layer that needs ``numbering.xml`` does not apply here.
+    Skips the numbering layer entirely (unlike
+    :func:`_apply_paragraph_cascade`): cells carry no paragraph-level
+    numbering of their own.
     """
-    _apply_doc_defaults(acc, styles_root)
+    _apply_doc_defaults(acc, cache)
     table_element = _enclosing_table(tc_element)
     if table_element is not None:
-        _apply_table_style_chain(acc, styles_root, table_element, table_context=table_context)
+        _apply_table_style_chain(acc, cache, table_element, table_context=table_context)
 
 
 # --------------------------------------------------------------------------
@@ -532,33 +660,23 @@ def _apply_cell_cascade(
 # --------------------------------------------------------------------------
 
 
-def _apply_doc_defaults(acc: _Accumulator, styles_root: etree._Element) -> None:
-    defaults = styles_root.find(qn("w:docDefaults"))
-    if defaults is None:
-        return
+def _apply_doc_defaults(acc: _Accumulator, cache: _ResolverCache) -> None:
+    rpr, ppr = cache.doc_defaults()
     source = FormattingSource(layer="docDefaults")
-
-    rpr_default = defaults.find(qn("w:rPrDefault"))
-    if rpr_default is not None:
-        rpr = rpr_default.find(qn("w:rPr"))
-        if rpr is not None:
-            _apply_rpr(acc, rpr, source)
-
-    ppr_default = defaults.find(qn("w:pPrDefault"))
-    if ppr_default is not None:
-        ppr = ppr_default.find(qn("w:pPr"))
-        if ppr is not None:
-            _apply_ppr(acc, ppr, source)
+    if rpr is not None:
+        _apply_rpr(acc, rpr, source)
+    if ppr is not None:
+        _apply_ppr(acc, ppr, source)
 
 
 def _apply_style_chain(
     acc: _Accumulator,
-    styles_root: etree._Element,
+    cache: _ResolverCache,
     leaf_style_id: str,
     layer: Layer,
 ) -> None:
     """Walk the basedOn chain and apply each style's pPr/rPr ancestors-first."""
-    chain = _collect_style_chain(styles_root, leaf_style_id)
+    chain = cache.chain(leaf_style_id)
     # Apply in reverse: deepest ancestor first so leaf (most specific) wins.
     for depth, (style_id, style_el) in enumerate(reversed(chain)):
         chain_depth = len(chain) - 1 - depth
@@ -572,7 +690,7 @@ def _apply_style_chain(
 
 
 def _collect_style_chain(
-    styles_root: etree._Element, leaf_style_id: str
+    cache: _ResolverCache, leaf_style_id: str
 ) -> list[tuple[str, etree._Element]]:
     """Return [(id, element), ...] from leaf to root, with cycle/depth checks."""
     chain: list[tuple[str, etree._Element]] = []
@@ -590,7 +708,7 @@ def _collect_style_chain(
             raise StyleCascadeError(
                 f"basedOn chain exceeds depth {_MAX_STYLE_CHAIN_DEPTH}: {chain_ids}"
             )
-        style_el = _find_style(styles_root, current_id)
+        style_el = cache.style(current_id)
         if style_el is None:
             break
         chain.append((current_id, style_el))
@@ -602,7 +720,7 @@ def _collect_style_chain(
 
 def _apply_table_style_chain(
     acc: _Accumulator,
-    styles_root: etree._Element,
+    cache: _ResolverCache,
     tbl_element: etree._Element,
     table_context: TableContext | None = None,
 ) -> None:
@@ -628,7 +746,7 @@ def _apply_table_style_chain(
     if style_id is None:
         return
 
-    chain = _collect_style_chain(styles_root, style_id)
+    chain = cache.chain(style_id)
     matching = _matching_conditional_types(table_context) if table_context is not None else set()
 
     # Ancestors-first: reverse the leaf-to-root chain.
@@ -817,7 +935,7 @@ def _num_pr_values(num_pr: etree._Element) -> tuple[int | None, int | None]:
 
 
 def _style_chain_num_pr(
-    styles_root: etree._Element, leaf_style_id: str
+    cache: _ResolverCache, leaf_style_id: str
 ) -> tuple[int | None, FormattingSource | None, int | None, FormattingSource | None]:
     """Resolve numId / ilvl from the nearest style in the basedOn chain setting each.
 
@@ -831,7 +949,7 @@ def _style_chain_num_pr(
     num_id_source: FormattingSource | None = None
     ilvl_source: FormattingSource | None = None
 
-    for depth, (style_id, style_el) in enumerate(_collect_style_chain(styles_root, leaf_style_id)):
+    for depth, (style_id, style_el) in enumerate(cache.chain(leaf_style_id)):
         num_pr = style_el.find(f"./{qn('w:pPr')}/{qn('w:numPr')}")
         if num_pr is None:
             continue
@@ -849,8 +967,7 @@ def _style_chain_num_pr(
 
 def _apply_numbering(
     acc: _Accumulator,
-    doc: Document,
-    styles_root: etree._Element,
+    cache: _ResolverCache,
     p_element: etree._Element,
     p_style_id: str | None,
 ) -> None:
@@ -882,7 +999,7 @@ def _apply_numbering(
 
     if (num_id is None or ilvl is None) and p_style_id is not None:
         style_num_id, style_num_id_source, style_ilvl, style_ilvl_source = _style_chain_num_pr(
-            styles_root, p_style_id
+            cache, p_style_id
         )
         if num_id is None:
             num_id, num_id_source = style_num_id, style_num_id_source
@@ -903,12 +1020,10 @@ def _apply_numbering(
         # formatting a style would otherwise contribute.
         return
 
-    numbering_root = _numbering_root(doc)
-    if numbering_root is None:
-        # numPr references a num that isn't materialised — common when Word
-        # hasn't authored the numbering part yet. Not fatal.
-        return
-    abstract_num = _resolve_abstract_num(numbering_root, num_id)
+    # An unmaterialised numbering part, or a dangling numId, is common when
+    # Word hasn't authored the definition yet. Not fatal — the reference is
+    # already recorded; only the level's own formatting is missing.
+    abstract_num = cache.abstract_num(num_id)
     if abstract_num is None:
         return
     lvl_el = _find_level(abstract_num, effective_ilvl)
@@ -1164,31 +1279,6 @@ def _document_of(target: Paragraph | Run | _Cell) -> Document:
     return doc
 
 
-def _find_style(styles_root: etree._Element, style_id: str) -> etree._Element | None:
-    matches = xpath(styles_root, "./w:style[@w:styleId=$sid]", sid=style_id)
-    return matches[0] if matches else None
-
-
-def _style_name(styles_root: etree._Element, style_id: str) -> str | None:
-    style_el = _find_style(styles_root, style_id)
-    if style_el is None:
-        return None
-    name_el = style_el.find(qn("w:name"))
-    if name_el is None:
-        return None
-    return name_el.get(qn("w:val"))
-
-
-def _linked_style_id(styles_root: etree._Element, style_id: str) -> str | None:
-    style_el = _find_style(styles_root, style_id)
-    if style_el is None:
-        return None
-    link_el = style_el.find(qn("w:link"))
-    if link_el is None:
-        return None
-    return link_el.get(qn("w:val"))
-
-
 def _paragraph_style_id(p_element: etree._Element) -> str | None:
     pstyle = p_element.find(f"./{qn('w:pPr')}/{qn('w:pStyle')}")
     if pstyle is None:
@@ -1235,7 +1325,7 @@ def _enclosing_table(node: etree._Element) -> etree._Element | None:
 # --------------------------------------------------------------------------
 
 
-def _numbering_root(doc: Document) -> etree._Element | None:
+def _read_numbering_root(doc: Document) -> etree._Element | None:
     """Return the ``w:numbering`` root, or ``None`` if the part is absent.
 
     Deliberately does **not** go through ``doc.part.numbering_part``.

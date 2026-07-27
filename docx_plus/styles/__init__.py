@@ -25,12 +25,19 @@ from docx_plus.styles.modify import (
     modify_style,
     remap_styles,
 )
+from docx_plus.styles.sweep import (
+    ResolvedParagraph,
+    ResolvedRun,
+    iter_resolved_paragraphs,
+)
 
 __all__ = [
     "FormattingSource",
     "InvalidColorError",
     "MissingPartError",
     "ResolvedFormatting",
+    "ResolvedParagraph",
+    "ResolvedRun",
     "StyleCascadeError",
     "StyleExistsError",
     "StyleInUseError",
@@ -44,6 +51,7 @@ __all__ = [
     "delete_style",
     "ensure_style",
     "find_matching_style",
+    "iter_resolved_paragraphs",
     "list_styles",
     "modify_style",
     "remap_styles",
