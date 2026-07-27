@@ -146,11 +146,20 @@ Layer = Literal[
     "tableStyle",
     "paragraphStyle",
     "linkedCharStyle",
+    "styleNumbering",
     "numbering",
     "directParagraph",
     "runStyle",
     "directRun",
 ]
+# ``styleNumbering`` vs ``numbering``: both describe the numbering layer,
+# and the distinction is *where the reference came from*. A paragraph's own
+# ``w:numPr`` reports ``numbering``; one inherited from its style chain
+# reports ``styleNumbering`` and carries the supplying ``style_id``. That
+# matters to callers auditing a document — a hand-numbered paragraph and a
+# correctly-styled list paragraph are otherwise indistinguishable. The
+# formatting the numbering *level* contributes (indent, bullet font) is
+# always ``numbering``, since its precedence is the same either way.
 
 
 class StyleCascadeError(DocxPlusError):
@@ -245,6 +254,16 @@ class ResolvedFormatting:
     vert_align: str | None = None
 
     # Numbering
+    #
+    # ``num_id`` resolves through the style chain like every other property:
+    # a paragraph's own ``w:numPr`` wins, otherwise the nearest style in the
+    # basedOn chain that supplies one. ``0`` is not an ordinary id — it is
+    # the ECMA-376 17.9.18 sentinel for *explicitly not numbered*, the only
+    # way to opt a paragraph out of numbering its style applies, and is
+    # surfaced faithfully rather than flattened to ``None``. So ``None``
+    # means "no numbering information anywhere" and ``0`` means "numbering
+    # deliberately suppressed"; check ``provenance["num_id"].layer`` to tell
+    # a direct reference from a style-supplied one.
     num_id: int | None = None
     num_level: int | None = None
 
@@ -310,6 +329,18 @@ def resolve_effective_formatting(
         numbering level would have contributed is missing. Word behaves
         the same way, and documents in the wild routinely carry a
         ``numPr`` with no matching definition.
+
+    Note:
+        Numbering resolves through the **style chain**, not just the
+        paragraph's own ``w:numPr``: a paragraph styled ``List Bullet``
+        reports the ``num_id`` that style supplies. ``w:numId`` and
+        ``w:ilvl`` resolve independently, so a paragraph overriding only
+        the level keeps its style's list. A resolved ``num_id`` of ``0``
+        is the ECMA-376 sentinel for *explicitly not numbered*, distinct
+        from ``None`` for "no numbering information at all"; with
+        ``include_provenance``, the ``num_id`` layer is ``"numbering"``
+        for a direct reference and ``"styleNumbering"`` for an inherited
+        one.
 
     Example:
         >>> from docx import Document
@@ -444,10 +475,10 @@ def _apply_paragraph_cascade(
             )
         _apply_style_chain(acc, styles_root, p_style_id, "paragraphStyle")
 
-    # Layer 4: numbering
-    num_pr = p_element.find(f"./{qn('w:pPr')}/{qn('w:numPr')}")
-    if num_pr is not None:
-        _apply_numbering(acc, doc, num_pr)
+    # Layer 4: numbering — the paragraph's own w:numPr, or the nearest one
+    # its style chain supplies. The latter is how Word's stock List Bullet /
+    # List Number styles number anything at all.
+    _apply_numbering(acc, doc, styles_root, p_element, p_style_id)
 
     # Layer 5: direct paragraph formatting
     direct_ppr = p_element.find(qn("w:pPr"))
@@ -764,29 +795,113 @@ def _derive_table_context_from_element(node: etree._Element) -> TableContext:
     )
 
 
-def _apply_numbering(acc: _Accumulator, doc: Document, num_pr: etree._Element) -> None:
-    num_id_el = num_pr.find(qn("w:numId"))
-    ilvl_el = num_pr.find(qn("w:ilvl"))
-    if num_id_el is None:
+def _num_pr_values(num_pr: etree._Element) -> tuple[int | None, int | None]:
+    """Return ``(numId, ilvl)`` from a ``w:numPr``, each None if absent or malformed.
+
+    Both children are independently optional per ECMA-376 17.3.1.19, so a
+    partial ``w:numPr`` is legal and each half resolves separately.
+    """
+    values: list[int | None] = []
+    for tag in ("w:numId", "w:ilvl"):
+        value: int | None = None
+        child = num_pr.find(qn(tag))
+        if child is not None:
+            raw = child.get(qn("w:val"))
+            if raw is not None:
+                try:
+                    value = int(raw)
+                except ValueError:
+                    value = None
+        values.append(value)
+    return values[0], values[1]
+
+
+def _style_chain_num_pr(
+    styles_root: etree._Element, leaf_style_id: str
+) -> tuple[int | None, FormattingSource | None, int | None, FormattingSource | None]:
+    """Resolve numId / ilvl from the nearest style in the basedOn chain setting each.
+
+    Returns ``(num_id, num_id_source, ilvl, ilvl_source)``. The chain from
+    :func:`_collect_style_chain` runs leaf-first, so the first style to
+    supply a value is the most specific one — matching how every other
+    property resolves through the chain.
+    """
+    num_id: int | None = None
+    ilvl: int | None = None
+    num_id_source: FormattingSource | None = None
+    ilvl_source: FormattingSource | None = None
+
+    for depth, (style_id, style_el) in enumerate(_collect_style_chain(styles_root, leaf_style_id)):
+        num_pr = style_el.find(f"./{qn('w:pPr')}/{qn('w:numPr')}")
+        if num_pr is None:
+            continue
+        candidate_num_id, candidate_ilvl = _num_pr_values(num_pr)
+        source = FormattingSource(layer="styleNumbering", style_id=style_id, chain_depth=depth)
+        if num_id is None and candidate_num_id is not None:
+            num_id, num_id_source = candidate_num_id, source
+        if ilvl is None and candidate_ilvl is not None:
+            ilvl, ilvl_source = candidate_ilvl, source
+        if num_id is not None and ilvl is not None:
+            break
+
+    return num_id, num_id_source, ilvl, ilvl_source
+
+
+def _apply_numbering(
+    acc: _Accumulator,
+    doc: Document,
+    styles_root: etree._Element,
+    p_element: etree._Element,
+    p_style_id: str | None,
+) -> None:
+    """Apply the paragraph's effective numbering, direct winning over style-supplied.
+
+    ``w:numId`` and ``w:ilvl`` resolve **independently**, so a paragraph
+    carrying only an ``ilvl`` keeps the ``numId`` its style supplies. Both
+    children are optional per ECMA-376 17.3.1.19, and the alternative —
+    treating ``w:numPr`` as atomic — would mean a partial one silently
+    strips the style's list rather than demoting within it.
+
+    That merge rule is the one part of this resolver inferred rather than
+    read off a Word-authored file: the spec does not state merge semantics
+    for a compound property across the style / direct boundary. The common
+    cases (both children present, or neither) resolve identically under
+    either reading.
+    """
+    num_id: int | None = None
+    ilvl: int | None = None
+    num_id_source: FormattingSource | None = None
+    ilvl_source: FormattingSource | None = None
+
+    direct_num_pr = p_element.find(f"./{qn('w:pPr')}/{qn('w:numPr')}")
+    if direct_num_pr is not None:
+        num_id, ilvl = _num_pr_values(direct_num_pr)
+        direct_source = FormattingSource(layer="numbering")
+        num_id_source = direct_source if num_id is not None else None
+        ilvl_source = direct_source if ilvl is not None else None
+
+    if (num_id is None or ilvl is None) and p_style_id is not None:
+        style_num_id, style_num_id_source, style_ilvl, style_ilvl_source = _style_chain_num_pr(
+            styles_root, p_style_id
+        )
+        if num_id is None:
+            num_id, num_id_source = style_num_id, style_num_id_source
+        if ilvl is None:
+            ilvl, ilvl_source = style_ilvl, style_ilvl_source
+
+    if num_id is None or num_id_source is None:
+        # An ilvl with no numId behind it references nothing.
         return
-    num_id_raw = num_id_el.get(qn("w:val"))
-    if num_id_raw is None:
+
+    effective_ilvl = ilvl if ilvl is not None else 0
+    acc.set("num_id", num_id, num_id_source)
+    acc.set("num_level", effective_ilvl, ilvl_source or num_id_source)
+
+    if num_id == 0:
+        # The ECMA-376 17.9.18 "no numbering" sentinel. There is no w:num to
+        # resolve, and the point of the reference is to suppress the level
+        # formatting a style would otherwise contribute.
         return
-    try:
-        num_id = int(num_id_raw)
-    except ValueError:
-        return
-    ilvl = 0
-    if ilvl_el is not None:
-        ilvl_raw = ilvl_el.get(qn("w:val"))
-        if ilvl_raw is not None:
-            try:
-                ilvl = int(ilvl_raw)
-            except ValueError:
-                ilvl = 0
-    source = FormattingSource(layer="numbering")
-    acc.set("num_id", num_id, source)
-    acc.set("num_level", ilvl, source)
 
     numbering_root = _numbering_root(doc)
     if numbering_root is None:
@@ -796,15 +911,19 @@ def _apply_numbering(acc: _Accumulator, doc: Document, num_pr: etree._Element) -
     abstract_num = _resolve_abstract_num(numbering_root, num_id)
     if abstract_num is None:
         return
-    lvl_el = _find_level(abstract_num, ilvl)
+    lvl_el = _find_level(abstract_num, effective_ilvl)
     if lvl_el is None:
         return
+    # The level's own formatting sits at the numbering layer regardless of
+    # how the reference was reached — only the reference is attributed to a
+    # style. See the Layer note above.
+    level_source = FormattingSource(layer="numbering")
     lvl_ppr = lvl_el.find(qn("w:pPr"))
     if lvl_ppr is not None:
-        _apply_ppr(acc, lvl_ppr, source)
+        _apply_ppr(acc, lvl_ppr, level_source)
     lvl_rpr = lvl_el.find(qn("w:rPr"))
     if lvl_rpr is not None:
-        _apply_rpr(acc, lvl_rpr, source)
+        _apply_rpr(acc, lvl_rpr, level_source)
 
 
 # --------------------------------------------------------------------------
