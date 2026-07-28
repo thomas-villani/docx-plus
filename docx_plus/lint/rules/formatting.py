@@ -369,3 +369,56 @@ def _describe_font(combination: tuple[str | None, float | None]) -> str:
     if size is not None:
         parts.append(f"{size}pt")
     return " ".join(parts)
+
+
+@rule(
+    id="mixed-language",
+    kind="consistency",
+    severity="info",
+    description="Runs are tagged with a language other than the document's usual one.",
+    tags={"formatting", "language"},
+)
+def mixed_language(ctx: LintContext) -> Iterator[Issue]:
+    """Flag runs whose ``w:lang`` differs from the document's dominant one.
+
+    Language is invisible on the page and decisive off it. A run tagged
+    ``fr-FR`` in an English document is silently skipped by the spell
+    checker, so the one paragraph nobody proofread is the one pasted from
+    elsewhere. The reverse is worse: an English run tagged ``fr-FR``
+    reports every word as a mistake, and people respond by turning proofing
+    off.
+
+    Compares against the document's own majority rather than a configured
+    locale, so it is a consistency rule with nothing to configure. A
+    genuinely bilingual document reports its minority language throughout,
+    which is a fair description of what it contains — ``--exclude`` it.
+    """
+    languages = Counter(
+        run.formatting.lang
+        for resolved in ctx.paragraphs
+        for run in resolved.runs
+        if run.run.text.strip() and run.formatting.lang is not None
+    )
+    if len(languages) < 2:
+        return
+
+    dominant = languages.most_common(1)[0][0]
+    for resolved in ctx.paragraphs:
+        for resolved_run in resolved.runs:
+            language = resolved_run.formatting.lang
+            if not resolved_run.run.text.strip() or language is None or language == dominant:
+                continue
+            yield Issue(
+                message=(
+                    f"Run is tagged {language}, but most of this document is "
+                    f"{dominant}; proofing will treat it differently."
+                ),
+                location=Location(
+                    paragraph_index=resolved.index,
+                    run_index=resolved_run.index,
+                    style_id=resolved.formatting.style_id,
+                    excerpt=ctx.excerpt(resolved.index),
+                ),
+                observed=language,
+                expected=dominant,
+            )

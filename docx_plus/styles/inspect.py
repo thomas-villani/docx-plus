@@ -265,6 +265,11 @@ class ResolvedFormatting:
     shadow: bool | None = None
     vert_align: str | None = None
 
+    # The ``w:lang`` Latin-script language tag (``"en-GB"``, ``"fr-FR"``).
+    # Invisible on the page and decisive for proofing: a run tagged with the
+    # wrong language is skipped or wrongly flagged by every spell checker.
+    lang: str | None = None
+
     # Numbering
     #
     # ``num_id`` resolves through the style chain like every other property:
@@ -1281,6 +1286,14 @@ def _apply_rpr(acc: _Accumulator, rpr: etree._Element, source: FormattingSource)
             val = child.get(qn("w:val"))
             if val is not None:
                 acc.set("vert_align", val, source)
+        elif local == "lang":
+            # Only w:val (the Latin-script language) is surfaced. w:eastAsia
+            # and w:bidi are separate properties for separate scripts, and
+            # collapsing three languages into one field would be a lie about
+            # which one a proofing tool will use.
+            val = child.get(qn("w:val"))
+            if val is not None:
+                acc.set("lang", val, source)
 
 
 def _resolve_color(color_el: etree._Element, acc: _Accumulator) -> str | None:

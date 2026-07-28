@@ -57,6 +57,7 @@ nav:
       - docx_plus.controls.builder: reference/controls-builder.md
       - docx_plus.controls.read: reference/controls-read.md
       - docx_plus.fields.simple: reference/fields-simple.md
+      - docx_plus.fields.read: reference/fields-read.md
       - docx_plus.fields.update: reference/fields-update.md
       - docx_plus.protection.document: reference/protection-document.md
       - docx_plus.comments.anchor: reference/comments-anchor.md

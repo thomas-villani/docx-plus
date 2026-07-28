@@ -97,6 +97,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`LintContext.resolve()`** — an escape hatch for a rule needing a slice
   of the cascade the sweep did not precompute. Not cache-shared, and
   documented as such.
+- **`fields.read_fields`** — the read half of `fields/`, which until now
+  could only write. A complex field is a *run sequence* delimited by
+  `w:fldChar` markers, with its instruction split across however many
+  `w:instrText` elements Word chose, so reading one back is a walk rather
+  than an xpath. `FieldInfo` splits the instruction into `keyword`,
+  `operands`, and `switches`; nested fields (which Word writes for `TOC`
+  and `IF`) read as one field under the outer keyword.
+- **`ResolvedFormatting.lang`** — the `w:lang` Latin-script language tag,
+  resolved through the cascade like everything else. Only `w:val` is
+  surfaced; `w:eastAsia` and `w:bidi` are separate properties for separate
+  scripts, and collapsing three languages into one field would misreport
+  which one a proofing tool uses.
+- **`broken-cross-reference`, `caption-manual-numbering`, and
+  `mixed-language`** — the last three rules of the v0.6 table.
+  `broken-cross-reference` is the catalogue's only `error`: a `REF` to a
+  missing bookmark renders as *Error! Reference source not found.* the
+  moment fields recalculate, and until then shows the stale cached result,
+  which is how it goes unnoticed. Both field rules read the instruction
+  rather than that result. `mixed-language` compares against the
+  document's own majority tag, so there is nothing to configure.
 - **`styles.find_unused_styles`** — the read companion to `delete_style`:
   which definitions could be removed without breaking a reference. Usage
   is a **closure**, not a single pass, since a style referenced only by

@@ -136,17 +136,35 @@ is the largest item on the backlog and it unlocks only the table rules.
 Blocking the most valuable rules on the most expensive prerequisite is
 the wrong trade; table rules ship in a later wave once it lands.
 
-### Stage 2 — `lint/`, read-only — engine + first 10 rules shipped
+### Stage 2 — `lint/`, read-only — **shipped**
 
-Engine, registry, CLI, and docs are in. Eleven rules registered (ten
-default-on). What remains is the rest of the rule table below.
+Engine, registry, CLI, docs, and the whole rule table below. Twenty rules
+registered, sixteen default-on; `mixed-run-formatting`,
+`stray-empty-paragraph`, `font-outliers`, and `unused-styles` ship off.
+`docx-plus lint` takes `--rule` / `--exclude` / `--list-rules` / `--json`
+/ `--no-tables`.
 
-Shipped: `double-space`, `trailing-whitespace`,
-`space-before-punctuation`, `indent-by-whitespace`,
-`stray-empty-paragraph` (off), `heading-level-skip`, `empty-heading`,
-`manual-list`, `redundant-direct-formatting`, `style-drift`,
-`mixed-run-formatting` (off), plus `docx-plus lint` with `--rule` /
-`--exclude` / `--list-rules` / `--json` / `--no-tables`.
+Three rules pulled a capability into the layer below them, which is what
+the composing-layer split is for — the OOXML knowledge lands in the
+capability module and the rule only decides what is worth reporting:
+
+- `unused-styles` → **`styles.find_unused_styles`** and
+  **`StyleInfo.is_builtin`**
+- `broken-cross-reference` / `caption-manual-numbering` →
+  **`fields.read_fields`**, the read half of a module that could only
+  write
+- `mixed-language` → **`ResolvedFormatting.lang`**
+
+**`unused-styles` was unusable as first written** and is the sharpest
+lesson of the batch. Against a stock `Document()` with two paragraphs it
+produced **165 findings** — the entire python-docx style gallery, which is
+what the template is *for*. Filtering to author-created styles
+(`w:customStyle`, ECMA-376 17.7.4.9) and collapsing unused `w:link` pairs
+onto their paragraph half took it to **1**, and that one is the style
+someone actually made and never applied. The known-built-ins table was the
+obvious filter and the wrong one: it does not cover the table-style
+gallery, which is most of what a template ships. A rule that reports
+correctly and uselessly is a rule nobody runs twice.
 
 **The baseline detour.** `style-drift` turned out to need the backlog's
 "resolve beneath the direct layer" item, so that shipped first as
