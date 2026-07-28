@@ -12,6 +12,11 @@ document-level inputs once for the whole walk — roughly 5x faster per target
 on a text-heavy document, and the read half any whole-document analysis
 needs.
 
+Pass `include_baseline=True` to also resolve each target with its own direct
+formatting excluded, populating `.baseline`. That is the comparison behind
+"is this direct property doing anything?" — see
+[`stop_below`](styles-inspect.md) for what the baseline is a resolve of.
+
 ::: docx_plus.styles.sweep
     options:
       members:

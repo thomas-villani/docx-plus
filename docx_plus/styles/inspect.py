@@ -14,7 +14,7 @@ is identical (verified by ``test_provenance_does_not_change_values``).
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from lxml import etree
@@ -152,6 +152,18 @@ Layer = Literal[
     "runStyle",
     "directRun",
 ]
+_LAYER_ORDER: tuple[Layer, ...] = get_args(Layer)
+"""The layers in ascending precedence, derived from :data:`Layer` itself so
+the two cannot drift apart."""
+
+
+def _includes(stop_below: Layer | None, layer: Layer) -> bool:
+    """Whether ``layer`` still applies to a walk stopping below ``stop_below``."""
+    if stop_below is None:
+        return True
+    return _LAYER_ORDER.index(layer) < _LAYER_ORDER.index(stop_below)
+
+
 # ``styleNumbering`` vs ``numbering``: both describe the numbering layer,
 # and the distinction is *where the reference came from*. A paragraph's own
 # ``w:numPr`` reports ``numbering``; one inherited from its style chain
@@ -277,6 +289,7 @@ def resolve_effective_formatting(
     *,
     include_provenance: bool = False,
     table_context: TableContext | None = None,
+    stop_below: Layer | None = None,
 ) -> ResolvedFormatting:
     """Resolve the effective formatting for ``target``.
 
@@ -313,6 +326,9 @@ def resolve_effective_formatting(
             pass an explicit :class:`TableContext` to query a hypothetical
             position (e.g. "what would the formatting be if this cell
             were in the first row?").
+        stop_below: Stop the walk *below* this :data:`Layer`, so the named
+            layer and everything above it contribute nothing. ``None``
+            (default) walks the whole cascade. See the note below.
 
     Returns:
         A :class:`ResolvedFormatting` snapshot.
@@ -320,6 +336,7 @@ def resolve_effective_formatting(
     Raises:
         StyleCascadeError: If the basedOn chain has a cycle or exceeds Word's
             depth limit of 11.
+        ValueError: If ``stop_below`` is not one of the :data:`Layer` names.
 
     Note:
         A paragraph whose ``w:numPr`` references a numbering id that
@@ -342,6 +359,22 @@ def resolve_effective_formatting(
         for a direct reference and ``"styleNumbering"`` for an inherited
         one.
 
+    Note:
+        ``stop_below`` answers **"what would this look like without that
+        layer?"**, which provenance alone cannot: provenance names the
+        layer that *won*, not the value that would have surfaced in its
+        absence. Resolving a run with ``stop_below="directRun"`` gives
+        exactly what it would render as if its own ``<w:rPr>`` were
+        deleted — character style and all — so a caller can tell direct
+        formatting that changes nothing from direct formatting that
+        overrides the style. That comparison is the basis of every
+        consistency rule in :mod:`docx_plus.lint`.
+
+        ``style_id`` and ``style_name`` are identity rather than
+        formatting, so they are reported regardless of where the walk
+        stops — a caller resolving beneath the paragraph style still needs
+        to know which style it excluded.
+
     Example:
         >>> from docx import Document
         >>> from docx_plus.styles.inspect import resolve_effective_formatting
@@ -350,17 +383,29 @@ def resolve_effective_formatting(
         >>> resolved = resolve_effective_formatting(p)
         >>> resolved.font_size  # e.g. 11.0 from docDefaults
         11.0
+
+        A run whose direct bold merely restates its style:
+
+        >>> run = p.add_run("bold")
+        >>> run.bold = True
+        >>> resolve_effective_formatting(run).bold
+        True
+        >>> resolve_effective_formatting(run, stop_below="directRun").bold is None
+        True
     """
     # Classify first so a wrong-typed target raises TypeError from
     # _classify_target, before _document_of reaches for ``.part`` and turns
     # it into an AttributeError. _resolve_with_cache classifies again; three
     # isinstance checks are nothing against a full cascade walk.
     _classify_target(target)
+    if stop_below is not None and stop_below not in _LAYER_ORDER:
+        raise ValueError(f"stop_below must be one of {', '.join(_LAYER_ORDER)}; got {stop_below!r}")
     return _resolve_with_cache(
         _ResolverCache.for_document(_document_of(target)),
         target,
         include_provenance=include_provenance,
         table_context=table_context,
+        stop_below=stop_below,
     )
 
 
@@ -370,12 +415,13 @@ def _resolve_with_cache(
     *,
     include_provenance: bool = False,
     table_context: TableContext | None = None,
+    stop_below: Layer | None = None,
 ) -> ResolvedFormatting:
     """Resolve ``target`` against an existing cache.
 
     The whole of :func:`resolve_effective_formatting` apart from building
-    the cache, so a document-wide sweep shares one walk implementation
-    rather than a parallel copy that could drift.
+    the cache and validating ``stop_below``, so a document-wide sweep shares
+    one walk implementation rather than a parallel copy that could drift.
     """
     target_kind, target_el = _classify_target(target)
 
@@ -390,7 +436,7 @@ def _resolve_with_cache(
     # the type — no per-branch type: ignore needed here.
     if target_kind == "paragraph":
         ctx = table_context or _derive_table_context_from_element(target_el)
-        _apply_paragraph_cascade(acc, cache, target_el, table_context=ctx)
+        _apply_paragraph_cascade(acc, cache, target_el, table_context=ctx, stop_below=stop_below)
     elif target_kind == "run":
         paragraph_element = _enclosing_paragraph(target_el)
         ctx = table_context or _derive_table_context_from_element(paragraph_element)
@@ -400,10 +446,11 @@ def _resolve_with_cache(
             paragraph_element,
             run_element=target_el,
             table_context=ctx,
+            stop_below=stop_below,
         )
     else:  # cell
         ctx = table_context or _derive_table_context_from_element(target_el)
-        _apply_cell_cascade(acc, cache, target_el, table_context=ctx)
+        _apply_cell_cascade(acc, cache, target_el, table_context=ctx, stop_below=stop_below)
 
     return acc.freeze()
 
@@ -422,6 +469,14 @@ class _Accumulator:
     values: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, FormattingSource] = field(default_factory=dict)
     partial: bool = False
+    absolute_toggles: bool = False
+    """While set, a toggle element states a value rather than flipping one.
+
+    The XOR rule of ECMA-376 17.7.3 applies between *levels* of the style
+    hierarchy. A ``w:link`` partner is not another level — it is the same
+    style's character half — so its toggles must not XOR against the
+    paragraph half's. See :func:`_apply_paragraph_cascade`.
+    """
 
     def set(self, name: str, value: Any, source: FormattingSource) -> None:
         """Set a non-toggle property, recording provenance if requested."""
@@ -439,6 +494,9 @@ class _Accumulator:
         """
         if val_attr in ("0", "false"):
             new_value = False
+            toggle_resolved = False
+        elif self.absolute_toggles:
+            new_value = True
             toggle_resolved = False
         else:
             current = self.values.get(name)
@@ -574,19 +632,28 @@ def _apply_paragraph_cascade(
     p_element: etree._Element,
     run_element: etree._Element | None = None,
     table_context: TableContext | None = None,
+    stop_below: Layer | None = None,
 ) -> None:
-    """Walk layers 1, 3, 4, 5 (and 6 if run_element) for a paragraph target."""
+    """Walk layers 1, 3, 4, 5 (and 6 if run_element) for a paragraph target.
+
+    ``stop_below`` drops the named layer and everything above it, so a
+    caller can ask what the target would look like without a given layer.
+    """
     # Layer 1: docDefaults
-    _apply_doc_defaults(acc, cache)
+    if _includes(stop_below, "docDefaults"):
+        _apply_doc_defaults(acc, cache)
 
     # Layer 2: table style (if inside a table)
     enclosing_tc = _enclosing_cell(p_element)
-    if enclosing_tc is not None:
+    if enclosing_tc is not None and _includes(stop_below, "tableStyle"):
         table_element = _enclosing_table(enclosing_tc)
         if table_element is not None:
             _apply_table_style_chain(acc, cache, table_element, table_context=table_context)
 
-    # Layer 3: paragraph style chain
+    # Layer 3: paragraph style chain. The identity fields are set whatever
+    # ``stop_below`` says — they name the style rather than describing
+    # formatting, and a caller resolving beneath the paragraph style still
+    # needs to know which style that was.
     p_style_id = _paragraph_style_id(p_element)
     if p_style_id is not None:
         acc.set(
@@ -601,16 +668,17 @@ def _apply_paragraph_cascade(
                 style_name,
                 FormattingSource(layer="paragraphStyle", style_id=p_style_id, chain_depth=0),
             )
-        _apply_style_chain(acc, cache, p_style_id, "paragraphStyle")
+        if _includes(stop_below, "paragraphStyle"):
+            _apply_style_chain(acc, cache, p_style_id, "paragraphStyle")
 
     # Layer 4: numbering — the paragraph's own w:numPr, or the nearest one
     # its style chain supplies. The latter is how Word's stock List Bullet /
     # List Number styles number anything at all.
-    _apply_numbering(acc, cache, p_element, p_style_id)
+    _apply_numbering(acc, cache, p_element, p_style_id, stop_below=stop_below)
 
     # Layer 5: direct paragraph formatting
     direct_ppr = p_element.find(qn("w:pPr"))
-    if direct_ppr is not None:
+    if direct_ppr is not None and _includes(stop_below, "directParagraph"):
         _apply_ppr(acc, direct_ppr, FormattingSource(layer="directParagraph"))
         # rPr inside pPr (paragraph mark formatting) — affects whole-paragraph runs
         direct_ppr_rpr = direct_ppr.find(qn("w:rPr"))
@@ -619,21 +687,35 @@ def _apply_paragraph_cascade(
 
     if run_element is not None:
         # Linked character style (for Run targets only), per SPEC §4.
-        if p_style_id is not None:
+        #
+        # Its toggles are applied as absolute values, not XOR flips, because
+        # a ``w:link`` partner is not a further level of the style hierarchy
+        # — it is the same style's character half, and Word writes the two
+        # with identical ``w:rPr``. Treating them as independent levels
+        # cancelled every toggle: a run inside a stock ``Heading 1``
+        # paragraph resolved ``bold=False`` while the paragraph itself
+        # resolved ``bold=True``. Only the XOR needs suppressing; the layer
+        # still overrides normally, which is what lets a style carrying its
+        # character formatting solely on the Char half resolve at all.
+        if p_style_id is not None and _includes(stop_below, "linkedCharStyle"):
             linked_id = cache.linked_style_id(p_style_id)
             if linked_id is not None:
-                _apply_style_chain(acc, cache, linked_id, "linkedCharStyle")
+                acc.absolute_toggles = True
+                try:
+                    _apply_style_chain(acc, cache, linked_id, "linkedCharStyle")
+                finally:
+                    acc.absolute_toggles = False
 
         # Run-level rStyle reference (character style applied to one run).
         # Per ECMA-376 17.3.2.29 this is a style layer that sits BELOW direct
         # run formatting — direct rPr on the run must override it.
         run_style_id = _run_style_id(run_element)
-        if run_style_id is not None:
+        if run_style_id is not None and _includes(stop_below, "runStyle"):
             _apply_style_chain(acc, cache, run_style_id, "runStyle")
 
         # Layer 6: direct run formatting (highest precedence for the run).
         run_rpr = run_element.find(qn("w:rPr"))
-        if run_rpr is not None:
+        if run_rpr is not None and _includes(stop_below, "directRun"):
             _apply_rpr(acc, run_rpr, FormattingSource(layer="directRun"))
 
 
@@ -642,6 +724,7 @@ def _apply_cell_cascade(
     cache: _ResolverCache,
     tc_element: etree._Element,
     table_context: TableContext | None = None,
+    stop_below: Layer | None = None,
 ) -> None:
     """Resolve formatting for a table cell — table style chain only, for now.
 
@@ -649,9 +732,10 @@ def _apply_cell_cascade(
     :func:`_apply_paragraph_cascade`): cells carry no paragraph-level
     numbering of their own.
     """
-    _apply_doc_defaults(acc, cache)
+    if _includes(stop_below, "docDefaults"):
+        _apply_doc_defaults(acc, cache)
     table_element = _enclosing_table(tc_element)
-    if table_element is not None:
+    if table_element is not None and _includes(stop_below, "tableStyle"):
         _apply_table_style_chain(acc, cache, table_element, table_context=table_context)
 
 
@@ -970,6 +1054,7 @@ def _apply_numbering(
     cache: _ResolverCache,
     p_element: etree._Element,
     p_style_id: str | None,
+    stop_below: Layer | None = None,
 ) -> None:
     """Apply the paragraph's effective numbering, direct winning over style-supplied.
 
@@ -984,6 +1069,12 @@ def _apply_numbering(
     ``List Bullet`` paragraph given a bare ``<w:ilvl w:val="2"/>`` renders
     as a third-level bullet of the style's own list, not as unnumbered
     body text.
+
+    The two halves gate separately on ``stop_below``, which is the point of
+    splitting the numbering layer in two: resolving with
+    ``stop_below="numbering"`` drops the paragraph's own ``w:numPr`` and
+    reports the list its style would have given it — the only way to see a
+    direct numbering reference overriding a style-supplied one.
     """
     num_id: int | None = None
     ilvl: int | None = None
@@ -991,13 +1082,17 @@ def _apply_numbering(
     ilvl_source: FormattingSource | None = None
 
     direct_num_pr = p_element.find(f"./{qn('w:pPr')}/{qn('w:numPr')}")
-    if direct_num_pr is not None:
+    if direct_num_pr is not None and _includes(stop_below, "numbering"):
         num_id, ilvl = _num_pr_values(direct_num_pr)
         direct_source = FormattingSource(layer="numbering")
         num_id_source = direct_source if num_id is not None else None
         ilvl_source = direct_source if ilvl is not None else None
 
-    if (num_id is None or ilvl is None) and p_style_id is not None:
+    if (
+        (num_id is None or ilvl is None)
+        and p_style_id is not None
+        and _includes(stop_below, "styleNumbering")
+    ):
         style_num_id, style_num_id_source, style_ilvl, style_ilvl_source = _style_chain_num_pr(
             cache, p_style_id
         )
@@ -1014,10 +1109,12 @@ def _apply_numbering(
     acc.set("num_id", num_id, num_id_source)
     acc.set("num_level", effective_ilvl, ilvl_source or num_id_source)
 
-    if num_id == 0:
-        # The ECMA-376 17.9.18 "no numbering" sentinel. There is no w:num to
-        # resolve, and the point of the reference is to suppress the level
-        # formatting a style would otherwise contribute.
+    if num_id == 0 or not _includes(stop_below, "numbering"):
+        # numId 0 is the ECMA-376 17.9.18 "no numbering" sentinel: there is
+        # no w:num to resolve, and the point of the reference is to suppress
+        # the level formatting a style would otherwise contribute. The level's
+        # own formatting sits at the ``numbering`` layer however the reference
+        # was reached, so it drops out with that layer too.
         return
 
     # An unmaterialised numbering part, or a dangling numId, is common when

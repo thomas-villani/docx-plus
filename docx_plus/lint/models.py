@@ -14,10 +14,16 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from docx_plus.styles import resolve_effective_formatting
+
 if TYPE_CHECKING:
     from docx.document import Document
+    from docx.table import _Cell
+    from docx.text.paragraph import Paragraph
+    from docx.text.run import Run
 
-    from docx_plus.styles import ResolvedParagraph
+    from docx_plus.styles import ResolvedFormatting, ResolvedParagraph
+    from docx_plus.styles.inspect import Layer
 
 
 Severity = Literal["error", "warning", "info"]
@@ -169,6 +175,34 @@ class LintContext:
 
     doc: Document
     paragraphs: list[ResolvedParagraph]
+
+    def resolve(
+        self,
+        target: Paragraph | Run | _Cell,
+        *,
+        stop_below: Layer | None = None,
+    ) -> ResolvedFormatting:
+        """Resolve one target the sweep did not precompute.
+
+        The sweep already carries each paragraph's and run's full resolve
+        plus its ``baseline`` (the same target without its own direct
+        layer), which is what nearly every rule needs. This covers the rest:
+        a rule wanting some *other* slice of the cascade — the numbering a
+        style would supply if the paragraph did not override it, say.
+
+        Deliberately not cache-shared with the sweep, so it costs a full
+        cascade walk per call. Call it for the subset a rule genuinely
+        needs, never for every paragraph.
+
+        Args:
+            target: A paragraph, run, or cell in :attr:`doc`.
+            stop_below: Stop the walk below this
+                :data:`~docx_plus.styles.inspect.Layer`.
+
+        Returns:
+            The resolved formatting for ``target``.
+        """
+        return resolve_effective_formatting(target, stop_below=stop_below)
 
     def excerpt(self, paragraph_index: int, limit: int = 60) -> str:
         r"""A one-line slice of a paragraph's text, for a report.

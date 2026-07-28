@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+from docx.shared import Pt
 
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
@@ -248,3 +249,68 @@ def test_cache_is_not_shared_between_sweeps() -> None:
 
     after = next(iter_resolved_paragraphs(doc)).formatting
     assert after.bold is True
+
+
+# ---------------------------------------------------------------------------
+# Baselines: the same target resolved without its own direct formatting.
+# ---------------------------------------------------------------------------
+
+
+def test_baseline_is_absent_by_default() -> None:
+    """It roughly doubles the resolve work, so it is opt-in."""
+    doc = Document()
+    doc.add_paragraph().add_run("text")
+
+    resolved = next(iter_resolved_paragraphs(doc))
+
+    assert resolved.baseline is None
+    assert resolved.runs[0].baseline is None
+
+
+def test_paragraph_baseline_excludes_its_own_ppr() -> None:
+    doc = Document()
+    para = doc.add_paragraph("text")
+    para.paragraph_format.space_after = Pt(18)
+
+    resolved = next(iter_resolved_paragraphs(doc, include_baseline=True))
+
+    assert resolved.formatting.spacing_after == 18 * 20
+    assert resolved.baseline is not None
+    assert resolved.baseline.spacing_after != resolved.formatting.spacing_after
+
+
+def test_run_baseline_excludes_its_own_rpr() -> None:
+    doc = Document()
+    run = doc.add_paragraph().add_run("text")
+    run.font.size = Pt(24)
+
+    resolved = next(iter_resolved_paragraphs(doc, include_baseline=True))
+
+    assert resolved.runs[0].formatting.font_size == 24.0
+    assert resolved.runs[0].baseline is not None
+    assert resolved.runs[0].baseline.font_size == 11.0
+
+
+def test_baselines_match_the_per_target_resolver() -> None:
+    """Same equivalence contract as the full resolve, one layer down."""
+    doc = Document()
+    para = doc.add_paragraph("text", style="Heading 1")
+    para.paragraph_format.space_after = Pt(18)
+    para.runs[0].font.size = Pt(24)
+
+    resolved = next(iter_resolved_paragraphs(doc, include_baseline=True))
+
+    assert resolved.baseline == resolve_effective_formatting(para, stop_below="directParagraph")
+    assert resolved.runs[0].baseline == resolve_effective_formatting(
+        para.runs[0], stop_below="directRun"
+    )
+
+
+def test_baseline_is_skipped_for_runs_when_runs_are() -> None:
+    doc = Document()
+    doc.add_paragraph().add_run("text")
+
+    resolved = next(iter_resolved_paragraphs(doc, include_baseline=True, include_runs=False))
+
+    assert resolved.runs == ()
+    assert resolved.baseline is not None

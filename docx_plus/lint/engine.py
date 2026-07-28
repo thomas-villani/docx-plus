@@ -60,17 +60,19 @@ def lint(
         double-space - Two or more consecutive spaces between words.
     """
     rules = select_rules(select, exclude)
-    # Provenance is always on. It is not an optional extra here: the
-    # consistency rules are built on knowing *which* cascade layer set a
-    # value, which is the whole advantage of resolving OOXML rather than
-    # asking Word for an effective number. One sweep serves every rule, so
-    # the cost is paid once.
+    # Provenance and baselines are always on. Neither is an optional extra
+    # here: the consistency rules are built on knowing *which* cascade layer
+    # set a value and what the value would have been without it, which is
+    # the whole advantage of resolving OOXML rather than asking Word for an
+    # effective number. One sweep serves every rule, so the cost is paid
+    # once however many rules run.
     context = LintContext(
         doc=doc,
         paragraphs=list(
             iter_resolved_paragraphs(
                 doc,
                 include_provenance=True,
+                include_baseline=True,
                 include_tables=include_tables,
             )
         ),
