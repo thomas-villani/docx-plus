@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from docx_plus.core.ns import qn
 from docx_plus.lint.models import Issue, Location
 from docx_plus.lint.registry import rule
 
@@ -40,6 +41,15 @@ _SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.;:!?])")
 def _is_verbatim(resolved: ResolvedParagraph) -> bool:
     """True for styles where runs of whitespace are content, not sloppiness."""
     return (resolved.formatting.style_id or "") in _VERBATIM_STYLES
+
+
+def _has_field(resolved: ResolvedParagraph) -> bool:
+    """True if the paragraph contains a complex field.
+
+    Its rendered text is then not its stored text: the field contributes
+    its *cached result*, which is whatever Word last displayed.
+    """
+    return resolved.paragraph._p.find(f".//{qn('w:fldChar')}") is not None
 
 
 @rule(
@@ -74,10 +84,17 @@ def double_space(ctx: LintContext) -> Iterator[Issue]:
     tags={"typography", "whitespace"},
 )
 def trailing_whitespace(ctx: LintContext) -> Iterator[Issue]:
-    """Flag paragraphs whose text ends in whitespace."""
+    """Flag paragraphs whose text ends in whitespace.
+
+    Paragraphs containing a field are skipped. A field's text is its
+    *cached result* — whatever Word last rendered, often empty in a
+    freshly-written document — so ``"See "`` followed by an unrendered
+    ``REF`` reads as trailing whitespace when the space is doing exactly
+    its job. Every cross-reference and page number would otherwise report.
+    """
     for resolved in ctx.paragraphs:
         text = resolved.text
-        if _is_verbatim(resolved) or not text.strip():
+        if _is_verbatim(resolved) or not text.strip() or _has_field(resolved):
             continue
         if text != text.rstrip():
             yield Issue(

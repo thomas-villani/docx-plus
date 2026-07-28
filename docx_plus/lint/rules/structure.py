@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from docx_plus.lint.models import Issue, Location
 from docx_plus.lint.registry import rule
+from docx_plus.styles import list_styles
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -273,19 +274,27 @@ def manual_heading_formatting(ctx: LintContext) -> Iterator[Issue]:
 
     Deliberately conservative, because the shape (a short bold line) also
     describes plenty of legitimate content. Every signal must hold: the
-    paragraph carries no outline level, has text, is short, does not end
-    like a sentence, is not a list item, is not in a table cell — table
-    cells are full of short bold labels — and is either wholly bold or set
-    larger than the document's own body size. That last comparison is what
-    makes the rule a document-relative judgement rather than an opinion:
-    "larger than this document's body text", not "larger than 11pt".
+    paragraph is unstyled body text, has text, is short, does not end like
+    a sentence, is not a list item, is not in a table cell — table cells
+    are full of short bold labels — and is either wholly bold or set larger
+    than the document's own body size. That last comparison is what makes
+    the rule a document-relative judgement rather than an opinion: "larger
+    than this document's body text", not "larger than 11pt".
+
+    **Unstyled** is doing real work there. A paragraph carrying any
+    non-default style has been styled deliberately, whatever it looks like;
+    it is not a body paragraph dressed up as a heading. The template's
+    ``Caption`` style is bold, so without this the rule reports every
+    caption in the document.
     """
     body_size = _dominant_body_size(ctx)
+    default_style = _default_paragraph_style(ctx)
 
     for resolved in ctx.paragraphs:
-        if _heading_level(resolved) is not None or resolved.in_table:
+        if resolved.in_table or resolved.formatting.num_id:
             continue
-        if resolved.formatting.num_id:
+        style_id = resolved.formatting.style_id
+        if style_id is not None and style_id != default_style:
             continue
 
         text = resolved.text.strip()
@@ -322,6 +331,18 @@ def manual_heading_formatting(ctx: LintContext) -> Iterator[Issue]:
             observed=signal,
             expected="a heading style",
         )
+
+
+def _default_paragraph_style(ctx: LintContext) -> str | None:
+    """The id of the document's default paragraph style, usually ``Normal``.
+
+    Read from the document rather than assumed, since a template is free to
+    name its default anything.
+    """
+    for info in list_styles(ctx.doc, style_type="paragraph"):
+        if info.is_default:
+            return info.style_id
+    return None
 
 
 def _dominant_body_size(ctx: LintContext) -> float | None:
