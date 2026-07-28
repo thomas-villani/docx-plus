@@ -138,36 +138,110 @@ the wrong trade; table rules ship in a later wave once it lands.
 
 ### Stage 2 — `lint/`, read-only
 
-Engine: `Finding`, `Severity`, a `Rule` protocol, and a registry, over
-the stage-1 sweep.
+Design reviewed against `../wordlive/spec-linter.md` (2026-07-27), the
+shipped design for the sibling's COM linter. Several of its decisions are
+adopted wholesale rather than re-derived — it is a live-validated
+catalogue of what actually goes wrong in professional documents.
 
-Built-in rules, all scoped to paragraphs / runs / styles so none of them
-waits on the cell cascade:
+#### The asymmetry that justifies building this at all
 
-| Rule | What it catches |
-|---|---|
-| `redundant-direct-formatting` | a run's direct `rPr` setting a property to the value it already inherits |
-| `duplicate-styles` | two or more style ids resolving to identical formatting (`find_matching_style` is the seed) |
-| `unused-styles` | defined, referenced nowhere (reference scanning already exists in `remap_styles` / `delete_style`) |
-| `fake-heading` | a `Normal` paragraph formatted to look like a heading, with no outline level |
-| `manual-list` | list-like literal text (`1.`, `a)`, `•`) with no `numPr` — *needs stage 1* |
-| `direct-numbering-override` | a paragraph's direct `numPr` fighting the one its style supplies — *needs stage 1* |
-| `spacing-by-empty-paragraph` | runs of empty paragraphs standing in for `spaceAfter` |
-| `indent-by-whitespace` | leading tabs / spaces standing in for a real indent |
-| `font-outliers` | thinly-populated effective font / size combinations against a dominant set |
-| `mixed-language` | inconsistent `w:lang`, which quietly wrecks spellcheck |
+wordlive's own §7c documents the limit docx-plus does not have. Resolving
+over COM gives the **effective value plus the applied paragraph style** —
+a two-layer compare. It cannot say *which* layer set a property: a
+character style via `rStyle`, a numbering level's `rPr`, a table-style
+conditional branch, and docDefaults are all invisible behind one number.
+And Word exposes no per-property "reset to style", so a fix either writes
+the style's value back **as a redundant direct property** — leaving the
+mess it set out to clean — or calls `Font.Reset()` and destroys
+intentional formatting along with the drift.
+
+`resolve_effective_formatting` already returns per-field
+`FormattingSource` (layer, `style_id`, `chain_depth`, toggle-resolved),
+and OOXML lets us **delete the offending `w:b` / `w:sz` outright**. So the
+regularizer here is strictly more precise at the core operation, not the
+same thing minus Word. wordlive's spec names our provenance as the
+upgrade it wants; that is the differentiator to build around.
+
+#### Adopted from the wordlive design
+
+- **Three rule *kinds*.** `consistency` (no config — a direct override
+  deviating from the applied style), `structural` (an objective defect),
+  `policy` (needs a profile supplying a target). This is a better answer
+  to "how do opinions stay out of a lean library" than the flat rule list
+  above: consistency and structural rules judge a document against
+  *itself*, and anything requiring a house opinion is inert without a
+  profile.
+- **`Finding` shape** — rule id, kind, severity, locator, message,
+  `fixable`, `fix`, `observed` / `expected`.
+- **The `fix` is a call into our own public API**, mirroring wordlive's
+  "`fix.op` is literally an exec op". Fixes route through
+  `styles.modify_style`, `numbering.apply_list`, and friends rather than a
+  parallel writer, so the fix path stays on the audited, tested surface.
+- **`default_on` per rule, plus tags** so a user enables a cluster
+  (`--rules typography`) instead of naming ids. Unambiguous defects ship
+  on; heuristic or opinion-flavoured rules ship off.
+- **`adds_content` gate** — a fix that inserts or deletes content is
+  withheld unless explicitly allowed. (v0.7, but the flag is designed in
+  now.)
+- **Idempotency as a test invariant** — regularize twice, assert the
+  second pass applies nothing.
+
+#### Rules
+
+All paragraph / run / style scoped, so none waits on the cell cascade.
+Starred rules come from the wordlive catalogue.
+
+| Rule | Kind | What it catches |
+|---|---|---|
+| `redundant-direct-formatting` | consistency | a run's direct `rPr` setting a property to the value it already inherits |
+| `style-drift`* | consistency | a direct override deviating from the applied style — wordlive's central rule, and where our provenance beats its two-layer compare |
+| `duplicate-styles` | consistency | two or more style ids resolving to identical formatting (`find_matching_style` is the seed) |
+| `unused-styles` | structural | defined, referenced nowhere (`remap_styles` / `delete_style` already scan references) |
+| `manual-heading-formatting`* | structural | a bold / large `Normal` paragraph that looks like a heading but is not styled |
+| `heading-level-skip`* | structural | the outline jumps H1 → H3. Newly cheap: `outline_level` resolves through the style chain after stage 1 |
+| `empty-heading`* | structural | a heading paragraph with no text |
+| `manual-list` | structural | list-like literal text (`1.`, `a)`, `•`) with no `numPr` |
+| `list-numbering-continuity`* | structural | a contiguous run of numbered paragraphs split into independent lists — the "N separate 1. lists" footgun, reachable now that numbering resolves |
+| `direct-numbering-override` | consistency | a paragraph's direct `numPr` fighting the one its style supplies |
+| `trailing-whitespace`* | structural | a paragraph ending in space / tab |
+| `double-space`* | consistency | runs of 2+ spaces in body text |
+| `space-before-punctuation`* | consistency | ` ,` ` .` ` ;` ` :` |
+| `indent-by-whitespace`* | structural | leading tabs / spaces standing in for a real indent (wordlive's `leading-whitespace`) |
+| `stray-empty-paragraph`* | structural | empty paragraphs standing in for `spaceAfter` |
+| `font-outliers` | consistency | thinly-populated effective font / size combinations against a dominant set |
+| `mixed-language` | consistency | inconsistent `w:lang`, which quietly wrecks spellcheck |
+| `broken-cross-reference`* | structural | a `REF` / `PAGEREF` naming a bookmark that does not exist — `bookmarks/` already reads both sides |
+| `caption-manual-numbering`* | structural | a `Caption` paragraph numbered with literal text, not a `SEQ` field |
+
+Deliberately out: everything requiring **pagination or a live spell
+check**. `table-repeat-header` needs to know a table crosses a page,
+`paragraph-too-long` needs page geometry, `toc-present-and-current` needs
+field results, and proofing needs Word's dictionary. Those stay
+wordlive's. Presence-only halves (is there a TOC at all, does the footer
+carry a `PAGE` field) are reachable offline and can come later.
+
+Worth noting the reverse also holds: `mixed-run-format` is report-only in
+wordlive because COM returns `wdUndefined` for a paragraph whose runs
+disagree and "which run is the outlier needs a run-walk". The stage-1
+sweep hands us that run-walk for free, so the rule is *more* capable
+here.
 
 ### Stage 3 — report → plan
 
 `plan_fixes(findings)` returns a `FixPlan`: an ordered, inspectable,
-serializable list of edits, each with a target, a description, and a
-safety class. Conflict detection between edits from different rules
-targeting the same run belongs here. **Nothing applies it in v0.6.**
+serializable list of edits, each naming the public `docx_plus` call it
+would make, plus a safety class and the `adds_content` flag. Conflict
+detection between edits from different rules targeting the same run
+belongs here. **Nothing applies it in v0.6.**
 
 The **high-level "restyle" planner** on the backlog is this plan's
 engine for the style-related rules — computing the minimal cascade
 modification that reaches a target `ResolvedFormatting`. Designing it
 against a plan that cannot execute is the cheap place to do it.
+
+A **profile** (a small declarative config enabling policy rules and
+supplying their targets, per wordlive §6) is designed in here but only
+needs to *load* in v0.6, since no policy rule can act until v0.7.
 
 ### CLI
 
@@ -438,6 +512,13 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   SDTs, vs. the inline `w:placeholder` text `controls/` already supports.
 - **Password-protected forms** — legacy hash algorithm, paired with
   `protect_document`. (`protection/`.)
+- **Sweep the non-body parts** — `iter_resolved_paragraphs` covers the
+  main document body only, so any lint rule over headers, footers,
+  footnotes, endnotes, or comments has a blind spot there. Confirmed as
+  acceptable for v0.6 (the body is the concern), and bounded when it
+  comes: `remap_styles` / `delete_style` already carry the
+  reference-scanning pattern across exactly those five parts, so the walk
+  is a port rather than a design. (`styles/`.)
 
 ## Backlog — larger or dependency-gated
 

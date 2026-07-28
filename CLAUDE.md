@@ -75,6 +75,14 @@ for that module. `docs/ARCHITECTURE.md` has the full module-by-module breakdown.
   `python -m docx_plus.examples.<name>` runs on a default Windows console.
 - **Paragraph index base differs by surface:** the CLI `inspect` command numbers
   paragraphs 1-based; the library `read_*` functions use 0-based `paragraph_index`.
+- **Walking a document in order needs `iter_inner_content()`.** `doc.paragraphs`
+  drops tables entirely and `doc.tables` drops the ordering, so neither alone
+  can express "paragraph, table, paragraph". `styles/sweep.py` `_walk` is the
+  reference implementation.
+- **`row.cells` repeats a merged cell.** It returns the same `_Cell` object once
+  per grid column a horizontal merge spans, so anything iterating cells
+  double-counts a spanned cell's content. Dedupe on `w:tc` identity — see
+  `styles/sweep.py` `_walk`.
 
 ## Releasing
 
