@@ -171,9 +171,21 @@ class LintContext:
     paragraphs: list[ResolvedParagraph]
 
     def excerpt(self, paragraph_index: int, limit: int = 60) -> str:
-        """A trimmed one-line slice of a paragraph's text, for a report."""
-        text = " ".join(self.paragraphs[paragraph_index].text.split())
-        return text if len(text) <= limit else text[: limit - 1] + "…"
+        r"""A one-line slice of a paragraph's text, for a report.
+
+        Internal spacing is **preserved**, because several rules are about
+        whitespace and an excerpt that tidied it would hide the very thing
+        being reported — a `double-space` finding whose excerpt shows single
+        spaces reads like a false positive. Tabs render as ``\t`` so they are
+        visible at all, and line breaks collapse to a space so one finding
+        stays one line.
+
+        Output is ASCII-only: this reaches a Windows console at cp1252 via
+        ``docx-plus lint``.
+        """
+        text = self.paragraphs[paragraph_index].text
+        text = text.replace("\r", " ").replace("\n", " ").replace("\t", "\\t")
+        return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
 CheckFn = Callable[[LintContext], Iterator[Issue]]

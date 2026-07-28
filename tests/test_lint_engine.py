@@ -279,8 +279,8 @@ def test_finding_sort_key_orders_unpositioned_first() -> None:
     assert style_level.sort_key < positional.sort_key
 
 
-def test_context_excerpt_collapses_whitespace_and_truncates() -> None:
-    """Excerpts are one tidy line, short enough for a report column."""
+def test_context_excerpt_truncates_to_one_column() -> None:
+    """Excerpts fit a report column."""
     doc = Document()
     doc.add_paragraph("word " * 40)
 
@@ -289,4 +289,39 @@ def test_context_excerpt_collapses_whitespace_and_truncates() -> None:
     assert len(findings) == 1
     excerpt = findings[0].location.excerpt
     assert len(excerpt) <= 60
-    assert "  " not in excerpt
+    assert excerpt.endswith("...")
+
+
+def test_context_excerpt_preserves_the_whitespace_being_reported() -> None:
+    """An excerpt that tidied whitespace would hide the defect it illustrates.
+
+    A ``double-space`` finding whose excerpt shows single spaces reads like
+    a false positive.
+    """
+    doc = Document()
+    doc.add_paragraph("Two  spaces survive.")
+
+    findings = lint(doc, select=["double-space"])
+
+    assert "Two  spaces" in findings[0].location.excerpt
+
+
+def test_context_excerpt_makes_tabs_visible() -> None:
+    """A tab is rendered, not emitted raw — it is invisible and breaks alignment."""
+    doc = Document()
+    doc.add_paragraph("\tTabbed line")
+
+    findings = lint(doc, select=["indent-by-whitespace"])
+
+    assert "\\t" in findings[0].location.excerpt
+    assert "\t" not in findings[0].location.excerpt
+
+
+def test_context_excerpt_is_ascii_only() -> None:
+    """Excerpts reach a cp1252 Windows console through ``docx-plus lint``."""
+    doc = Document()
+    doc.add_paragraph("word " * 40)
+
+    excerpt = lint(doc, select=["trailing-whitespace"])[0].location.excerpt
+
+    excerpt.encode("cp1252")  # raises UnicodeEncodeError if not encodable
