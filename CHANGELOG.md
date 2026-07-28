@@ -97,6 +97,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`LintContext.resolve()`** — an escape hatch for a rule needing a slice
   of the cascade the sweep did not precompute. Not cache-shared, and
   documented as such.
+- **Four more lint rules.** `direct-numbering-override` (a paragraph's own
+  `w:numPr` fighting the list its style supplies — the rule `stop_below`
+  was needed for, and it downgrades `numId=0` to `info` since the opt-out
+  sentinel is the one legitimate override); `list-numbering-continuity`
+  (the "three separate 1. lists" footgun — adjacent items at one level
+  belonging to different `numId`s); `manual-heading-formatting` (a bold or
+  enlarged short line standing in for a heading, so it is missing from the
+  navigation pane and every generated TOC); and `font-outliers` (off by
+  default — thinly-populated font/size combinations against the
+  document's dominant set). `manual-heading-formatting` and
+  `font-outliers` compare against the *document's own* body size and
+  dominant font rather than a fixed threshold, which is what keeps them
+  consistency judgements rather than house opinions.
 - **`docx-plus lint`** — the CLI over it. `--rule` / `--exclude` take an
   id or a tag and repeat, `--list-rules` prints the catalogue without
   needing a document, `--json` emits the full finding shape, and

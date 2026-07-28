@@ -11,6 +11,7 @@ from __future__ import annotations
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt, Twips
+from docx.text.paragraph import Paragraph
 
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
@@ -589,3 +590,252 @@ def test_lint_context_resolve_reaches_other_layers() -> None:
 
     assert ctx.resolve(para).num_id == 7
     assert ctx.resolve(para, stop_below="numbering").num_id is None
+
+
+# --------------------------------------------------------------------------
+# direct-numbering-override.
+# --------------------------------------------------------------------------
+
+
+def _override_num_id(para: Paragraph, num_id: str) -> None:
+    """Point a paragraph's own w:numPr at ``num_id``."""
+    num_pr = sub(sub(para._p, "w:pPr"), "w:numPr")
+    sub(num_pr, "w:numId", **{"w:val": num_id})
+
+
+def test_direct_numbering_override_fires() -> None:
+    doc = Document()
+    para = doc.add_paragraph("Item", style="List Number")
+    _override_num_id(para, "42")
+
+    findings = _rules_fired(doc, "direct-numbering-override")
+
+    assert len(findings) == 1
+    assert findings[0].observed == "numId=42"
+    assert "from the style" in (findings[0].expected or "")
+
+
+def test_direct_numbering_override_ignores_a_style_supplied_list() -> None:
+    """The rule must not flag every correctly-styled list paragraph."""
+    doc = Document()
+    doc.add_paragraph("Item", style="List Number")
+
+    assert _rules_fired(doc, "direct-numbering-override") == []
+
+
+def test_direct_numbering_override_ignores_a_list_with_no_style_numbering() -> None:
+    """A direct numPr on an unnumbered style overrides nothing.
+
+    This is the shape ``apply_list`` produces, so firing here would flag
+    ordinary library output as a defect.
+    """
+    doc = Document()
+    _override_num_id(doc.add_paragraph("Item"), "3")
+
+    assert _rules_fired(doc, "direct-numbering-override") == []
+
+
+def test_direct_numbering_override_downgrades_the_opt_out_sentinel() -> None:
+    """numId=0 is the one legitimate override, so it reports as info."""
+    doc = Document()
+    para = doc.add_paragraph("Not a list item after all", style="List Number")
+    _override_num_id(para, "0")
+
+    findings = _rules_fired(doc, "direct-numbering-override")
+
+    assert len(findings) == 1
+    assert findings[0].severity == "info"
+    assert "suppresses" in findings[0].message
+
+
+# --------------------------------------------------------------------------
+# list-numbering-continuity.
+# --------------------------------------------------------------------------
+
+
+def test_list_numbering_continuity_fires_on_a_split_run() -> None:
+    doc = Document()
+    doc.add_paragraph("One", style="List Number")
+    _override_num_id(doc.add_paragraph("Two", style="List Number"), "77")
+
+    assert len(_rules_fired(doc, "list-numbering-continuity")) == 1
+
+
+def test_list_numbering_continuity_ignores_one_unbroken_list() -> None:
+    doc = Document()
+    for text in ("One", "Two", "Three"):
+        doc.add_paragraph(text, style="List Number")
+
+    assert _rules_fired(doc, "list-numbering-continuity") == []
+
+
+def test_list_numbering_continuity_ignores_lists_separated_by_body_text() -> None:
+    """A restart after prose is deliberate often enough not to call it."""
+    doc = Document()
+    doc.add_paragraph("One", style="List Number")
+    doc.add_paragraph("Some intervening prose.")
+    _override_num_id(doc.add_paragraph("One again", style="List Number"), "77")
+
+    assert _rules_fired(doc, "list-numbering-continuity") == []
+
+
+def test_list_numbering_continuity_ignores_a_sublist() -> None:
+    """A different level is legitimately a different list."""
+    doc = Document()
+    doc.add_paragraph("One", style="List Number")
+    para = doc.add_paragraph("Sub-item", style="List Number")
+    num_pr = sub(sub(para._p, "w:pPr"), "w:numPr")
+    sub(num_pr, "w:ilvl", **{"w:val": "1"})
+    sub(num_pr, "w:numId", **{"w:val": "77"})
+
+    assert _rules_fired(doc, "list-numbering-continuity") == []
+
+
+def test_list_numbering_continuity_ignores_the_opt_out_sentinel() -> None:
+    """A suppressed paragraph is not a list item, so it breaks the run."""
+    doc = Document()
+    doc.add_paragraph("One", style="List Number")
+    _override_num_id(doc.add_paragraph("Opted out", style="List Number"), "0")
+
+    assert _rules_fired(doc, "list-numbering-continuity") == []
+
+
+# --------------------------------------------------------------------------
+# manual-heading-formatting.
+# --------------------------------------------------------------------------
+
+
+def _bold_paragraph(doc: Document, text: str) -> None:
+    doc.add_paragraph().add_run(text).bold = True
+
+
+def test_manual_heading_formatting_fires_on_a_bold_short_line() -> None:
+    doc = Document()
+    _bold_paragraph(doc, "Background and Scope")
+    doc.add_paragraph("Ordinary body text follows here.")
+
+    findings = _rules_fired(doc, "manual-heading-formatting")
+
+    assert len(findings) == 1
+    assert findings[0].expected == "a heading style"
+
+
+def test_manual_heading_formatting_fires_on_an_enlarged_line() -> None:
+    """The size comparison is against the document's own body text."""
+    doc = Document()
+    para = doc.add_paragraph()
+    para.add_run("Section Two").font.size = Pt(16)
+    for _ in range(3):
+        doc.add_paragraph("Ordinary body text at the document's usual size.")
+
+    assert len(_rules_fired(doc, "manual-heading-formatting")) == 1
+
+
+def test_manual_heading_formatting_ignores_a_real_heading() -> None:
+    doc = Document()
+    doc.add_paragraph("A Real Heading", style="Heading 1")
+
+    assert _rules_fired(doc, "manual-heading-formatting") == []
+
+
+def test_manual_heading_formatting_ignores_a_bold_sentence() -> None:
+    """Ending like a sentence is the strongest signal it is not a heading."""
+    doc = Document()
+    _bold_paragraph(doc, "This is emphasised prose, not a heading.")
+
+    assert _rules_fired(doc, "manual-heading-formatting") == []
+
+
+def test_manual_heading_formatting_ignores_long_bold_text() -> None:
+    doc = Document()
+    _bold_paragraph(doc, "A bold run of text far too long to be mistaken for a heading " * 2)
+
+    assert _rules_fired(doc, "manual-heading-formatting") == []
+
+
+def test_manual_heading_formatting_ignores_table_cells() -> None:
+    """Table cells are full of short bold labels, and none are headings."""
+    doc = Document()
+    cell = doc.add_table(rows=1, cols=1).cell(0, 0)
+    cell.paragraphs[0].add_run("Total").bold = True
+
+    assert _rules_fired(doc, "manual-heading-formatting") == []
+
+
+def test_manual_heading_formatting_ignores_a_bold_list_item() -> None:
+    doc = Document()
+    para = doc.add_paragraph(style="List Bullet")
+    para.add_run("A bold bullet").bold = True
+
+    assert _rules_fired(doc, "manual-heading-formatting") == []
+
+
+def test_manual_heading_formatting_ignores_partly_bold_text() -> None:
+    """A bolded term inside a line is emphasis, not a heading."""
+    doc = Document()
+    para = doc.add_paragraph()
+    para.add_run("A line with a ")
+    para.add_run("bold").bold = True
+    para.add_run(" word")
+
+    assert _rules_fired(doc, "manual-heading-formatting") == []
+
+
+# --------------------------------------------------------------------------
+# font-outliers.
+# --------------------------------------------------------------------------
+
+
+def _run_with_font(doc: Document, text: str, name: str, size: float) -> None:
+    run = doc.add_paragraph().add_run(text)
+    run.font.name = name
+    run.font.size = Pt(size)
+
+
+def test_font_outliers_fires_on_a_thin_combination() -> None:
+    doc = Document()
+    for index in range(40):
+        _run_with_font(doc, f"body {index}", "Calibri", 11)
+    _run_with_font(doc, "pasted in", "Times New Roman", 12)
+
+    findings = _rules_fired(doc, "font-outliers")
+
+    assert len(findings) == 1
+    assert "Times New Roman" in (findings[0].observed or "")
+    assert "Calibri" in (findings[0].expected or "")
+
+
+def test_font_outliers_ignores_a_uniform_document() -> None:
+    doc = Document()
+    for index in range(20):
+        _run_with_font(doc, f"body {index}", "Calibri", 11)
+
+    assert _rules_fired(doc, "font-outliers") == []
+
+
+def test_font_outliers_ignores_a_substantial_second_font() -> None:
+    """A font used throughout is a design choice, not an outlier."""
+    doc = Document()
+    for index in range(20):
+        _run_with_font(doc, f"body {index}", "Calibri", 11)
+        _run_with_font(doc, f"code {index}", "Consolas", 10)
+
+    assert _rules_fired(doc, "font-outliers") == []
+
+
+def test_font_outliers_ignores_a_document_with_no_dominant_font() -> None:
+    """Everything an outlier means there is nothing to be an outlier from."""
+    doc = Document()
+    for index in range(6):
+        _run_with_font(doc, f"line {index}", f"Font{index}", 10 + index)
+
+    assert _rules_fired(doc, "font-outliers") == []
+
+
+def test_font_outliers_is_off_by_default() -> None:
+    doc = Document()
+    for index in range(40):
+        _run_with_font(doc, f"body {index}", "Calibri", 11)
+    _run_with_font(doc, "pasted in", "Times New Roman", 12)
+
+    assert "font-outliers" not in {f.rule for f in lint(doc)}
