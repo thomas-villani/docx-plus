@@ -136,7 +136,32 @@ is the largest item on the backlog and it unlocks only the table rules.
 Blocking the most valuable rules on the most expensive prerequisite is
 the wrong trade; table rules ship in a later wave once it lands.
 
-### Stage 2 — `lint/`, read-only
+### Stage 2 — `lint/`, read-only — engine + first 9 rules shipped
+
+Engine, registry, CLI, and docs are in. Ten rules registered (nine
+default-on). What remains is the rest of the rule table below.
+
+Shipped: `double-space`, `trailing-whitespace`,
+`space-before-punctuation`, `indent-by-whitespace`,
+`stray-empty-paragraph` (off), `heading-level-skip`, `empty-heading`,
+`manual-list`, `redundant-direct-formatting`, `mixed-run-formatting`
+(off), plus `docx-plus lint` with `--rule` / `--exclude` / `--list-rules`
+/ `--json` / `--no-tables`.
+
+Three things the build turned up:
+
+- **Toggles need `None` and `False` treated as one value.** An explicit
+  `<w:b w:val="0"/>` over an unset toggle renders identically but resolves
+  unequal — and that is exactly what select-all-then-clear-formatting
+  leaves behind, so it is a case the rule has to catch. Non-toggle
+  properties keep `None` distinct, since "inherit" and "Calibri" differ.
+- **An excerpt that tidies whitespace hides the defect.** A
+  `double-space` finding whose excerpt shows single spaces reads like a
+  false positive. Excerpts preserve internal spacing, render tabs
+  visibly, and the CLI quotes them.
+- **The CLI is a cp1252 surface**, like the runnable examples. A U+2026
+  ellipsis in the truncation raised `UnicodeEncodeError` on a default
+  Windows console; there are now tests asserting the output encodes.
 
 Design reviewed against `../wordlive/spec-linter.md` (2026-07-27), the
 shipped design for the sibling's COM linter. Several of its decisions are
