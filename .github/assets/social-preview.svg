@@ -18,7 +18,7 @@
 
 <!-- left column -->
 <text x="72" y="196" font-family="Segoe UI, Arial, sans-serif" font-size="80" font-weight="700"
-      fill="#ffffff">docx<tspan fill="#818cf8">_plus</tspan></text>
+      fill="#ffffff">docx<tspan fill="#818cf8">-plus</tspan></text>
 <rect x="74" y="222" width="150" height="5" rx="2.5" fill="url(#rule)"/>
 
 <text x="72" y="288" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#94a3b8">OOXML-level extensions for</text>
