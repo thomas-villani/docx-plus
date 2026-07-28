@@ -136,19 +136,34 @@ is the largest item on the backlog and it unlocks only the table rules.
 Blocking the most valuable rules on the most expensive prerequisite is
 the wrong trade; table rules ship in a later wave once it lands.
 
-### Stage 2 — `lint/`, read-only — engine + first 9 rules shipped
+### Stage 2 — `lint/`, read-only — engine + first 10 rules shipped
 
-Engine, registry, CLI, and docs are in. Ten rules registered (nine
+Engine, registry, CLI, and docs are in. Eleven rules registered (ten
 default-on). What remains is the rest of the rule table below.
 
 Shipped: `double-space`, `trailing-whitespace`,
 `space-before-punctuation`, `indent-by-whitespace`,
 `stray-empty-paragraph` (off), `heading-level-skip`, `empty-heading`,
-`manual-list`, `redundant-direct-formatting`, `mixed-run-formatting`
-(off), plus `docx-plus lint` with `--rule` / `--exclude` / `--list-rules`
-/ `--json` / `--no-tables`.
+`manual-list`, `redundant-direct-formatting`, `style-drift`,
+`mixed-run-formatting` (off), plus `docx-plus lint` with `--rule` /
+`--exclude` / `--list-rules` / `--json` / `--no-tables`.
 
-Three things the build turned up:
+**The baseline detour.** `style-drift` turned out to need the backlog's
+"resolve beneath the direct layer" item, so that shipped first as
+`stop_below`. Two things fell out of it that were not on any list:
+
+- **A run inside a bold `Heading 1` resolved `bold=False`.** Word writes a
+  style and its `w:link` partner with identical `w:rPr`; the resolver
+  applied both as independent hierarchy levels, so the ECMA-376 17.7.3
+  XOR cancelled every toggle the pair agreed on. The paragraph and the
+  run disagreed about the same style. Only visible once the baselines made
+  the two answers directly comparable.
+- **Paragraph-mark `rPr` is not a run baseline.** It formats the pilcrow.
+  The old paragraph-level baseline folded it in, so a run matching it
+  looked redundant when deleting the property would have changed the
+  rendering.
+
+Three things the first batch turned up:
 
 - **Toggles need `None` and `False` treated as one value.** An explicit
   `<w:b w:val="0"/>` over an unset toggle renders identically but resolves
@@ -537,17 +552,14 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   SDTs, vs. the inline `w:placeholder` text `controls/` already supports.
 - **Password-protected forms** — legacy hash algorithm, paired with
   `protect_document`. (`protection/`.)
-- **Resolve beneath the direct layer** — a cascade query for "what would
-  this target resolve to *without* its own direct formatting". Provenance
-  reports only the layer that won, which is enough to say a property came
-  from `directRun` but not what would have applied instead. Two v0.6 rules
-  are constrained by its absence: `redundant-direct-formatting` has to
-  skip runs carrying a `w:rStyle` (the paragraph-level resolve is the
-  wrong baseline for those, since it drops the character style too), and
-  `direct-numbering-override` could not be written at all — firing on any
-  direct `w:numPr` would flag every list made with `apply_list`.
-  Plausibly a `stop_below: Layer` argument on the resolver rather than a
-  new entry point. (`styles/`.)
+- ~~**Resolve beneath the direct layer**~~ — **shipped in v0.6** as
+  `resolve_effective_formatting(..., stop_below=Layer)`, with
+  `iter_resolved_paragraphs(..., include_baseline=True)` doing it for a
+  whole document against the shared cache. It unblocked `style-drift`,
+  freed `redundant-direct-formatting` to check `w:rStyle` runs instead of
+  skipping them, and surfaced a resolver bug of its own (see the v0.6
+  notes). `direct-numbering-override` is now writable via
+  `stop_below="numbering"`. (`styles/`.)
 - **Sweep the non-body parts** — `iter_resolved_paragraphs` covers the
   main document body only, so any lint rule over headers, footers,
   footnotes, endnotes, or comments has a blind spot there. Confirmed as

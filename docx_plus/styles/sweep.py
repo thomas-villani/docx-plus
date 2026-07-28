@@ -44,11 +44,16 @@ class ResolvedRun:
         run: The python-docx :class:`~docx.text.run.Run`.
         index: 0-based position within the owning paragraph.
         formatting: The run's fully-resolved formatting.
+        baseline: The same run resolved with ``stop_below="directRun"`` —
+            what it would render as if its own ``<w:rPr>`` were deleted,
+            character style and all. ``None`` unless the sweep was run with
+            ``include_baseline=True``.
     """
 
     run: Run
     index: int
     formatting: ResolvedFormatting
+    baseline: ResolvedFormatting | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +72,11 @@ class ResolvedParagraph:
             paragraph.
         table_depth: 0 for a body-level paragraph, 1 inside a table, 2
             inside a table nested in a table, and so on.
+        baseline: The same paragraph resolved with
+            ``stop_below="directParagraph"`` — what it would look like if
+            its own ``<w:pPr>`` were deleted, which is what makes "this
+            direct override deviates from the style" answerable. ``None``
+            unless the sweep was run with ``include_baseline=True``.
     """
 
     paragraph: Paragraph
@@ -74,6 +84,7 @@ class ResolvedParagraph:
     formatting: ResolvedFormatting
     runs: tuple[ResolvedRun, ...]
     table_depth: int
+    baseline: ResolvedFormatting | None = None
 
     @property
     def in_table(self) -> bool:
@@ -92,6 +103,7 @@ def iter_resolved_paragraphs(
     include_provenance: bool = False,
     include_runs: bool = True,
     include_tables: bool = True,
+    include_baseline: bool = False,
 ) -> Iterator[ResolvedParagraph]:
     """Resolve every paragraph in ``doc``, sharing one cascade cache.
 
@@ -114,6 +126,10 @@ def iter_resolved_paragraphs(
             bulk of the work in a text-heavy document.
         include_tables: Descend into table cells (including nested tables).
             Set False to sweep body-level paragraphs only.
+        include_baseline: Also resolve each target with its own direct
+            formatting layer excluded, populating ``.baseline``. Roughly
+            doubles the resolve work, so it is off by default; turn it on
+            for the "is this direct override doing anything?" question.
 
     Yields:
         One :class:`ResolvedParagraph` per paragraph, in document order.
@@ -159,6 +175,11 @@ def iter_resolved_paragraphs(
                     formatting=_resolve_with_cache(
                         cache, run, include_provenance=include_provenance
                     ),
+                    baseline=(
+                        _resolve_with_cache(cache, run, stop_below="directRun")
+                        if include_baseline
+                        else None
+                    ),
                 )
                 for run_index, run in enumerate(paragraph.runs)
             )
@@ -168,6 +189,11 @@ def iter_resolved_paragraphs(
             formatting=_resolve_with_cache(cache, paragraph, include_provenance=include_provenance),
             runs=runs,
             table_depth=depth,
+            baseline=(
+                _resolve_with_cache(cache, paragraph, stop_below="directParagraph")
+                if include_baseline
+                else None
+            ),
         )
         counter += 1
 

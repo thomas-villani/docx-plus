@@ -9,11 +9,13 @@ so what is under test is the rule as a user actually invokes it.
 from __future__ import annotations
 
 from docx import Document
-from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt, Twips
 
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import sub
-from docx_plus.lint import Finding, lint
+from docx_plus.lint import Finding, LintContext, lint
+from docx_plus.styles import iter_resolved_paragraphs, resolve_effective_formatting
 
 
 def _rules_fired(doc: Document, rule_id: str) -> list[Finding]:
@@ -275,19 +277,38 @@ def test_redundant_direct_formatting_ignores_undecorated_runs() -> None:
     assert _rules_fired(doc, "redundant-direct-formatting") == []
 
 
-def test_redundant_direct_formatting_skips_runs_with_a_character_style() -> None:
-    """A run carrying w:rStyle is out of scope — the paragraph baseline is wrong for it.
+def test_redundant_direct_formatting_checks_runs_with_a_character_style() -> None:
+    """A run carrying w:rStyle is checked against a baseline that includes it.
 
-    The paragraph-level resolve excludes the character style as well as the
-    direct rPr, so a property supplied by that style would be misreported as
-    redundant.
+    ``stop_below="directRun"`` drops only the run's own ``rPr``, so the
+    character style is still in force in the baseline. A direct size that
+    merely restates what the cascade gives is therefore still redundant even
+    on a styled run — the case the earlier paragraph-level baseline had to
+    skip entirely.
     """
     doc = Document()
     run = doc.add_paragraph().add_run("text")
-    run.font.size = Pt(11)
+    run.font.size = Pt(11)  # docDefaults already says 11pt
     sub(run._r.get_or_add_rPr(), "w:rStyle", **{"w:val": "Emphasis"})
 
-    assert _rules_fired(doc, "redundant-direct-formatting") == []
+    findings = _rules_fired(doc, "redundant-direct-formatting")
+
+    assert len(findings) == 1
+    assert "size" in findings[0].message
+
+
+def test_redundant_direct_formatting_respects_a_character_style_value() -> None:
+    """A property the character style supplies is not redundant.
+
+    ``Emphasis`` resolves ``italic=True``; a run restating it directly is a
+    toggle flip, not a no-op, so the rule must not offer to delete it.
+    """
+    doc = Document()
+    run = doc.add_paragraph().add_run("text")
+    run.italic = True
+    sub(run._r.get_or_add_rPr(), "w:rStyle", **{"w:val": "Emphasis"})
+
+    assert all("italic" not in f.message for f in _rules_fired(doc, "redundant-direct-formatting"))
 
 
 def test_redundant_direct_formatting_names_every_redundant_property() -> None:
@@ -338,16 +359,20 @@ def test_redundant_direct_formatting_keeps_a_toggle_that_turns_something_off() -
     assert all("bold" not in f.message for f in findings)
 
 
-def test_redundant_direct_formatting_flags_a_toggle_matching_its_style() -> None:
-    """Re-asserting bold on a style that is already bold is redundant."""
+def test_redundant_direct_formatting_respects_toggle_xor_on_a_bold_style() -> None:
+    """Re-asserting bold on an already-bold style is an override, not a no-op.
+
+    ECMA-376 17.7.3 makes toggles XOR through the hierarchy, so a direct
+    ``<w:b w:val="1"/>`` over a bold ``Heading 1`` resolves to *not* bold.
+    Deleting it as "redundant" would change the rendering, so the rule must
+    leave it alone — the reason the comparison is against the resolved
+    baseline rather than against the raw direct value.
+    """
     doc = Document()
     para = doc.add_paragraph("Heading text", style="Heading 1")
     para.runs[0].bold = True
 
-    findings = _rules_fired(doc, "redundant-direct-formatting")
-
-    assert len(findings) == 1
-    assert "bold" in findings[0].message
+    assert all("bold" not in f.message for f in _rules_fired(doc, "redundant-direct-formatting"))
 
 
 def test_mixed_run_formatting_fires_on_disagreeing_sizes() -> None:
@@ -421,13 +446,13 @@ def test_findings_reference_only_registered_rule_ids() -> None:
     assert {f.rule for f in lint(doc)} <= known
 
 
-def test_paragraph_mark_size_does_not_mask_run_redundancy() -> None:
-    """Regression guard for the baseline choice.
+def test_paragraph_mark_formatting_is_not_the_run_baseline() -> None:
+    """A run's baseline excludes ``pPr/rPr``, which formats the mark, not the runs.
 
-    The paragraph resolve includes ``pPr/rPr`` (paragraph-mark formatting).
-    If a paragraph mark carries a size, that becomes the baseline, so a run
-    matching it really is redundant — this asserts the comparison uses the
-    paragraph baseline rather than docDefaults.
+    Word applies paragraph-mark formatting to the pilcrow alone, so a run
+    matching it is a genuine override rather than a redundant restatement.
+    The run baseline resolves with ``stop_below="directRun"``, which for a
+    run target never applies the mark's ``rPr`` — this guards that.
     """
     doc = Document()
     para = doc.add_paragraph()
@@ -436,10 +461,7 @@ def test_paragraph_mark_size_does_not_mask_run_redundancy() -> None:
     run = para.add_run("text")
     run.font.size = Pt(18)
 
-    findings = _rules_fired(doc, "redundant-direct-formatting")
-
-    assert len(findings) == 1
-    assert "size" in findings[0].message
+    assert _rules_fired(doc, "redundant-direct-formatting") == []
 
 
 def test_verbatim_style_detection_uses_resolved_style_id() -> None:
@@ -450,3 +472,120 @@ def test_verbatim_style_detection_uses_resolved_style_id() -> None:
 
     assert _rules_fired(doc, "double-space") == []
     assert para._p.find(f"./{qn('w:pPr')}/{qn('w:pStyle')}") is not None
+
+
+# --------------------------------------------------------------------------
+# style-drift.
+# --------------------------------------------------------------------------
+
+
+def test_style_drift_fires_on_a_direct_paragraph_override() -> None:
+    doc = Document()
+    para = doc.add_paragraph("text", style="Heading 1")
+    para.paragraph_format.space_after = Pt(48)
+
+    findings = _rules_fired(doc, "style-drift")
+
+    assert len(findings) == 1
+    assert "space after" in findings[0].message
+    assert findings[0].location.style_id == "Heading1"
+
+
+def test_style_drift_reports_both_sides() -> None:
+    """The finding must say what it found *and* what the style says."""
+    doc = Document()
+    para = doc.add_paragraph("text")
+    para.paragraph_format.left_indent = Pt(36)
+
+    finding = _rules_fired(doc, "style-drift")[0]
+
+    assert finding.observed is not None
+    assert finding.expected is not None
+    assert finding.observed != finding.expected
+
+
+def test_style_drift_ignores_an_undecorated_paragraph() -> None:
+    doc = Document()
+    doc.add_paragraph("text", style="Heading 1")
+
+    assert _rules_fired(doc, "style-drift") == []
+
+
+def test_style_drift_ignores_a_direct_value_matching_the_style() -> None:
+    """That is `redundant-direct-formatting`'s finding, not this one.
+
+    The two rules split the same comparison, so a property must never
+    produce both findings.
+    """
+    doc = Document()
+    para = doc.add_paragraph("text")
+    inherited = resolve_effective_formatting(para).spacing_after
+    assert inherited is not None
+    para.paragraph_format.space_after = Twips(inherited)
+
+    # It really is direct now, and it really does match what it replaced.
+    resolved = resolve_effective_formatting(para, include_provenance=True)
+    assert resolved.provenance is not None
+    assert resolved.provenance["spacing_after"].layer == "directParagraph"
+    assert resolved.spacing_after == inherited
+
+    assert _rules_fired(doc, "style-drift") == []
+    assert len(_rules_fired(doc, "redundant-direct-formatting")) == 0  # run-scoped rule
+
+
+def test_style_drift_ignores_run_level_overrides() -> None:
+    """Run-level drift is nearly always deliberate, so it is out of scope."""
+    doc = Document()
+    para = doc.add_paragraph()
+    run = para.add_run("emphasis")
+    run.bold = True
+    run.font.size = Pt(24)
+
+    assert _rules_fired(doc, "style-drift") == []
+
+
+def test_style_drift_does_not_blame_the_numbering_level() -> None:
+    """A numbered paragraph's indent comes from the level, not a direct override.
+
+    This is the case a two-layer COM compare gets wrong: the effective
+    indent differs from the style's, so it reads as drift, when in fact no
+    direct formatting is involved at all.
+    """
+    doc = Document()
+    doc.add_paragraph("item", style="List Bullet")
+
+    assert _rules_fired(doc, "style-drift") == []
+
+
+def test_style_drift_names_every_drifted_property_in_one_finding() -> None:
+    doc = Document()
+    para = doc.add_paragraph("text")
+    para.paragraph_format.left_indent = Pt(36)
+    para.paragraph_format.space_before = Pt(24)
+
+    findings = _rules_fired(doc, "style-drift")
+
+    assert len(findings) == 1
+    assert "left indent" in findings[0].message
+    assert "space before" in findings[0].message
+
+
+def test_style_drift_names_the_style_it_deviates_from() -> None:
+    doc = Document()
+    para = doc.add_paragraph("text", style="Heading 2")
+    para.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    assert "heading 2" in _rules_fired(doc, "style-drift")[0].message
+
+
+def test_lint_context_resolve_reaches_other_layers() -> None:
+    """The escape hatch for a rule wanting a slice the sweep did not precompute."""
+    doc = Document()
+    para = doc.add_paragraph("item")
+    num_pr = sub(sub(para._p, "w:pPr"), "w:numPr")
+    sub(num_pr, "w:numId", **{"w:val": "7"})
+
+    ctx = LintContext(doc=doc, paragraphs=list(iter_resolved_paragraphs(doc)))
+
+    assert ctx.resolve(para).num_id == 7
+    assert ctx.resolve(para, stop_below="numbering").num_id is None

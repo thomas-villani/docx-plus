@@ -70,6 +70,33 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cluster's off-by-default rules; an unknown selector raises rather than
   silently matching nothing, since "no rules ran" and "no findings" look
   identical otherwise.
+- **`resolve_effective_formatting(..., stop_below=Layer)`** — resolve with
+  a cascade layer, and everything above it, excluded. This answers a
+  question provenance cannot: provenance names the layer that *won*, not
+  the value that would have surfaced in its absence. Resolving a run with
+  `stop_below="directRun"` gives exactly what it would render as if its
+  own `<w:rPr>` were deleted — character style and all.
+  `style_id` / `style_name` are identity rather than formatting, so they
+  are reported wherever the walk stops. The two numbering layers gate
+  separately, which is what the `styleNumbering` / `numbering` split was
+  for: `stop_below="numbering"` reports the list a paragraph's *style*
+  would give it, ignoring its own `w:numPr`.
+- **`iter_resolved_paragraphs(..., include_baseline=True)`** — populates
+  `.baseline` on each `ResolvedParagraph` and `ResolvedRun` with that
+  target resolved one layer down (`directParagraph` / `directRun`
+  respectively), sharing the sweep's cache. Off by default, since it
+  roughly doubles the resolve work.
+- **`style-drift`** — a lint rule for paragraph-level direct formatting
+  that deviates from the applied style. The counterpart to
+  `redundant-direct-formatting`: the same comparison against the same
+  baseline, split because the two imply opposite actions. It is the
+  sibling COM linter's central rule and the clearest case for resolving
+  OOXML instead: a two-layer compare sees a numbered paragraph's
+  level-supplied indent as drift, because it cannot tell which layer
+  produced the effective value.
+- **`LintContext.resolve()`** — an escape hatch for a rule needing a slice
+  of the cascade the sweep did not precompute. Not cache-shared, and
+  documented as such.
 - **`docx-plus lint`** — the CLI over it. `--rule` / `--exclude` take an
   id or a tag and repeat, `--list-rules` prints the catalogue without
   needing a document, `--json` emits the full finding shape, and
@@ -98,6 +125,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A run inside a bold `Heading 1` resolved `bold=False`.** Word writes a
+  paragraph style and its `w:link` character partner with identical
+  `w:rPr`, and the resolver applied both as independent levels of the
+  style hierarchy. Toggle properties XOR between levels per ECMA-376
+  17.7.3, so every toggle the pair agreed on cancelled itself out: a stock
+  `Heading 1` **paragraph** resolved `bold=True` while a **run** inside it
+  resolved `bold=False`. A `w:link` partner is not a further level — it is
+  the same style's character half — so its toggles now state a value
+  rather than flipping one. The layer still overrides normally, which is
+  what lets a style carrying its character formatting solely on the Char
+  half resolve at all.
+  Found while building the lint baselines, which made the paragraph and
+  run answers directly comparable for the first time; a test now asserts
+  the two targets agree about what a style says.
+- **A run's baseline no longer inherits paragraph-mark formatting.** The
+  `rPr` inside a `pPr` formats the pilcrow, not the runs, and is correctly
+  excluded from a run-target resolve. `redundant-direct-formatting`
+  previously compared runs against the *paragraph's* resolve, so a
+  paragraph mark carrying a size made a run matching it look redundant
+  when deleting the direct property would have changed the rendering.
 - **`resolve_effective_formatting` now resolves style-supplied
   numbering.** Cascade layer 4 read only the paragraph's *direct*
   `w:numPr`, so on a stock `Document()` a paragraph styled
