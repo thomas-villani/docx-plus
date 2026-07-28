@@ -97,6 +97,23 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`LintContext.resolve()`** — an escape hatch for a rule needing a slice
   of the cascade the sweep did not precompute. Not cache-shared, and
   documented as such.
+- **`styles.find_unused_styles`** — the read companion to `delete_style`:
+  which definitions could be removed without breaking a reference. Usage
+  is a **closure**, not a single pass, since a style referenced only by
+  another unused style is itself unused. An unused `w:link` pair collapses
+  to its paragraph half, because `Heading 1 Char` exists only because
+  `Heading 1` does.
+- **`StyleInfo.is_builtin`** — whether a style came from the template or
+  was authored in the document, read from `w:customStyle` (ECMA-376
+  17.7.4.9). Chosen over the known-built-ins table because that table does
+  not cover the table-style gallery, which is most of what a stock
+  template ships.
+- **`duplicate-styles` and `unused-styles`** — the first rules whose
+  subject is a style definition rather than a paragraph, so their findings
+  carry a `style_id` and (for `unused-styles`) no position at all.
+  `duplicate-styles` compares each paragraph's **baseline**, so two styles
+  reaching the same formatting by different `basedOn` routes still match
+  and the author's direct overrides do not confuse it.
 - **Four more lint rules.** `direct-numbering-override` (a paragraph's own
   `w:numPr` fighting the list its style supplies — the rule `stop_below`
   was needed for, and it downgrades `numId=0` to `info` since the opt-out

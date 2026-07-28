@@ -200,6 +200,14 @@ class StyleInfo:
         is_default: True if the style carries ``w:default="1"``.
         is_latent: True only for entries returned with
             ``include_latent=True`` that aren't materialised in styles.xml.
+        is_builtin: True unless the style carries ``w:customStyle="1"``
+            (ECMA-376 17.7.4.9), which marks a style the document defines
+            rather than one the application knows. A stock template
+            materialises well over 160 built-ins, so anything reporting on
+            style *definitions* has to tell them apart from the handful
+            someone actually authored. Note the default is "built-in": a
+            style written by a tool that omits the attribute reads as
+            template-supplied.
     """
 
     style_id: str
@@ -208,6 +216,7 @@ class StyleInfo:
     based_on: str | None = None
     is_default: bool = False
     is_latent: bool = False
+    is_builtin: bool = False
 
 
 class StyleProxy:
@@ -777,9 +786,100 @@ def list_styles(
                 style_type=spec_type,
                 based_on=spec.get("based_on"),
                 is_latent=True,
+                is_builtin=True,
             )
         )
     return materialised + latent
+
+
+def find_unused_styles(doc: Document) -> list[StyleInfo]:
+    """List materialised styles nothing in ``doc`` refers to.
+
+    The read companion to :func:`delete_style`: what could be deleted
+    without breaking a reference. Templates accumulate hundreds of these,
+    and every one of them appears in Word's style gallery.
+
+    Usage is computed as a **closure**, not a single pass. A style
+    referenced only by another *unused* style is itself unused, so the
+    reachable set is grown from the body outwards: body references
+    (``w:pStyle`` / ``w:rStyle`` / ``w:tblStyle``, across headers, footers,
+    notes, and comments as well as the main part) seed it, then each
+    reached style pulls in whatever it points at — ``basedOn``, ``link``,
+    ``next``, ``numStyleLink``, ``styleLink``. Default styles are always
+    reachable, since Word applies them with no reference at all.
+
+    Args:
+        doc: Document to inspect.
+
+    A **linked pair collapses to one entry.** Word writes a paragraph
+    style and its ``w:link`` character partner (``Heading 1`` /
+    ``Heading 1 Char``) as two definitions of one thing, and the partner
+    exists only because the paragraph style does. When both are unused,
+    only the paragraph half is reported; a character style whose partner
+    *is* used is not unused at all.
+
+    Returns:
+        :class:`StyleInfo` for each unreferenced style, in ``styles.xml``
+        order. Latent built-ins are never included — they are not defined
+        in the document, so there is nothing to remove.
+
+    Note:
+        Styles referenced only from ``numbering.xml`` (via a level's
+        ``w:pStyle``) are **not** yet treated as used. Report output is a
+        suggestion rather than a delete list; check before removing.
+
+    Example:
+        >>> from docx import Document
+        >>> from docx_plus.styles import create_style, find_unused_styles
+        >>> doc = Document()
+        >>> _ = create_style(doc, "Orphan", style_type="paragraph")
+        >>> "Orphan" in {info.style_id for info in find_unused_styles(doc)}
+        True
+    """
+    styles_root = doc.styles.element
+    defined = {
+        info.style_id: info
+        for info in list_styles(doc)  # materialised only
+    }
+
+    reachable: set[str] = {
+        style_el.get(qn("w:styleId")) or ""
+        for style_el in styles_root.findall(qn("w:style"))
+        if style_el.get(qn("w:default")) in ("1", "true", "on")
+    }
+    for body_root in _reference_search_roots(doc):
+        for tag in ("pStyle", "rStyle", "tblStyle"):
+            for ref in xpath(body_root, f"//w:{tag}"):
+                value = ref.get(qn("w:val"))
+                if value is not None:
+                    reachable.add(value)
+
+    # Grow the set: anything a reachable style points at is itself reachable.
+    pending = [sid for sid in reachable if sid in defined]
+    while pending:
+        style_el = _find_style_element(styles_root, pending.pop())
+        if style_el is None:
+            continue
+        for tag in ("basedOn", "next", "link", "numStyleLink", "styleLink"):
+            for ref in style_el.findall(qn(f"w:{tag}")):
+                value = ref.get(qn("w:val"))
+                if value is not None and value not in reachable:
+                    reachable.add(value)
+                    pending.append(value)
+
+    unused = {style_id for style_id in defined if style_id not in reachable}
+
+    # Collapse each unused linked pair onto its paragraph half.
+    for style_id in sorted(unused):
+        style_el = _find_style_element(styles_root, style_id)
+        if style_el is None or defined[style_id].style_type != "paragraph":
+            continue
+        link = style_el.find(qn("w:link"))
+        partner = link.get(qn("w:val")) if link is not None else None
+        if partner in unused:
+            unused.discard(partner)
+
+    return [info for style_id, info in defined.items() if style_id in unused]
 
 
 def delete_style(doc: Document, style_id: str, *, force: bool = False) -> None:
@@ -1206,6 +1306,13 @@ def _style_info_from_element(style_el: etree._Element) -> StyleInfo | None:
         style_type=raw_type,  # type: ignore[arg-type]
         based_on=based_id,
         is_default=is_default,
+        # ECMA-376 17.7.4.9: w:customStyle="1" marks a style the *document*
+        # defines rather than one the application knows. Everything without
+        # it came from the template. Preferred over the known-built-ins
+        # table because that table does not cover the table-style gallery
+        # (Light Shading, Medium Grid 3 Accent 2, and 90-odd more), which
+        # is most of what a stock template materialises.
+        is_builtin=style_el.get(qn("w:customStyle")) not in ("1", "true", "on"),
     )
 
 

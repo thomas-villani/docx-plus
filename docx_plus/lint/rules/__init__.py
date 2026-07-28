@@ -5,6 +5,6 @@ decorators, which is what populates the registry. One module per cluster;
 adding a rule is a single new function, with no central list to update.
 """
 
-from docx_plus.lint.rules import formatting, structure, typography
+from docx_plus.lint.rules import formatting, structure, styles, typography
 
-__all__ = ["formatting", "structure", "typography"]
+__all__ = ["formatting", "structure", "styles", "typography"]
