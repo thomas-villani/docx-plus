@@ -25,8 +25,10 @@ Example:
     >>> from docx_plus.lint import lint
     >>> doc = Document()
     >>> _ = doc.add_paragraph("Spaced  out .")
-    >>> sorted({f.rule for f in lint(doc)})
-    ['double-space', 'space-before-punctuation']
+    >>> for finding in lint(doc):
+    ...     print(finding.rule)
+    double-space
+    space-before-punctuation
 """
 
 from docx_plus.lint.engine import lint

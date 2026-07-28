@@ -55,8 +55,9 @@ def lint(
         >>> from docx_plus.lint import lint
         >>> doc = Document()
         >>> _ = doc.add_paragraph("Two  spaces here.")
-        >>> [f.rule for f in lint(doc)]
-        ['double-space']
+        >>> for finding in lint(doc):
+        ...     print(finding.rule, "-", finding.message)
+        double-space - Two or more consecutive spaces between words.
     """
     rules = select_rules(select, exclude)
     # Provenance is always on. It is not an optional extra here: the

@@ -92,6 +92,7 @@ nav:
       - docx_plus.tables.shading: reference/tables-shading.md
       - docx_plus.tables.merge: reference/tables-merge.md
       - docx_plus.tables.read: reference/tables-read.md
+      - docx_plus.lint: reference/lint.md
   - Test Gaps: TEST_GAPS.md
 
 plugins:

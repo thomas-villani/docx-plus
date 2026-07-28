@@ -14,6 +14,7 @@ usage: docx-plus [-h] [--version] <command> ...
   restyle   remap a document's styles onto canonical style ids
   controls  list, set, or clear content-control values
   comments  list comment threads, or resolve / reopen them
+  lint      audit a document for formatting defects
   skill     locate, read, or install the packaged agent skill
 ```
 
@@ -33,6 +34,10 @@ takes neither `--json` nor `-o/--output`.
 Exit codes: `0` on success, `1` for a handled error (bad path, missing output,
 un-coercible value, unknown control tag, unknown comment id), `2` for a usage
 error or when no command is given.
+
+`lint` overloads `1` deliberately: a successful audit that *found something*
+also exits `1`, so the command works as a CI gate. A genuine failure is still
+distinguishable — it prints an `error:` line to stderr and no findings.
 
 ## `inspect`
 
@@ -136,6 +141,74 @@ resolved the thread containing comment 3; wrote triaged.docx
 - `comments resolve FILE ID -o OUT` / `comments reopen FILE ID -o OUT` — toggle
   a thread's resolved state. Resolution is thread-wide in Word, so naming any
   comment in a thread moves the whole thread; an unknown id is a clean error.
+
+## `lint`
+
+Audit a document for formatting defects, wrapping
+[`docx_plus.lint.lint`](reference/lint.md). Read-only: it reports, and
+changes nothing.
+
+```console
+$ docx-plus lint report.docx
+W paragraph 1         heading-level-skip           Outline jumps from level 1 to level 3, skipping level 2.
+                                                   > "Deep Dive"
+W paragraph 3         manual-list                  Paragraph begins with a typed list marker but carries no numbering.
+                                                   > "1. First typed item"
+i paragraph 4         double-space                 Two or more consecutive spaces between words.
+                                                   > "Body with  two spaces and a space ."
+i paragraph 9, run 0  redundant-direct-formatting  Run sets size directly to the value it already inherits.
+                                                   > "redundant"
+
+8 findings (4 warning, 4 info).
+```
+
+Excerpts are quoted because several rules are about whitespace nobody can
+see; a tab prints as `\t`.
+
+**Selecting rules.** `--rule` and `--exclude` both take a rule **id** or a
+**tag**, and both repeat:
+
+```console
+$ docx-plus lint report.docx --rule typography      # one cluster
+$ docx-plus lint report.docx --exclude double-space # everything but one rule
+$ docx-plus lint report.docx --rule whitespace --rule structure
+```
+
+Naming a tag also **enables** that cluster's off-by-default rules — that is
+how you opt into the heuristic ones without listing them individually. A
+selector matching no rule or tag is an error rather than a silent empty
+result, since "no findings" and "no rules ran" look identical otherwise.
+
+**The catalogue.** `--list-rules` needs no document:
+
+```console
+$ docx-plus lint --list-rules
+double-space                 consistency  info     on   [typography,whitespace]
+                             Two or more spaces between words in body text.
+heading-level-skip           structural   warning  on   [headings,structure]
+                             The outline jumps a level (e.g. Heading 1 straight to Heading 3).
+mixed-run-formatting         consistency  info     off  [formatting]
+                             Runs within one paragraph disagree on font or size.
+...
+10 rules, 8 on by default.
+```
+
+The `consistency` / `structural` / `policy` column is the rule's **kind**,
+and it is worth understanding before you act on output:
+
+- **`consistency`** — the value fights the document's *own* applied styles.
+  The document supplies the target, so the finding says "this deviates from
+  what you established elsewhere", not "this is wrong".
+- **`structural`** — an objective defect: an outline that skips a level, a
+  cross-reference to a bookmark that does not exist.
+- **`policy`** — the value differs from a target *you* supplied. None ship
+  enabled, because the library has no opinion about your house style.
+
+`--json` emits the full finding shape — rule, kind, severity, message,
+location, observed / expected — for piping into `jq` or a report.
+
+`--no-tables` skips paragraphs inside table cells. Headers, footers,
+footnotes, endnotes, and comments are not audited at all yet.
 
 ## `skill`
 
