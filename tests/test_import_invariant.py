@@ -12,6 +12,12 @@ would otherwise slip past the absolute-name match. One residual gap remains by
 design: dynamic imports (``importlib.import_module(...)``) are invisible to a
 static AST scan; the library does not use them in capability code, and this is
 documented rather than enforced.
+
+``CAPABILITIES`` is deliberately a closed list rather than "every subpackage".
+The **composing layers** — ``cli/`` and ``lint/`` — sit *above* the capability
+modules and legitimately import across them; that is their whole job. They are
+excluded here on purpose, so do not add them to the set. Everything that
+reaches OOXML directly is a capability and belongs in the list.
 """
 
 from __future__ import annotations
