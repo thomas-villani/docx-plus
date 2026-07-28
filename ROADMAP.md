@@ -155,6 +155,16 @@ capability module and the rule only decides what is worth reporting:
   write
 - `mixed-language` → **`ResolvedFormatting.lang`**
 
+**Running the CLI against a realistic document found two false positives
+nothing in the unit tests would have.** `trailing-whitespace` fired on
+`"See "` before an unrendered `REF` — a field contributes its *cached
+result*, empty in a freshly-written document, so every cross-reference and
+page number reported. And `manual-heading-formatting` fired on every
+caption, because the template's `Caption` style is bold; the rule now
+requires the paragraph be *unstyled*, since anything carrying a
+non-default style was styled deliberately whatever it looks like. Both are
+the kind of thing only an end-to-end run surfaces.
+
 **`unused-styles` was unusable as first written** and is the sharpest
 lesson of the batch. Against a stock `Document()` with two paragraphs it
 produced **165 findings** — the entire python-docx style gallery, which is

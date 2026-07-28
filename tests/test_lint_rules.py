@@ -14,7 +14,7 @@ from docx.shared import Pt, Twips
 from docx.text.paragraph import Paragraph
 
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import sub
+from docx_plus.core.oxml import build_complex_field, sub
 from docx_plus.lint import Finding, LintContext, lint
 from docx_plus.styles import iter_resolved_paragraphs, resolve_effective_formatting
 
@@ -839,3 +839,53 @@ def test_font_outliers_is_off_by_default() -> None:
     _run_with_font(doc, "pasted in", "Times New Roman", 12)
 
     assert "font-outliers" not in {f.rule for f in lint(doc)}
+
+
+# --------------------------------------------------------------------------
+# False positives found by running the CLI against a realistic document.
+# --------------------------------------------------------------------------
+
+
+def test_trailing_whitespace_ignores_a_paragraph_containing_a_field() -> None:
+    """ "See " before an unrendered REF is not trailing whitespace.
+
+    A field contributes its *cached result*, which is empty in a freshly
+    written document, so the space doing its job looks like sloppiness.
+    Every cross-reference and page number would otherwise report.
+    """
+    doc = Document()
+    para = doc.add_paragraph("See ")
+    build_complex_field(para._p, " REF chapter1 ", "")
+
+    assert _rules_fired(doc, "trailing-whitespace") == []
+
+
+def test_trailing_whitespace_still_fires_without_a_field() -> None:
+    """The field guard must not swallow the ordinary case."""
+    doc = Document()
+    doc.add_paragraph("See ")
+
+    assert len(_rules_fired(doc, "trailing-whitespace")) == 1
+
+
+def test_manual_heading_formatting_ignores_a_styled_paragraph() -> None:
+    """A paragraph carrying any non-default style was styled deliberately.
+
+    The template's ``Caption`` style is bold, so without this the rule
+    reports every caption in the document.
+    """
+    doc = Document()
+    para = doc.add_paragraph("Figure 1: A diagram")
+    sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": "Caption"})
+
+    assert _rules_fired(doc, "manual-heading-formatting") == []
+
+
+def test_manual_heading_formatting_still_fires_on_the_default_style() -> None:
+    """An explicit Normal is still unstyled body text."""
+    doc = Document()
+    para = doc.add_paragraph()
+    sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": "Normal"})
+    para.add_run("Background and Scope").bold = True
+
+    assert len(_rules_fired(doc, "manual-heading-formatting")) == 1

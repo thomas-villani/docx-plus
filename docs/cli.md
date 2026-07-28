@@ -174,6 +174,12 @@ $ docx-plus lint report.docx --exclude double-space # everything but one rule
 $ docx-plus lint report.docx --rule whitespace --rule structure
 ```
 
+The clusters are `typography`, `whitespace`, `structure`, `headings`,
+`lists`, `formatting`, `fonts`, `styles`, `references`, `fields`,
+`captions`, and `language`. Rules carry more than one, so `--rule styles`
+picks up the style-definition rules *and* the direct-formatting ones that
+judge against a style.
+
 Naming a tag also **enables** that cluster's off-by-default rules — that is
 how you opt into the heuristic ones without listing them individually. A
 selector matching no rule or tag is an error rather than a silent empty
@@ -190,8 +196,13 @@ heading-level-skip           structural   warning  on   [headings,structure]
 mixed-run-formatting         consistency  info     off  [formatting]
                              Runs within one paragraph disagree on font or size.
 ...
-10 rules, 8 on by default.
+20 rules, 16 on by default.
 ```
+
+The four that ship **off** are the ones whose thresholds are a judgement
+rather than a fact — `mixed-run-formatting`, `stray-empty-paragraph`,
+`font-outliers`, and `unused-styles`. Enable them by id or by tag when you
+want them.
 
 The `consistency` / `structural` / `policy` column is the rule's **kind**,
 and it is worth understanding before you act on output:
