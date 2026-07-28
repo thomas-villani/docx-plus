@@ -97,7 +97,7 @@ svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewB
 
 <!-- left column -->
 <text x="72" y="196" font-family="{SANS}" font-size="80" font-weight="700"
-      fill="{INK}">docx<tspan fill="{ACCENT}">_plus</tspan></text>
+      fill="{INK}">docx<tspan fill="{ACCENT}">-plus</tspan></text>
 <rect x="74" y="222" width="150" height="5" rx="2.5" fill="url(#rule)"/>
 
 <text x="72" y="288" font-family="{SANS}" font-size="30" fill="{MUTED}">OOXML-level extensions for</text>
