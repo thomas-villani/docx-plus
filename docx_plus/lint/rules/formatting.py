@@ -18,6 +18,7 @@ this, leave it alone".
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING
 
 from docx_plus.lint.models import Issue, Location
@@ -283,3 +284,88 @@ def mixed_run_formatting(ctx: LintContext) -> Iterator[Issue]:
                     ),
                     observed=rendered,
                 )
+
+
+# A combination has to be genuinely marginal before it is worth naming.
+# Both thresholds must hold: a share test alone flags a legitimate 5%
+# secondary font in a short document, and a count test alone flags nothing
+# in a long one.
+_OUTLIER_MAX_SHARE = 0.05
+_OUTLIER_MAX_RUNS = 5
+
+
+@rule(
+    id="font-outliers",
+    kind="consistency",
+    severity="info",
+    description="A font or size combination used by only a handful of runs.",
+    tags={"formatting", "fonts"},
+    default_on=False,
+)
+def font_outliers(ctx: LintContext) -> Iterator[Issue]:
+    """Flag thinly-populated font / size combinations against the dominant set.
+
+    What pasting from three sources leaves behind: a document that is 98%
+    Calibri 11 with a scattering of Times New Roman 12 and Arial 10.5 that
+    nobody can find by eye.
+
+    A consistency rule in the strict sense — the document supplies the
+    target. There is no house font here, only "these forty runs disagree
+    with the other two thousand", and what to do about it stays the
+    author's call.
+
+    Off by default. The thresholds are a judgement about what counts as
+    marginal, and a document that genuinely mixes fonts by design would
+    report every one of them.
+    """
+    combinations = Counter(
+        (r.formatting.font_name, r.formatting.font_size)
+        for resolved in ctx.paragraphs
+        for r in resolved.runs
+        if r.run.text.strip()
+    )
+    total = sum(combinations.values())
+    if total == 0:
+        return
+
+    outliers = {
+        combination
+        for combination, count in combinations.items()
+        if count <= _OUTLIER_MAX_RUNS and count / total <= _OUTLIER_MAX_SHARE
+    }
+    if not outliers or len(outliers) == len(combinations):
+        # Everything being an outlier means there is no dominant set to be
+        # an outlier *from* — a document of uniformly scattered formatting
+        # needs restyling, not a list of every run in it.
+        return
+
+    dominant = combinations.most_common(1)[0][0]
+    for resolved in ctx.paragraphs:
+        for resolved_run in resolved.runs:
+            combination = (resolved_run.formatting.font_name, resolved_run.formatting.font_size)
+            if not resolved_run.run.text.strip() or combination not in outliers:
+                continue
+            yield Issue(
+                message=(
+                    f"Run uses {_describe_font(combination)}, which appears in "
+                    f"{combinations[combination]} of {total} runs; most of this "
+                    f"document is {_describe_font(dominant)}."
+                ),
+                location=Location(
+                    paragraph_index=resolved.index,
+                    run_index=resolved_run.index,
+                    style_id=resolved.formatting.style_id,
+                    excerpt=ctx.excerpt(resolved.index),
+                ),
+                observed=_describe_font(combination),
+                expected=_describe_font(dominant),
+            )
+
+
+def _describe_font(combination: tuple[str | None, float | None]) -> str:
+    """Render a (font, size) pair for a report line."""
+    name, size = combination
+    parts = [name or "an unnamed font"]
+    if size is not None:
+        parts.append(f"{size}pt")
+    return " ".join(parts)
