@@ -45,6 +45,37 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GitHub link and per-page "edit" actions; changelog and contributing
   guide added to the nav.
 
+- **`lint/` — the document linter.** A new *composing* layer: like `cli/`
+  it sits above the capability modules and reads across them, adding no
+  OOXML knowledge of its own. `lint(doc)` audits a document and returns
+  `Finding`s; nothing is modified, and applying fixes is deliberately not
+  in this release.
+  Rules divide into three **kinds**, which is what keeps an opinionated
+  feature inside a lean library. A `consistency` rule reports that a value
+  fights the document's *own* applied styles — the document supplies the
+  target, so no opinion is imposed. A `structural` rule reports an
+  objective defect. A `policy` rule compares against a target *you*
+  supply, and none ship enabled, which a test enforces.
+  Nine rules to start: `double-space`, `trailing-whitespace`,
+  `space-before-punctuation`, `indent-by-whitespace`,
+  `stray-empty-paragraph`, `heading-level-skip`, `empty-heading`,
+  `manual-list`, `redundant-direct-formatting`, and `mixed-run-formatting`.
+  The last two are where resolving OOXML beats asking Word: `w:rStyle`,
+  numbering-level `rPr`, and table-style conditional formatting are all
+  invisible behind an effective value, and `FormattingSource` names the
+  exact layer. `manual-list` is only possible at all because numbering now
+  resolves through the style chain.
+  Rules register by decorator, so adding one is a single function.
+  Selection is by rule id **or tag**, where naming a tag also enables that
+  cluster's off-by-default rules; an unknown selector raises rather than
+  silently matching nothing, since "no rules ran" and "no findings" look
+  identical otherwise.
+- **`docx-plus lint`** — the CLI over it. `--rule` / `--exclude` take an
+  id or a tag and repeat, `--list-rules` prints the catalogue without
+  needing a document, `--json` emits the full finding shape, and
+  `--no-tables` skips table cells. It exits **`1` when it finds
+  something**, so it works as a CI gate; a genuine failure is still
+  distinguishable by its `error:` line on stderr.
 - **`styles.iter_resolved_paragraphs`** — a document-wide cascade sweep,
   resolving every paragraph and run against one shared cache and yielding
   lazily in document order. `resolve_effective_formatting` answers "what
