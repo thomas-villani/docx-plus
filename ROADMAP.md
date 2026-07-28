@@ -512,6 +512,17 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   SDTs, vs. the inline `w:placeholder` text `controls/` already supports.
 - **Password-protected forms** — legacy hash algorithm, paired with
   `protect_document`. (`protection/`.)
+- **Resolve beneath the direct layer** — a cascade query for "what would
+  this target resolve to *without* its own direct formatting". Provenance
+  reports only the layer that won, which is enough to say a property came
+  from `directRun` but not what would have applied instead. Two v0.6 rules
+  are constrained by its absence: `redundant-direct-formatting` has to
+  skip runs carrying a `w:rStyle` (the paragraph-level resolve is the
+  wrong baseline for those, since it drops the character style too), and
+  `direct-numbering-override` could not be written at all — firing on any
+  direct `w:numPr` would flag every list made with `apply_list`.
+  Plausibly a `stop_below: Layer` argument on the resolver rather than a
+  new entry point. (`styles/`.)
 - **Sweep the non-body parts** — `iter_resolved_paragraphs` covers the
   main document body only, so any lint rule over headers, footers,
   footnotes, endnotes, or comments has a blind spot there. Confirmed as
