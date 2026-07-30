@@ -345,8 +345,23 @@ formatting belongs on the style's own `w:rPr` / `w:pPr`.
 or malformed, set `partial=True` on the result and return the unresolved
 theme name in the relevant field.
 
-Theme color transforms (`@themeShade`, `@themeTint`, `@lumMod`, `@lumOff`)
-must be applied to the base theme color. Reference: ECMA-376 17.18.40.
+Theme color transforms (`@themeShade`, `@themeTint`) must be applied to the
+base theme color. Reference: ECMA-376 17.18.40. `@lumMod` / `@lumOff` are
+DrawingML-only — `w:color` cannot carry them, so they are never part of the
+cascade.
+
+Which scheme slot a `w:themeColor` name resolves to is decided by
+`settings.xml`'s `<w:clrSchemeMapping>`, **not** by a fixed alias table.
+The semantic names (`text1`, `background1`, `text2`, `background2`,
+`accent1`–`accent6`, `hyperlink`, `followedHyperlink`) each follow their
+matching attribute; the direct slot names (`dark1`, `light1`, `dark2`,
+`light2`) never do. An absent element, or an omitted attribute, takes
+Word's default (`t1`→`dark1`, `bg1`→`light1`, and so on).
+
+Do the transform arithmetic exactly rather than in floating point: the
+values land on integer boundaries where a float round-trip yields the
+wrong byte, and exactness is what makes truncating the final channel safe.
+Measured against Word — see `tests/test_theme_word_verified.py`.
 
 ### The `ResolvedFormatting` dataclass
 

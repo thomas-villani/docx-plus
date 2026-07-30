@@ -220,15 +220,30 @@ are the parametrised table in `tests/test_cascade_word_verified.py`.
 
 ### Theme color resolution
 
-Implemented in `styles/theme.py`. `load_theme(doc)` at `theme.py` reads
+Implemented in `styles/theme.py`. `load_theme(doc)` reads
 `word/theme/theme1.xml` via the document part's `theme` relationship and
-returns a `ThemeColors(scheme=...)`. `resolve_theme_color(theme, name,
-*, tint=None, shade=None)` translates Word's `ST_ThemeColor` aliases
-(`text1`→`dk1`, `background1`→`lt1`, etc. per ECMA-376 17.18.97), looks
-up the base hex, then applies `themeTint` (toward white) or `themeShade`
-(toward black). `apply_lum_mod` and `apply_lum_off` implement the
-finer-grained luminosity transforms (ECMA-376 17.18.40); they are not
-wired into the cascade walker yet but are independently tested.
+returns a `ThemeColors(scheme=..., fonts=..., mapping=...)`.
+`resolve_theme_color(theme, name, *, tint=None, shade=None)` resolves the
+`ST_ThemeColor` name to a scheme slot, looks up the base hex, then
+applies `themeTint` (toward white) or `themeShade` (toward black).
+
+Name → slot is **per-document**, not a fixed alias table: `settings.xml`
+carries a `<w:clrSchemeMapping>` redirecting the semantic names (`text1`,
+`background1`, `accent1`, `hyperlink`, …). The direct slot names
+(`dark1` / `light1` / `dark2` / `light2`) bypass it. Measured against
+Word — a document that remaps `t1` renders `text1` white, and treating
+the mapping as fixed resolved it to black.
+
+The transforms use exact rational arithmetic rather than `colorsys`,
+because they land on integer boundaries where binary floating point
+gives the wrong byte. Verified against Word to within one unit per
+channel; `tests/test_theme_word_verified.py` enumerates the residual.
+
+`apply_lum_mod` and `apply_lum_off` implement the DrawingML luminosity
+transforms (ECMA-376 17.18.40). They are **not** part of the cascade
+path and cannot be: `w:color` has no attribute that carries them, so a
+cascade input producing one does not exist. They share this module's
+arithmetic but are unverified against Word for the same reason.
 
 Theme failures are **graceful**: if the theme part is missing, malformed,
 or names an unknown color, `_resolve_color` at `inspect.py:605-620` sets

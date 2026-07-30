@@ -166,8 +166,8 @@ Read-only theme color resolution. Theme writing is a v0.2 goal.
 | Symbol | Kind | Notes |
 |---|---|---|
 | `load_theme(doc)` | function | Read `word/theme/theme1.xml` (`a:clrScheme` + `a:fontScheme`). Returns `None` on missing/malformed |
-| `ThemeColors(scheme, fonts={})` | dataclass (frozen) | Holds the parsed `a:clrScheme` and `a:fontScheme` |
-| `ThemeColors.base(theme_name)` | method | Lookup color by Word `ST_ThemeColor` name; returns `None` for unknowns |
+| `ThemeColors(scheme, fonts={}, mapping={...})` | dataclass (frozen) | Holds the parsed `a:clrScheme`, `a:fontScheme`, and the document's `<w:clrSchemeMapping>` |
+| `ThemeColors.base(theme_name)` | method | Lookup color by Word `ST_ThemeColor` name, resolved through `mapping`; returns `None` for unknowns |
 | `ThemeColors.font(token)` | method | Lookup typeface by `ST_Theme` font token (`minorHAnsi`, …); returns `None` for unknowns |
 | `resolve_theme_color(theme, name, *, tint=None, shade=None)` | function | Translate aliases + apply tint/shade. Returns hex `RRGGBB` |
 | `resolve_theme_font(theme, token)` | function | Resolve a `*Theme` font token to its concrete typeface (e.g. `minorHAnsi` → `Calibri`) |

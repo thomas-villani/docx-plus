@@ -105,14 +105,22 @@ def test_apply_theme_tint_ceils_to_white_at_00() -> None:
 
 
 def test_apply_theme_shade_known_value() -> None:
-    # accent1 = 4F81BD (Office default); themeShade="80" → 254062
-    # Verified against Word's rendering of the same input.
-    assert apply_theme_shade("4F81BD", "80") == "254062"
+    # accent1 = 4F81BD (Office default); themeShade="80" → 244061.
+    # Measured: a probe document exported from Word both as filtered HTML
+    # and as PDF reports 244061 for this input. The value asserted here
+    # before was 254062, which nothing rendered.
+    assert apply_theme_shade("4F81BD", "80") == "244061"
 
 
 def test_apply_lum_mod_halves_lightness() -> None:
-    # Red has L=0.5; lumMod=50000 (factor 0.5) → L=0.25 → 800000.
-    assert apply_lum_mod("FF0000", 50000) == "800000"
+    # Red has L=0.5; lumMod=50000 (factor 0.5) → L=0.25 → channels land on
+    # exactly 127.5, which truncates to 7F.
+    #
+    # Unlike the themeTint / themeShade values in this file, this one is NOT
+    # measured against Word: lumMod is a DrawingML transform and `w:color`
+    # cannot carry it, so there is no cascade input that would render it.
+    # It follows the same arithmetic as its measured siblings.
+    assert apply_lum_mod("FF0000", 50000) == "7F0000"
 
 
 def test_apply_lum_mod_identity_at_100000() -> None:
