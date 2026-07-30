@@ -6,7 +6,61 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`resolve_paragraph_spacing(paragraph) -> ParagraphSpacing`** — the
+  vertical space Word actually leaves above and below a paragraph, as
+  opposed to what the cascade declares. It folds in `<w:contextualSpacing>`
+  suppression and Word's space-after/space-before arithmetic (below), so
+  one paragraph's `space_below` always equals the next one's `space_above`.
+  Alongside those two it reports `declared_before` / `declared_after`, the
+  resolved `contextual_spacing` flag, and which edges were suppressed.
+
 ### Fixed
+
+- **`<w:contextualSpacing>` was ignored completely, so every list
+  paragraph in a stock-template document got the wrong spacing.** Fourteen
+  of Word's built-in styles carry the flag — `ListParagraph`, `Title` and
+  every `List*` / `ListBullet*` / `ListNumber*` — and the resolver reported
+  their declared space between adjacent items where Word renders none.
+  Measuring it turned up a second divergence nobody was looking for:
+
+    - **Word does not add space-after to the next paragraph's
+      space-before.** It lays down the space-after and then tops it up to
+      the space-before if that is larger, so an ordinary pair sits
+      `max(after, before)` apart, not `after + before`. Anything computing
+      a gap by summing the two resolved values was overstating it, with or
+      without `contextualSpacing` involved.
+    - **The suppression removes one of those two terms, not the whole
+      gap.** Each edge answers only to its own paragraph's flag, and the
+      top-up is still measured from the **declared** space-after even when
+      that space-after was itself suppressed — a contextual paragraph with
+      20pt after followed by a non-contextual one with 30pt before leaves
+      10pt, not 30pt.
+    - **"Same style" means `styleId` identity and nothing else.**
+      Numbering plays no part: two `ListParagraph` paragraphs in unrelated
+      lists, or at different levels of one list, suppress exactly as two
+      in the same list do. A `basedOn` child is a *different* style, even
+      though it inherits the flag.
+    - **A content control is transparent.** A `<w:sdt>` wrapping the
+      neighbour, or holding a paragraph between the pair, leaves the
+      paragraphs adjacent. A table between them does not.
+
+  `ResolvedFormatting` gains `contextual_spacing`, resolved through the
+  ordinary cascade (`docDefaults` included) as a plain override rather than
+  an ECMA-376 17.7.3 toggle. `spacing_before` / `spacing_after` are
+  deliberately **unchanged** and still report what the cascade declares —
+  whether either is applied depends on the paragraph's neighbours, and the
+  linter's `style-drift` rule compares direct formatting against a style,
+  which needs the declared numbers. The new
+  `resolve_paragraph_spacing` answers the layout question.
+
+  Measured across 111 gaps read out of Word's own layout, including a full
+  4×4×2×2 sweep of space-after × space-before × the flag on each
+  paragraph; the resolver now matches every one. As with the theme work,
+  COM could not supply the ground truth — `ParagraphFormat.SpaceBefore`
+  reports what the cascade says, which is the thing in dispute — so the
+  probes were exported to PDF and the paragraph baselines measured.
 
 - **Theme colours ignored the document's `<w:clrSchemeMapping>`, and the
   tint/shade arithmetic did not match Word.** Two independent problems,

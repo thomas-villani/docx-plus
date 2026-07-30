@@ -228,8 +228,28 @@ correctly and uselessly is a rule nobody runs twice.
   PDF independently, which agreed, and only then was the fitting worth
   doing.
 
-  Still measured only by inference, and next in line: `w:contextualSpacing`
-  and the cell cascade.
+- **Spacing was wrong twice over, and one of them nobody was looking
+  for.** `<w:contextualSpacing>` was ignored outright, which is every list
+  paragraph in a stock-template document. Measuring it turned up the
+  second: Word does not *add* one paragraph's space-after to the next
+  one's space-before, it tops the first up to the second, so a pair sits
+  `max(after, before)` apart. The two interact — the top-up is measured
+  from the declared space-after even when that space-after was itself
+  suppressed. 111 gaps measured, all matching; see
+  `tests/test_contextual_spacing_word_verified.py`.
+
+  Method note again: COM was no use here either. `SpaceBefore` reports what
+  the cascade declares, which is precisely what `contextualSpacing`
+  overrides, so the answer had to come out of Word's layout — PDF export,
+  paragraph baselines measured.
+
+  Still measured only by inference, and next in line: the cell cascade
+  (`_apply_cell_cascade` is docDefaults plus the table style and nothing
+  else). One structural question stayed unmeasured: whether a **continuous
+  section break** between two same-style contextual paragraphs breaks the
+  suppression. Word turned the probe's break into a page break twice; the
+  resolver treats the pair as adjacent, which is what sibling adjacency
+  implies.
 - **Paragraph-mark `rPr` is not a run baseline.** It formats the pilcrow.
   The old paragraph-level baseline folded it in, so a run matching it
   looked redundant when deleting the property would have changed the

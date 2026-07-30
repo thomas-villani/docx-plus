@@ -31,6 +31,7 @@ docx_plus/
 ├── styles/                  # inspect, modify, theme
 │   ├── __init__.py          # re-exports every public symbol from the submodules
 │   ├── inspect.py           # resolve_effective_formatting + ResolvedFormatting + FormattingSource
+│   │                        # + resolve_paragraph_spacing (contextualSpacing / the applied gap)
 │   ├── modify.py            # create_style, modify_style, apply_style, delete_style,
 │   │                        # ensure_style, find_matching_style, remap_styles, list_styles,
 │   │                        # StyleProxy, StyleInfo, _BUILTIN_STYLES table
@@ -217,6 +218,49 @@ Worked cases:
 This rule was settled by measuring live Word rather than by reading the
 spec, whose prose admits several incompatible readings. The measurements
 are the parametrised table in `tests/test_cascade_word_verified.py`.
+
+### Paragraph spacing: the one property the cascade cannot finish
+
+Every other field on `ResolvedFormatting` is a pure function of the
+cascade. Spacing is not, because `<w:contextualSpacing>` suppresses space
+based on the paragraph's **neighbours**. The resolver keeps the two
+concerns apart rather than blurring them:
+
+- `spacing_before` / `spacing_after` stay what the cascade declares, and
+  `contextual_spacing` carries the flag (a plain override property, not an
+  ECMA-376 17.7.3 toggle — `docDefaults` included). Keeping them declared
+  is what lets `lint`'s `style-drift` rule compare direct formatting
+  against a style, which is a cascade question.
+- `resolve_paragraph_spacing(paragraph)` answers the layout question,
+  returning a `ParagraphSpacing` whose `space_above` / `space_below` are
+  the gaps actually applied. `space_below` of one paragraph equals
+  `space_above` of the next by construction.
+
+Both halves of the arithmetic were measured, and both diverged from what
+the resolver assumed:
+
+```
+gap = after + max(0, before - after)          # i.e. max(after, before)
+```
+
+Word lays down the space-after and **tops it up** to the space-before
+rather than adding the two. `<w:contextualSpacing>` then removes one of
+those two terms — each edge governed only by its own paragraph's flag —
+and, crucially, the top-up is still measured from the **declared**
+space-after even when that space-after was suppressed. That last detail is
+what rules out the obvious "zero the suppressed edge, then take the max".
+
+"Same style" is `styleId` identity: numbering plays no part, and a
+`basedOn` child is a different style. Adjacency is sibling adjacency, with
+`_adjacent_paragraph` stepping over bookmark and comment markers,
+descending into and climbing out of `<w:sdtContent>` (content controls are
+transparent), and stopping at a table.
+
+Measured across 111 gaps read out of Word's own layout — COM cannot help
+here, since `ParagraphFormat.SpaceBefore` reports the cascade value that
+`contextualSpacing` overrides, so the probes were exported to PDF and the
+baselines measured. `tests/test_contextual_spacing_word_verified.py` holds
+the grid.
 
 ### Theme color resolution
 
