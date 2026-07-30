@@ -153,11 +153,16 @@ The cascade is walked at `inspect.py:253-317`
 
 1. **`docDefaults`** — `w:docDefaults/{w:rPrDefault, w:pPrDefault}` in
    `styles.xml`. Applied by `_apply_doc_defaults` at `inspect.py:337-353`.
-2. **Table style** — only if the target is inside a `w:tbl`. The base
-   pPr/rPr from each style in the basedOn chain is applied. Applied by
-   `_apply_table_style_chain` at `inspect.py:402-422`. **Conditional
-   formatting** (`w:tblStylePr` for firstRow/lastRow/etc.) is recognised in
-   SPEC §4 step 2 but deferred — see `TEST_GAPS.md` N2.
+2. **Table style** — only if the target is inside a `w:tbl`. For each
+   style in the basedOn chain, its base pPr/rPr is applied and then its
+   matching **conditional branches** (`w:tblStylePr` for
+   firstRow/lastRow/bands/corners), so a child level's base still
+   overrides a parent level's conditional. Applied by
+   `_apply_table_style_chain`. Which branches match is decided by
+   `TableContext` — the cell's position *and* the table's `w:tblLook`
+   *and*, for bands, a declared band size. See SPEC "Conditional table
+   formatting"; the precedence order deliberately differs from the one
+   ECMA-376 17.7.6.5 lists, because Word's does.
 3. **Paragraph style chain** — the style named by `w:pStyle` plus every
    `w:basedOn` ancestor. Walked by `_collect_style_chain` at
    `inspect.py:376-399`, then applied root-to-leaf so the most-specific

@@ -39,7 +39,7 @@ Requires Python 3.10+. The only dependencies are `python-docx` and
 | **[Comments](ARCHITECTURE.md#76-anchored-comments)** | Anchored comments with the body-side range markers python-docx skips, so "show in document" works. Threading — reply / resolve / reopen (v0.4) — plus durable ids and author presence (v0.5). |
 | **[Tracked changes](ARCHITECTURE.md#711-tracked-changes)** | Mark runs as insertions / deletions, read revisions with author and timestamp, accept / reject, toggle track-changes mode (v0.3). |
 | **[Fields](ARCHITECTURE.md#7-fields-and-protection)** | `PAGE` / `NUMPAGES` / `DATE` and generic complex fields; mark fields dirty so Word recalculates on next open. |
-| **[Tables](ARCHITECTURE.md#714-table-formatting)** | Table / row / cell borders and shading, merge and unmerge, `w:hMerge` normalization, direct-formatting reads (v0.5). Conditional `<w:tblStylePr>` branches resolve in ECMA-376 17.7.6.5 precedence order. |
+| **[Tables](ARCHITECTURE.md#714-table-formatting)** | Table / row / cell borders and shading, merge and unmerge, `w:hMerge` normalization, direct-formatting reads (v0.5). Conditional `<w:tblStylePr>` branches resolve the way Word applies them — gated on `w:tblLook`, banding gated on a declared band size. |
 | **[Numbering](ARCHITECTURE.md#713-custom-numbering)** | Custom bullet and multi-level numbered list definitions, applied and restarted per paragraph (v0.5). |
 | **[Layout](ARCHITECTURE.md#77-layout)** | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders (v0.2). |
 | **[Bookmarks](ARCHITECTURE.md#78-bookmarks-and-cross-references)** | Paired body markers plus `REF` / `PAGEREF` cross-references (v0.2). |

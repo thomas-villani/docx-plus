@@ -55,14 +55,26 @@ class TableContext:
     :func:`resolve_effective_formatting` to derive the context
     automatically from the cell's parent row / table.
 
-    Band size: by default rows alternate band1 / band2 every row. When
-    the table instance's ``<w:tblPr>`` carries a ``<w:tblStyleRowBandSize
-    w:val="N"/>`` (resp. ``<w:tblStyleColBandSize>``), bands span ``N``
-    rows / columns each. Note that v0.2 does not yet walk the table
-    **style chain** looking for these attributes — only the table
-    instance's own ``tblPr`` is consulted. This is sufficient for tables
-    where the application or user explicitly set the band size, but
-    misses style-defined band sizes (deferred to v0.3+).
+    **Position is not enough.** A table carries a ``<w:tblLook>`` saying
+    which conditional branches it wants — the "Header Row" / "First
+    Column" / "Banded Rows" tick-boxes in Word's Table Design tab. A cell
+    in the first row of a table whose ``tblLook`` clears ``firstRow`` gets
+    no ``firstRow`` formatting at all. The four ``*_enabled`` attributes
+    carry those flags; the derived context reads them from the table, and
+    they default to True so a hand-built context behaves like a table with
+    no ``<w:tblLook>`` (which Word treats as "everything enabled").
+
+    Banding is folded into the ``is_band*`` attributes rather than
+    exposed as flags, because deciding them needs the whole table:
+
+    - Bands exist only when a ``<w:tblStyleRowBandSize>`` /
+      ``<w:tblStyleColBandSize>`` is declared, on the table instance or
+      anywhere in its style chain. **Absent means no banding** — it is
+      not a band size of 1. Instance beats style.
+    - The stripe sequence starts at row / column 0 *unless* the matching
+      ``firstRow`` / ``firstCol`` conditional actually paints that line,
+      in which case it starts at 1. The ``tblLook`` flag alone does not
+      shift it; the style must also define the branch.
 
     Scope: this context selects which ``<w:tblStylePr>`` branches apply,
     but only their **run / paragraph** properties are resolved. Cell-,
@@ -81,11 +93,19 @@ class TableContext:
         is_last_row: Cell is in the last ``<w:tr>``.
         is_first_col: Cell is the first ``<w:tc>`` of its row.
         is_last_col: Cell is the last ``<w:tc>`` of its row.
-        is_band_row: Cell is in a "band1" horizontal stripe (first band).
-        is_band_col: Cell is in a "band1" vertical stripe (first band).
-        is_band2_row: Cell is in a "band2" horizontal stripe (second
-            band — the complement of band1 at default band-size=1).
+        is_band_row: Cell is in a "band1" horizontal stripe.
+        is_band_col: Cell is in a "band1" vertical stripe.
+        is_band2_row: Cell is in a "band2" horizontal stripe.
         is_band2_col: Cell is in a "band2" vertical stripe.
+        first_row_enabled: The table's ``tblLook`` asks for ``firstRow``
+            formatting. When False the ``firstRow`` (and ``nwCell`` /
+            ``neCell``) branches are suppressed even in row 0.
+        last_row_enabled: As above for ``lastRow`` / ``swCell`` /
+            ``seCell``.
+        first_col_enabled: As above for ``firstCol`` / ``nwCell`` /
+            ``swCell``.
+        last_col_enabled: As above for ``lastCol`` / ``neCell`` /
+            ``seCell``.
     """
 
     is_first_row: bool = False
@@ -96,28 +116,54 @@ class TableContext:
     is_band_col: bool = False
     is_band2_row: bool = False
     is_band2_col: bool = False
+    first_row_enabled: bool = True
+    last_row_enabled: bool = True
+    first_col_enabled: bool = True
+    last_col_enabled: bool = True
 
 
-# ``<w:tblStylePr w:type=...>`` values in ECMA-376 17.7.6.5 application
-# order: later entries override earlier ones. ``wholeTable`` always
-# applies; the rest depend on the resolver's :class:`TableContext`.
-# Rows precede columns so that column branches win at row/col intersections
-# (which is why corner branches exist as the final override layer).
+# ``<w:tblStylePr w:type=...>`` values in application order: later entries
+# override earlier ones. Which of them are candidates for a given cell is
+# :func:`_matching_conditional_types`.
+#
+# This order was measured against Word, and it is NOT the order ECMA-376
+# 17.7.6.5 lists — the spec puts the vertical bands before the horizontal
+# ones and the row branches before the column ones, and Word does neither.
+# Word also *rewrites* a style's branches into the spec's order when it
+# saves, so the document order is no guide either. What Word actually does:
+# a vertical band beats a horizontal one, a row branch beats a column
+# branch, and the corners beat everything.
+#
+# ``wholeTable`` is deliberately absent. Word discards
+# ``<w:tblStylePr w:type="wholeTable">`` outright — it neither renders its
+# ``rPr`` / ``pPr`` nor keeps the element on save. Whole-table formatting
+# lives on the style's own ``w:rPr`` / ``w:pPr``, which the base pass
+# already applies.
 _TBL_STYLE_PR_ORDER: tuple[str, ...] = (
-    "wholeTable",
-    "band1Vert",
-    "band2Vert",
     "band1Horz",
     "band2Horz",
-    "firstRow",
-    "lastRow",
+    "band1Vert",
+    "band2Vert",
     "firstCol",
     "lastCol",
+    "firstRow",
+    "lastRow",
     "nwCell",
     "neCell",
     "swCell",
     "seCell",
 )
+
+# ``<w:tblLook>`` bit values per ECMA-376 17.4.56, for the legacy ``w:val``
+# bitmask form that Word still writes alongside the named attributes.
+_TBL_LOOK_BITS: dict[str, int] = {
+    "firstRow": 0x0020,
+    "lastRow": 0x0040,
+    "firstColumn": 0x0080,
+    "lastColumn": 0x0100,
+    "noHBand": 0x0200,
+    "noVBand": 0x0400,
+}
 
 # Toggle properties combine per ECMA-376 17.7.3 rather than by override.
 # Mapped from rPr child name to ResolvedFormatting field name.
@@ -308,18 +354,21 @@ def resolve_effective_formatting(
 ) -> ResolvedFormatting:
     """Resolve the effective formatting for ``target``.
 
-    Walks the six cascade layers in precedence order, returning a fully
-    resolved :class:`ResolvedFormatting`. Toggle properties XOR through the
-    chain per ECMA-376 17.7.3. Theme colors are resolved against the
+    Walks the cascade layers in precedence order, returning a fully
+    resolved :class:`ResolvedFormatting`. Toggle properties combine per
+    ECMA-376 17.7.3 rather than overriding — see
+    :func:`_resolve_toggle`. Theme colors are resolved against the
     document's theme part; if the theme is missing or malformed, the result's
     ``partial`` flag is set and unresolved theme names are returned in place
     of hex values.
 
     When ``target`` is in a table cell, table-style **conditional
     formatting** (``<w:tblStylePr>`` branches: ``firstRow``, ``lastRow``,
-    ``firstCol``, ``lastCol``, ``band1Horz``, ``band1Vert``, the four
-    corners, and ``wholeTable``) is applied on top of the base table
-    style in ECMA-376 17.7.6.5 precedence order.
+    ``firstCol``, ``lastCol``, the four band branches and the four
+    corners) is applied on top of the base table style — but only the
+    branches the table's ``<w:tblLook>`` asks for. See
+    :class:`TableContext` for how that gating and band membership are
+    worked out.
 
     Note:
         Only **run- and paragraph-level** properties are resolved (the
@@ -450,11 +499,11 @@ def _resolve_with_cache(
     # the union-attr access happens once where isinstance has already narrowed
     # the type — no per-branch type: ignore needed here.
     if target_kind == "paragraph":
-        ctx = table_context or _derive_table_context_from_element(target_el)
+        ctx = table_context or _derive_table_context_from_element(target_el, cache)
         _apply_paragraph_cascade(acc, cache, target_el, table_context=ctx, stop_below=stop_below)
     elif target_kind == "run":
         paragraph_element = _enclosing_paragraph(target_el)
-        ctx = table_context or _derive_table_context_from_element(paragraph_element)
+        ctx = table_context or _derive_table_context_from_element(paragraph_element, cache)
         _apply_paragraph_cascade(
             acc,
             cache,
@@ -464,7 +513,7 @@ def _resolve_with_cache(
             stop_below=stop_below,
         )
     else:  # cell
-        ctx = table_context or _derive_table_context_from_element(target_el)
+        ctx = table_context or _derive_table_context_from_element(target_el, cache)
         _apply_cell_cascade(acc, cache, target_el, table_context=ctx, stop_below=stop_below)
 
     return acc.freeze()
@@ -893,12 +942,11 @@ def _apply_table_style_chain(
     Walks the basedOn chain ONCE, ancestors-first. For each style level
     apply its base ``pPr`` / ``rPr`` then — when a
     :class:`TableContext` is provided — its matching
-    ``<w:tblStylePr w:type="...">`` branches in ECMA-376 17.7.6.5
-    precedence order (``wholeTable`` → bands → first/last row →
-    first/last col → corners). This ensures the per-level invariant
-    "conditional branches override that level's base" holds while
-    still letting a child level's everything (base + conditional)
-    override a parent level's everything.
+    ``<w:tblStylePr w:type="...">`` branches in :data:`_TBL_STYLE_PR_ORDER`
+    (bands → first/last col → first/last row → corners). This ensures the
+    per-level invariant "conditional branches override that level's base"
+    holds while still letting a child level's everything (base +
+    conditional) override a parent level's everything.
     """
     tbl_pr = tbl_element.find(qn("w:tblPr"))
     if tbl_pr is None:
@@ -953,11 +1001,20 @@ def _apply_table_style_chain(
 def _matching_conditional_types(ctx: TableContext) -> set[str]:
     """Return the set of ``<w:tblStylePr w:type=...>`` values that apply.
 
-    ``wholeTable`` always matches. Each positional flag activates its
-    corresponding type, and corner types match only when both axes
-    align.
+    A positional flag activates its type only when the table's
+    ``<w:tblLook>`` also asks for it, so a cell can sit in row 0 and still
+    take no ``firstRow`` formatting. A corner needs *both* of its axes
+    enabled: with ``firstColumn`` cleared, the top-left cell takes
+    ``firstRow``, not ``nwCell``.
+
+    ``wholeTable`` is never returned — see :data:`_TBL_STYLE_PR_ORDER`.
     """
-    types: set[str] = {"wholeTable"}
+    first_row = ctx.is_first_row and ctx.first_row_enabled
+    last_row = ctx.is_last_row and ctx.last_row_enabled
+    first_col = ctx.is_first_col and ctx.first_col_enabled
+    last_col = ctx.is_last_col and ctx.last_col_enabled
+
+    types: set[str] = set()
     if ctx.is_band_col:
         types.add("band1Vert")
     if ctx.is_band2_col:
@@ -966,62 +1023,156 @@ def _matching_conditional_types(ctx: TableContext) -> set[str]:
         types.add("band1Horz")
     if ctx.is_band2_row:
         types.add("band2Horz")
-    if ctx.is_first_col:
+    if first_col:
         types.add("firstCol")
-    if ctx.is_last_col:
+    if last_col:
         types.add("lastCol")
-    if ctx.is_first_row:
+    if first_row:
         types.add("firstRow")
-    if ctx.is_last_row:
+    if last_row:
         types.add("lastRow")
-    if ctx.is_first_row and ctx.is_first_col:
+    if first_row and first_col:
         types.add("nwCell")
-    if ctx.is_first_row and ctx.is_last_col:
+    if first_row and last_col:
         types.add("neCell")
-    if ctx.is_last_row and ctx.is_first_col:
+    if last_row and first_col:
         types.add("swCell")
-    if ctx.is_last_row and ctx.is_last_col:
+    if last_row and last_col:
         types.add("seCell")
     return types
 
 
-def _read_band_size(tbl: etree._Element, child_name: str) -> int:
-    """Read ``<w:tblStyleRowBandSize>`` / ``<w:tblStyleColBandSize>`` from a table.
+def _read_tbl_look(tbl: etree._Element) -> dict[str, bool]:
+    """Read a table's ``<w:tblLook>`` into positive flags.
 
-    Looks at the table instance's own ``<w:tblPr>``. Returns 1 if the
-    element is absent or the value is unparseable. Does not currently
-    walk the table style chain — see :class:`TableContext` docstring.
+    Returns ``firstRow`` / ``lastRow`` / ``firstColumn`` / ``lastColumn``
+    / ``hBand`` / ``vBand``, the last two inverted from the element's
+    ``noHBand`` / ``noVBand``.
+
+    Three forms exist in the wild and Word honours all of them:
+
+    - The named attributes (Word 2010+). Any attribute present means the
+      named form is in use, and the ones left out default to off.
+    - The legacy ``w:val`` hex bitmask alone (Word 2007). Measured: Word
+      still obeys it, so a document that only carries ``val`` is gated
+      exactly as one carrying attributes.
+    - No ``<w:tblLook>`` at all, which Word treats as **everything
+      enabled** rather than everything off. An unparseable ``val`` falls
+      here too — no usable gating information, so gate nothing.
     """
+    all_on = dict.fromkeys(
+        ("firstRow", "lastRow", "firstColumn", "lastColumn", "hBand", "vBand"), True
+    )
+    tbl_pr = tbl.find(qn("w:tblPr"))
+    look = tbl_pr.find(qn("w:tblLook")) if tbl_pr is not None else None
+    if look is None:
+        return all_on
+
+    attrs = {name: look.get(qn(f"w:{name}")) for name in _TBL_LOOK_BITS}
+    if any(value is not None for value in attrs.values()):
+        flags = {name: value in ("1", "true", "on") for name, value in attrs.items()}
+    else:
+        raw = look.get(qn("w:val"))
+        try:
+            bits = int(raw, 16) if raw is not None else None
+        except ValueError:
+            bits = None
+        if bits is None:
+            return all_on
+        flags = {name: bool(bits & bit) for name, bit in _TBL_LOOK_BITS.items()}
+
+    return {
+        "firstRow": flags["firstRow"],
+        "lastRow": flags["lastRow"],
+        "firstColumn": flags["firstColumn"],
+        "lastColumn": flags["lastColumn"],
+        "hBand": not flags["noHBand"],
+        "vBand": not flags["noVBand"],
+    }
+
+
+def _table_style_chain(
+    tbl: etree._Element, cache: _ResolverCache
+) -> list[tuple[str, etree._Element]]:
+    """The basedOn chain of ``tbl``'s table style, leaf-first, or empty."""
     tbl_pr = tbl.find(qn("w:tblPr"))
     if tbl_pr is None:
-        return 1
-    el = tbl_pr.find(qn(child_name))
-    if el is None:
-        return 1
-    raw = el.get(qn("w:val"))
-    if raw is None:
-        return 1
-    try:
-        n = int(raw)
-    except ValueError:
-        return 1
-    return n if n >= 1 else 1
+        return []
+    tbl_style = tbl_pr.find(qn("w:tblStyle"))
+    if tbl_style is None:
+        return []
+    style_id = tbl_style.get(qn("w:val"))
+    if style_id is None:
+        return []
+    return cache.chain(style_id)
 
 
-def _derive_table_context_from_element(node: etree._Element) -> TableContext:
+def _read_band_size(
+    tbl: etree._Element, chain: list[tuple[str, etree._Element]], child_name: str
+) -> int:
+    """The effective ``<w:tblStyleRowBandSize>`` / ``ColBandSize``, 0 if none.
+
+    The table instance's own ``<w:tblPr>`` wins, then each style in the
+    chain leaf-first. **Zero is the default, and zero means no banding at
+    all** — measured against Word, which paints no bands for a style that
+    declares band branches but no band size. That is not a quirk of
+    hand-built files: it is why Word's own table styles all carry an
+    explicit ``<w:tblStyleRowBandSize w:val="1"/>``.
+    """
+    sources = [tbl.find(qn("w:tblPr"))]
+    sources += [style.find(qn("w:tblPr")) for _, style in chain]
+    for tbl_pr in sources:
+        if tbl_pr is None:
+            continue
+        size_el = tbl_pr.find(qn(child_name))
+        if size_el is None:
+            continue
+        raw = size_el.get(qn("w:val"))
+        if raw is None:
+            continue
+        try:
+            n = int(raw)
+        except ValueError:
+            continue
+        return max(n, 0)
+    return 0
+
+
+def _defines_branch(chain: list[tuple[str, etree._Element]], branch_type: str) -> bool:
+    """Whether any style in ``chain`` defines a ``<w:tblStylePr>`` of that type."""
+    return any(
+        branch.get(qn("w:type")) == branch_type
+        for _, style in chain
+        for branch in style.findall(qn("w:tblStylePr"))
+    )
+
+
+def _band_membership(index: int, offset: int, size: int, enabled: bool) -> tuple[bool, bool]:
+    """Return ``(is_band1, is_band2)`` for a row / column index.
+
+    ``offset`` is where the stripe sequence starts — 1 when the leading
+    line is taken by a ``firstRow`` / ``firstCol`` conditional, else 0.
+    Even stripes are band1.
+    """
+    if not enabled or size <= 0 or index < offset:
+        return False, False
+    stripe = (index - offset) // size
+    return stripe % 2 == 0, stripe % 2 == 1
+
+
+def _derive_table_context_from_element(node: etree._Element, cache: _ResolverCache) -> TableContext:
     """Derive a :class:`TableContext` from a body element's table position.
 
     Walks up from ``node`` to find the enclosing ``<w:tc>``, then derives
-    row / column indices and band parity. Returns an empty (all-False)
-    :class:`TableContext` when ``node`` is not inside a table.
+    row / column indices, the table's ``<w:tblLook>`` flags, and band
+    membership. Returns an empty (all-False) :class:`TableContext` when
+    ``node`` is not inside a table — note that suppresses every
+    conditional branch, which is what "not in a table" should mean.
 
-    Band parity follows the convention that row index 1, 3, 5, ... is
-    "band1" and 2, 4, 6, ... is "band2" at the default band-size of 1.
-    Row 0 is treated as not-banded; in practice the ``firstRow``
-    conditional (if defined) overrides any band branch at row 0 per
-    ECMA-376 17.7.6.5 precedence. When the table's ``<w:tblPr>``
-    declares ``tblStyleRowBandSize`` or ``tblStyleColBandSize``, bands
-    span that many rows / columns each.
+    The band sequence starts at row / column 0 unless the leading line is
+    already claimed by a ``firstRow`` / ``firstCol`` conditional, which
+    needs both the ``tblLook`` flag *and* a branch defined in the style
+    chain. Measured: the flag on its own does not shift the stripes.
     """
     if isinstance(node.tag, str) and etree.QName(node.tag).localname == "tc":
         tc: etree._Element | None = node
@@ -1047,27 +1198,17 @@ def _derive_table_context_from_element(node: etree._Element) -> TableContext:
         # empty context (caller may pass an explicit one). See TableContext.
         return TableContext()
 
-    row_band_size = _read_band_size(tbl, "w:tblStyleRowBandSize")
-    col_band_size = _read_band_size(tbl, "w:tblStyleColBandSize")
+    look = _read_tbl_look(tbl)
+    chain = _table_style_chain(tbl, cache)
 
-    # Row 0 is excluded from the banding sequence (firstRow's job, if it
-    # exists). For row_idx >= 1, the (row_idx - 1) // size yields the
-    # stripe index; even stripes are band1, odd are band2.
-    if row_idx >= 1:
-        row_stripe = (row_idx - 1) // row_band_size
-        is_band_row = (row_stripe % 2) == 0
-        is_band2_row = (row_stripe % 2) == 1
-    else:
-        is_band_row = False
-        is_band2_row = False
-
-    if col_idx >= 1:
-        col_stripe = (col_idx - 1) // col_band_size
-        is_band_col = (col_stripe % 2) == 0
-        is_band2_col = (col_stripe % 2) == 1
-    else:
-        is_band_col = False
-        is_band2_col = False
+    row_offset = 1 if look["firstRow"] and _defines_branch(chain, "firstRow") else 0
+    col_offset = 1 if look["firstColumn"] and _defines_branch(chain, "firstCol") else 0
+    is_band_row, is_band2_row = _band_membership(
+        row_idx, row_offset, _read_band_size(tbl, chain, "w:tblStyleRowBandSize"), look["hBand"]
+    )
+    is_band_col, is_band2_col = _band_membership(
+        col_idx, col_offset, _read_band_size(tbl, chain, "w:tblStyleColBandSize"), look["vBand"]
+    )
 
     return TableContext(
         is_first_row=row_idx == 0,
@@ -1078,6 +1219,10 @@ def _derive_table_context_from_element(node: etree._Element) -> TableContext:
         is_band_col=is_band_col,
         is_band2_row=is_band2_row,
         is_band2_col=is_band2_col,
+        first_row_enabled=look["firstRow"],
+        last_row_enabled=look["lastRow"],
+        first_col_enabled=look["firstColumn"],
+        last_col_enabled=look["lastColumn"],
     )
 
 
