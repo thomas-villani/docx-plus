@@ -295,6 +295,14 @@ class ResolvedFormatting:
     spacing_after: int | None = None
     line_spacing: float | None = None
     line_spacing_rule: str | None = None
+
+    # ``<w:contextualSpacing>`` as the cascade resolves it. It does not
+    # change ``spacing_before`` / ``spacing_after``, which stay the values
+    # the cascade declares: whether either is actually *applied* depends on
+    # the paragraph's neighbours, which is a layout question rather than a
+    # cascade one. :func:`resolve_paragraph_spacing` answers that.
+    contextual_spacing: bool | None = None
+
     keep_with_next: bool | None = None
     keep_lines: bool | None = None
     page_break_before: bool | None = None
@@ -516,6 +524,214 @@ def _resolve_with_cache(
         ctx = table_context or _derive_table_context_from_element(target_el, cache)
         _apply_cell_cascade(acc, cache, target_el, table_context=ctx, stop_below=stop_below)
 
+    return acc.freeze()
+
+
+# --------------------------------------------------------------------------
+# Paragraph spacing: the one place the cascade is not the whole answer.
+# --------------------------------------------------------------------------
+
+# Elements that carry no content of their own and so cannot separate two
+# paragraphs. Word steps straight over them. Anything *not* listed here and
+# not a paragraph or content control -- a table, an ``altChunk`` -- does
+# separate them, and stops the search.
+_SPACING_TRANSPARENT = frozenset(
+    {
+        "bookmarkStart",
+        "bookmarkEnd",
+        "commentRangeStart",
+        "commentRangeEnd",
+        "proofErr",
+        "permStart",
+        "permEnd",
+    }
+)
+
+# A content control can nest, and each level costs a recursion. Word's own
+# limit is far lower than anything a real document reaches; this only stops
+# a malformed part from recursing without end.
+_MAX_SDT_NESTING = 32
+
+
+def _sibling(node: etree._Element, *, forward: bool) -> etree._Element | None:
+    return node.getnext() if forward else node.getprevious()
+
+
+def _edge_paragraph(
+    container: etree._Element, *, forward: bool, depth: int = 0
+) -> etree._Element | None:
+    """The first (or last) paragraph ``container`` holds.
+
+    ``None`` when the content on that edge is something else — a table, say
+    — since that is content, and content between two paragraphs stops them
+    being adjacent.
+    """
+    if depth > _MAX_SDT_NESTING:
+        return None
+    children = list(container)
+    if not forward:
+        children.reverse()
+    for child in children:
+        if not isinstance(child.tag, str):  # comment / processing instruction
+            continue
+        local = etree.QName(child.tag).localname
+        if local == "p":
+            return child
+        if local == "sdt":
+            content = child.find(qn("w:sdtContent"))
+            if content is None:
+                return None
+            return _edge_paragraph(content, forward=forward, depth=depth + 1)
+        if local in _SPACING_TRANSPARENT:
+            continue
+        return None
+    return None
+
+
+def _adjacent_paragraph(node: etree._Element, *, forward: bool) -> etree._Element | None:
+    """The paragraph immediately before or after ``node``, if there is one.
+
+    Measured against Word:
+
+    * A table between two same-style contextual paragraphs stops the
+      suppression; two paragraphs inside one table cell suppress normally.
+    * A **content control is transparent**. A ``<w:sdt>`` wrapping the
+      neighbour, or sitting between the pair with a paragraph inside it,
+      leaves the paragraphs adjacent — so the search descends into
+      ``<w:sdtContent>`` and climbs back out of it.
+    """
+    current = node
+    for _ in range(_MAX_SDT_NESTING):
+        sibling = _sibling(current, forward=forward)
+        while sibling is not None:
+            if not isinstance(sibling.tag, str):  # comment / processing instruction
+                sibling = _sibling(sibling, forward=forward)
+                continue
+            local = etree.QName(sibling.tag).localname
+            if local == "p":
+                return sibling
+            if local == "sdt":
+                content = sibling.find(qn("w:sdtContent"))
+                if content is None:
+                    return None
+                return _edge_paragraph(content, forward=forward)
+            if local not in _SPACING_TRANSPARENT:
+                return None
+            sibling = _sibling(sibling, forward=forward)
+        # Out of siblings. If this is the inside of a content control, the
+        # paragraph next door is outside it.
+        parent = current.getparent()
+        if parent is None or etree.QName(parent.tag).localname != "sdtContent":
+            return None
+        grandparent = parent.getparent()
+        if grandparent is None:
+            return None
+        current = grandparent
+    return None
+
+
+@dataclass(frozen=True)
+class ParagraphSpacing:
+    """How much vertical space Word actually puts above and below a paragraph.
+
+    :class:`ResolvedFormatting` answers what the *cascade* declares.
+    That is not the whole story for spacing, for two reasons measured
+    against Word rather than inferred:
+
+    * ``<w:contextualSpacing>`` makes a paragraph drop its own space
+      before/after when the neighbour on that side carries the **same
+      ``styleId``**. Only the paragraph's own flag governs its own edges,
+      and numbering plays no part — two paragraphs in different lists still
+      suppress, and two related-by-``basedOn`` styles do not.
+    * Word does not *add* one paragraph's space-after to the next one's
+      space-before. It lays down the space-after, then tops it up to the
+      space-before if that is larger — so an unsuppressed pair sits
+      ``max(after, before)`` apart, not ``after + before``.
+
+    The two interact: the top-up is measured against the **declared**
+    space-after even when that space-after was itself suppressed. A
+    contextual paragraph with ``after=20pt`` followed by a non-contextual
+    one with ``before=30pt`` leaves 10pt, not 30pt.
+
+    ``space_above`` and ``space_below`` fold all of that together, so
+    ``space_below`` of one paragraph always equals ``space_above`` of the
+    next. Attributes are twips.
+    """
+
+    declared_before: int
+    declared_after: int
+    contextual_spacing: bool
+    before_suppressed: bool
+    after_suppressed: bool
+    space_above: int
+    space_below: int
+
+
+def _gap(
+    first: ResolvedFormatting,
+    second: ResolvedFormatting,
+) -> int:
+    """The twips Word leaves between two adjacent paragraphs."""
+    same_style = first.style_id == second.style_id
+    after = first.spacing_after or 0
+    before = second.spacing_before or 0
+    contributed = 0 if (same_style and first.contextual_spacing) else after
+    top_up = 0 if (same_style and second.contextual_spacing) else max(0, before - after)
+    return contributed + top_up
+
+
+def resolve_paragraph_spacing(paragraph: Paragraph) -> ParagraphSpacing:
+    """Resolve the vertical space actually applied around ``paragraph``.
+
+    Args:
+        paragraph: A python-docx :class:`~docx.text.paragraph.Paragraph`.
+
+    Returns:
+        A :class:`ParagraphSpacing` snapshot, in twips.
+
+    Note:
+        A paragraph with no neighbour on a side keeps its declared space
+        there — nothing can suppress it. Word's separate rule about
+        space-before at the top of a *page* is layout the resolver does not
+        model, since it depends on pagination.
+    """
+    element = paragraph._p
+    cache = _ResolverCache.for_document(_document_of(paragraph))
+    own = _resolve_with_cache(cache, paragraph)
+    declared_before = own.spacing_before or 0
+    declared_after = own.spacing_after or 0
+
+    previous_el = _adjacent_paragraph(element, forward=False)
+    next_el = _adjacent_paragraph(element, forward=True)
+    previous = _resolve_paragraph_element(cache, previous_el)
+    following = _resolve_paragraph_element(cache, next_el)
+
+    before_suppressed = bool(
+        previous is not None and own.contextual_spacing and previous.style_id == own.style_id
+    )
+    after_suppressed = bool(
+        following is not None and own.contextual_spacing and following.style_id == own.style_id
+    )
+    return ParagraphSpacing(
+        declared_before=declared_before,
+        declared_after=declared_after,
+        contextual_spacing=bool(own.contextual_spacing),
+        before_suppressed=before_suppressed,
+        after_suppressed=after_suppressed,
+        space_above=declared_before if previous is None else _gap(previous, own),
+        space_below=declared_after if following is None else _gap(own, following),
+    )
+
+
+def _resolve_paragraph_element(
+    cache: _ResolverCache, element: etree._Element | None
+) -> ResolvedFormatting | None:
+    """Resolve a bare ``<w:p>`` element, bypassing the python-docx wrapper."""
+    if element is None:
+        return None
+    acc = _Accumulator(theme=cache.theme, want_provenance=False)
+    ctx = _derive_table_context_from_element(element, cache)
+    _apply_paragraph_cascade(acc, cache, element, table_context=ctx)
     return acc.freeze()
 
 
@@ -1390,6 +1606,7 @@ def _apply_ppr(acc: _Accumulator, ppr: etree._Element, source: FormattingSource)
         ("keepNext", "keep_with_next"),
         ("keepLines", "keep_lines"),
         ("pageBreakBefore", "page_break_before"),
+        ("contextualSpacing", "contextual_spacing"),
     ):
         flag_el = ppr.find(qn(f"w:{tag}"))
         if flag_el is not None:

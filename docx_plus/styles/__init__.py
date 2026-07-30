@@ -3,10 +3,12 @@
 from docx_plus.styles.inspect import (
     FormattingSource,
     MissingPartError,
+    ParagraphSpacing,
     ResolvedFormatting,
     StyleCascadeError,
     TableContext,
     resolve_effective_formatting,
+    resolve_paragraph_spacing,
 )
 from docx_plus.styles.modify import (
     InvalidColorError,
@@ -36,6 +38,7 @@ __all__ = [
     "FormattingSource",
     "InvalidColorError",
     "MissingPartError",
+    "ParagraphSpacing",
     "ResolvedFormatting",
     "ResolvedParagraph",
     "ResolvedRun",
@@ -58,4 +61,5 @@ __all__ = [
     "modify_style",
     "remap_styles",
     "resolve_effective_formatting",
+    "resolve_paragraph_spacing",
 ]

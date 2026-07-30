@@ -234,6 +234,12 @@ def resolve_effective_formatting(
     """Walk the OOXML formatting cascade in correct precedence order and
     return the fully-resolved properties that would apply to `target` if
     rendered now."""
+
+
+def resolve_paragraph_spacing(paragraph: Paragraph) -> ParagraphSpacing:
+    """Resolve the vertical space actually applied around `paragraph`,
+    after `<w:contextualSpacing>` and Word's space-after/space-before
+    arithmetic. See "Paragraph spacing" below."""
 ```
 
 ### The cascade — implement exactly this order
@@ -337,6 +343,62 @@ document order is no guide either.
 branch's `rPr` nor its `pPr`, and drops the element on save. Whole-table
 formatting belongs on the style's own `w:rPr` / `w:pPr`.
 
+### Paragraph spacing and `w:contextualSpacing`
+
+Spacing is the one property where the cascade is not the whole answer, and
+both halves of the gap were settled by measurement — see
+`tests/test_contextual_spacing_word_verified.py`. `<w:contextualSpacing>`
+suppresses space the cascade declares, so Word's own COM cannot be asked:
+`ParagraphFormat.SpaceBefore` reports what the cascade says, which is
+exactly what is in dispute. The probes were exported to PDF and the
+paragraph baselines measured instead.
+
+**Word does not add space-after to the next paragraph's space-before.** It
+lays down the space-after, then tops it up to the space-before if that is
+larger, so an ordinary pair sits `max(after, before)` apart:
+
+```
+gap = after + max(0, before - after)
+```
+
+**`<w:contextualSpacing>` removes one of those two terms.** A paragraph
+drops its own space on the side where the neighbour carries the **same
+`styleId`**, and each edge answers only to its own paragraph's flag — an
+explicit `w:val="0"` on one of a pair frees that paragraph's edge and
+leaves the other alone. The two terms above are suppressed independently,
+and the top-up is still measured from the **declared** space-after even
+when that space-after was itself suppressed. A contextual paragraph with
+20pt after followed by a non-contextual one with 30pt before leaves 10pt,
+not 30pt — which is what rules out "zero the suppressed edge, then take the
+max".
+
+"Same style" means `styleId` identity and nothing else:
+
+- **Numbering plays no part.** Two `ListParagraph` paragraphs in unrelated
+  lists suppress exactly as two in one list do, and so do two at different
+  levels of the same list.
+- **`basedOn` kinship does not count.** A style and its child are different
+  styles, even though the child inherits the flag itself.
+
+Adjacency is sibling adjacency, with two measured refinements: a table
+between two paragraphs stops the suppression (two paragraphs inside one
+cell suppress normally), and a **content control is transparent** — a
+`<w:sdt>` wrapping the neighbour, or holding a paragraph between the pair,
+leaves them adjacent.
+
+The flag resolves through the ordinary cascade — including `docDefaults` —
+and is a plain override, not an ECMA-376 17.7.3 toggle.
+
+`ResolvedFormatting` reports the flag as `contextual_spacing` but leaves
+`spacing_before` / `spacing_after` at their declared values: whether either
+is *applied* depends on the paragraph's neighbours, which is a layout
+question rather than a cascade one, and the linter's `style-drift` rule
+needs the declared numbers to compare direct formatting against a style.
+`resolve_paragraph_spacing(paragraph) -> ParagraphSpacing` answers the
+layout question, folding all of the above into `space_above` and
+`space_below` — so one paragraph's `space_below` always equals the next
+one's `space_above`.
+
 ### Theme references
 
 `rFonts/@asciiTheme`, `color/@themeColor`, etc. resolve against
@@ -381,6 +443,7 @@ class ResolvedFormatting:
     spacing_after: Optional[int] = None
     line_spacing: Optional[float] = None         # multiplier; line_spacing_rule explains
     line_spacing_rule: Optional[str] = None      # 'auto'|'exact'|'atLeast'
+    contextual_spacing: Optional[bool] = None    # see "Paragraph spacing" above
     keep_with_next: Optional[bool] = None
     keep_lines: Optional[bool] = None
     page_break_before: Optional[bool] = None

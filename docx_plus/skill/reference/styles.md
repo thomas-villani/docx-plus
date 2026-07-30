@@ -59,7 +59,8 @@ Common fields:
 - Identity: `style_id`, `style_name`
 - Paragraph: `alignment`, `indent_left`, `indent_right`, `indent_first_line`,
   `spacing_before`, `spacing_after`, `line_spacing`, `line_spacing_rule`,
-  `keep_with_next`, `keep_lines`, `page_break_before`, `outline_level`
+  `contextual_spacing`, `keep_with_next`, `keep_lines`, `page_break_before`,
+  `outline_level`
 - Run: `font_name`, `font_size`, `bold`, `italic`, `underline`, `strike`,
   `double_strike`, `color_rgb`, `highlight`, `vert_align`
 - Toggles (all 12 ECMA-376 17.7.3): `bold`, `italic`, `cs_bold`, `cs_italic`,
@@ -72,6 +73,35 @@ Common fields:
 Units: `font_size` in points; `indent_*` / `spacing_*` in twips;
 `line_spacing` is twips unless `line_spacing_rule == "auto"`, where it's a
 multiplier (e.g. `1.15`); `color_rgb` / `highlight` are `"RRGGBB"` hex.
+
+### Spacing needs a second call
+
+`spacing_before` / `spacing_after` are what the cascade *declares*. Whether
+either is applied depends on the paragraph's neighbours, so ask separately:
+
+```python
+from docx_plus.styles import resolve_paragraph_spacing
+
+s = resolve_paragraph_spacing(p)
+s.space_above, s.space_below      # twips actually applied, both edges
+s.declared_before, s.declared_after
+s.contextual_spacing              # the resolved <w:contextualSpacing>
+s.before_suppressed, s.after_suppressed
+```
+
+Two things it accounts for, both measured against live Word:
+
+- **`<w:contextualSpacing>` drops a paragraph's space on the side where the
+  neighbour has the same `styleId`.** That is the whole test — numbering
+  plays no part (two `ListParagraph` paragraphs in *different* lists still
+  collapse), and a `basedOn` child counts as a different style. Fourteen
+  built-in styles carry the flag, so any document using Word's list styles
+  is affected.
+- **Word does not add space-after to the next paragraph's space-before.**
+  It tops the first up to the second, so a pair sits `max(after, before)`
+  apart. Do not sum two resolved values to get a gap.
+
+`space_below` of one paragraph always equals `space_above` of the next.
 
 ## Creating, modifying, applying styles
 
@@ -115,7 +145,8 @@ the modifier.
 
 - Paragraph: `alignment`, `indent_left`, `indent_right`, `indent_first_line`,
   `spacing_before`, `spacing_after`, `line_spacing`, `line_spacing_rule`,
-  `keep_with_next`, `keep_lines`, `page_break_before`, `outline_level`
+  `contextual_spacing`, `keep_with_next`, `keep_lines`, `page_break_before`,
+  `outline_level`
 - Run: `font_name`, `font_size`, `bold`, `italic`, `underline`, `strike`,
   `color_rgb`, `highlight`, `caps`, `small_caps`, `vanish`, `vert_align`
 

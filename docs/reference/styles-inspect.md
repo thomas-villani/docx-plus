@@ -48,6 +48,35 @@ Like the toggle rule, this was settled by measuring live Word, because
 the spec's prose and Word's behaviour disagree. The measurements live in
 `tests/test_tables_word_verified.py`.
 
+## Spacing needs a second call
+
+Spacing is the one property the cascade cannot answer on its own, and the
+resolver deliberately does not pretend otherwise.
+`ResolvedFormatting.spacing_before` / `spacing_after` are what the cascade
+**declares**; `contextual_spacing` carries the resolved
+`<w:contextualSpacing>` flag. Whether either value is actually *applied*
+depends on the paragraph's neighbours, so
+[`resolve_paragraph_spacing`][docx_plus.styles.inspect.resolve_paragraph_spacing]
+answers that separately.
+
+Two measured facts it folds in:
+
+- **`<w:contextualSpacing>` drops a paragraph's space on the side where the
+  neighbour carries the same `styleId`** — and `styleId` identity is the
+  whole test. Numbering plays no part (two `ListParagraph` paragraphs in
+  unrelated lists still collapse), and a `basedOn` child counts as a
+  different style. Each edge answers only to its own paragraph's flag.
+- **Word does not add space-after to the next paragraph's space-before.**
+  It tops the first up to the second, so an ordinary pair sits
+  `max(after, before)` apart. The top-up is measured from the *declared*
+  space-after even when that space-after was suppressed, so a contextual
+  paragraph with 20pt after followed by a plain one with 30pt before leaves
+  10pt, not 30pt.
+
+A table between two paragraphs stops the suppression; a content control
+does not — `<w:sdt>` is transparent. Measurements:
+`tests/test_contextual_spacing_word_verified.py`.
+
 ## `include_provenance` vs `stop_below`
 
 Two features answer different questions and are easy to confuse:
@@ -67,6 +96,8 @@ consistency rule in [`docx_plus.lint`](lint.md).
       members:
         - resolve_effective_formatting
         - ResolvedFormatting
+        - resolve_paragraph_spacing
+        - ParagraphSpacing
         - TableContext
         - FormattingSource
         - StyleCascadeError
