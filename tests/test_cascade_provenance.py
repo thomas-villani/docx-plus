@@ -128,19 +128,45 @@ def test_direct_run_attributed_correctly() -> None:
     assert bold_source.layer == "directRun"
 
 
-def test_toggle_resolved_flag_set_when_xor_happened() -> None:
-    """Bold set in two layers triggers is_toggle_resolved=True at the last."""
+def test_toggle_resolved_flag_set_when_two_levels_combined() -> None:
+    """Bold set at two *levels* triggers is_toggle_resolved on the winner.
+
+    A basedOn chain would not do: it is one level, and flattens by plain
+    override. It takes a paragraph style and a character style to make the
+    17.7.3 rule actually compute something.
+    """
     doc = Document()
     _add_paragraph_style(doc, "BoldP", rpr_children=[("w:b", None)])
-    _add_paragraph_style(doc, "BoldC", based_on="BoldP", rpr_children=[("w:b", None)])
+    char_style = sub(
+        doc.styles.element, "w:style", **{"w:type": "character", "w:styleId": "BoldRun"}
+    )
+    sub(char_style, "w:name", **{"w:val": "BoldRun"})
+    sub(sub(char_style, "w:rPr"), "w:b")
+
     p = doc.add_paragraph()
-    ppr = p._p.get_or_add_pPr()
-    sub(ppr, "w:pStyle", **{"w:val": "BoldC"})
+    sub(p._p.get_or_add_pPr(), "w:pStyle", **{"w:val": "BoldP"})
+    run = p.add_run("text")
+    sub(run._r.get_or_add_rPr(), "w:rStyle", **{"w:val": "BoldRun"})
+
+    resolved = resolve_effective_formatting(run, include_provenance=True)
+    assert resolved.provenance is not None
+    bold_source = resolved.provenance["bold"]
+    assert resolved.bold is False
+    assert bold_source.layer == "runStyle"
+    assert bold_source.is_toggle_resolved is True
+
+
+def test_toggle_resolved_flag_unset_across_a_basedon_chain() -> None:
+    """One level, however deep its chain, states rather than computes."""
+    doc = Document()
+    _add_paragraph_style(doc, "ChainA", rpr_children=[("w:b", None)])
+    _add_paragraph_style(doc, "ChainB", based_on="ChainA", rpr_children=[("w:b", None)])
+    p = doc.add_paragraph()
+    sub(p._p.get_or_add_pPr(), "w:pStyle", **{"w:val": "ChainB"})
 
     resolved = resolve_effective_formatting(p, include_provenance=True)
     assert resolved.provenance is not None
-    bold_source = resolved.provenance["bold"]
-    assert bold_source.is_toggle_resolved is True
+    assert resolved.provenance["bold"].is_toggle_resolved is False
 
 
 def test_toggle_resolved_flag_unset_when_single_layer() -> None:

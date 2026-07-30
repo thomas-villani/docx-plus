@@ -2,9 +2,10 @@
 
 The ``numbered`` fixture has one paragraph whose ``w:numPr`` references a
 custom ``abstractNum`` carrying both pPr (indent 720 left, -360 first-line)
-and rPr (bold) at ``lvl[0]``. These tests verify the resolver picks all of
-that up, attributes it to the ``numbering`` layer, and degrades gracefully
-when the references can't be followed.
+and rPr (bold) at ``lvl[0]``. The pPr is the paragraph's; the rPr is *not* —
+it formats the number glyph — so these tests verify the resolver picks up the
+indent, attributes it to the ``numbering`` layer, leaves the glyph's bold
+alone, and degrades gracefully when the references can't be followed.
 """
 
 from __future__ import annotations
@@ -21,25 +22,38 @@ from docx_plus.core.oxml import sub
 from docx_plus.styles import resolve_effective_formatting
 
 
-def test_numbering_layer_resolves_indent_and_bold(numbered_docx_path: Path) -> None:
-    """Both pPr (indent) and rPr (bold) on lvl[0] flow into ResolvedFormatting."""
+def test_numbering_layer_resolves_the_levels_indent(numbered_docx_path: Path) -> None:
+    """The level's pPr flows into ResolvedFormatting."""
     doc = Document(str(numbered_docx_path))
     resolved = resolve_effective_formatting(doc.paragraphs[0])
     assert resolved.num_id == 100
     assert resolved.num_level == 0
     assert resolved.indent_left == 720
     assert resolved.indent_first_line == -360
-    assert resolved.bold is True
+
+
+def test_numbering_level_rpr_does_not_reach_the_paragraph(
+    numbered_docx_path: Path,
+) -> None:
+    """``w:lvl/w:rPr`` formats the number glyph, not the text after it.
+
+    The fixture's level is bold. Word renders a bold "1." in front of
+    unbolded prose, so reporting the paragraph as bold described something
+    the reader never sees.
+    """
+    doc = Document(str(numbered_docx_path))
+
+    assert resolve_effective_formatting(doc.paragraphs[0]).bold is None
 
 
 def test_numbering_provenance_marks_layer(numbered_docx_path: Path) -> None:
-    """Provenance attributes the indent + bold to the ``numbering`` layer."""
+    """Provenance attributes the indent to the ``numbering`` layer."""
     doc = Document(str(numbered_docx_path))
     resolved = resolve_effective_formatting(doc.paragraphs[0], include_provenance=True)
     prov = resolved.provenance or {}
     assert prov["indent_left"].layer == "numbering"
-    assert prov["bold"].layer == "numbering"
     assert prov["num_id"].layer == "numbering"
+    assert "bold" not in prov
 
 
 def test_numbering_absent_part_does_not_crash() -> None:
@@ -113,9 +127,9 @@ def test_numbering_unparsable_ilvl_falls_back_to_zero(
     assert ilvl_el is not None
     ilvl_el.set(qn("w:val"), "garbage")
     resolved = resolve_effective_formatting(para)
-    # Level fallback kicked in; the indent + bold at lvl[0] still apply.
+    # Level fallback kicked in; lvl[0]'s indent still applies.
     assert resolved.num_level == 0
-    assert resolved.bold is True
+    assert resolved.indent_left == 720
 
 
 def test_numbering_missing_numid_attribute_short_circuits(

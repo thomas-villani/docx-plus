@@ -56,7 +56,7 @@ def _format_source(src: FormattingSource) -> str:
     if src.chain_depth is not None and src.chain_depth > 0:
         extras.append(f"chain_depth={src.chain_depth}")
     if src.is_toggle_resolved:
-        extras.append("toggle XOR")
+        extras.append("toggle rule")
     if extras:
         parts.append(f" ({', '.join(extras)})")
     return "".join(parts)

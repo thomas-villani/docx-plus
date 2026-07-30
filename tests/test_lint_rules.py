@@ -298,18 +298,19 @@ def test_redundant_direct_formatting_checks_runs_with_a_character_style() -> Non
     assert "size" in findings[0].message
 
 
-def test_redundant_direct_formatting_respects_a_character_style_value() -> None:
-    """A property the character style supplies is not redundant.
+def test_redundant_direct_formatting_flags_a_restated_character_style_value() -> None:
+    """Restating what the character style already supplies changes nothing.
 
-    ``Emphasis`` resolves ``italic=True``; a run restating it directly is a
-    toggle flip, not a no-op, so the rule must not offer to delete it.
+    ``Emphasis`` resolves ``italic=True``, and direct formatting *states* a
+    toggle rather than flipping it, so a direct ``<w:i/>`` on top renders
+    identically to no direct formatting at all — genuinely removable.
     """
     doc = Document()
     run = doc.add_paragraph().add_run("text")
     run.italic = True
     sub(run._r.get_or_add_rPr(), "w:rStyle", **{"w:val": "Emphasis"})
 
-    assert all("italic" not in f.message for f in _rules_fired(doc, "redundant-direct-formatting"))
+    assert any("italic" in f.message for f in _rules_fired(doc, "redundant-direct-formatting"))
 
 
 def test_redundant_direct_formatting_names_every_redundant_property() -> None:
@@ -360,20 +361,19 @@ def test_redundant_direct_formatting_keeps_a_toggle_that_turns_something_off() -
     assert all("bold" not in f.message for f in findings)
 
 
-def test_redundant_direct_formatting_respects_toggle_xor_on_a_bold_style() -> None:
-    """Re-asserting bold on an already-bold style is an override, not a no-op.
+def test_redundant_direct_formatting_flags_bold_restated_on_a_bold_style() -> None:
+    """Direct bold over an already-bold ``Heading 1`` renders identically.
 
-    ECMA-376 17.7.3 makes toggles XOR through the hierarchy, so a direct
-    ``<w:b w:val="1"/>`` over a bold ``Heading 1`` resolves to *not* bold.
-    Deleting it as "redundant" would change the rendering, so the rule must
-    leave it alone — the reason the comparison is against the resolved
-    baseline rather than against the raw direct value.
+    Direct formatting is absolute rather than a flip, so the run is bold
+    either way and the ``<w:b/>`` is safe to drop. The complementary case —
+    an explicit *off* on the same style — is a real override, covered by
+    :func:`test_redundant_direct_formatting_keeps_a_toggle_that_turns_something_off`.
     """
     doc = Document()
     para = doc.add_paragraph("Heading text", style="Heading 1")
     para.runs[0].bold = True
 
-    assert all("bold" not in f.message for f in _rules_fired(doc, "redundant-direct-formatting"))
+    assert any("bold" in f.message for f in _rules_fired(doc, "redundant-direct-formatting"))
 
 
 def test_mixed_run_formatting_fires_on_disagreeing_sizes() -> None:
