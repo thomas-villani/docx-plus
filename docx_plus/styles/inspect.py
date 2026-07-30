@@ -1,10 +1,10 @@
 """Cascade resolver: ``resolve_effective_formatting``.
 
-Walks the six layers of OOXML formatting precedence (SPEC §4) and returns a
+Walks the layers of OOXML formatting precedence (SPEC §4) and returns a
 fully-resolved :class:`ResolvedFormatting` describing what a paragraph, run,
 or cell would render with right now. Later layers override earlier ones,
-except toggle properties (bold, italic, etc.) which XOR through the chain
-per ECMA-376 17.7.3.
+except toggle properties (bold, italic, etc.), which follow the rule of
+ECMA-376 17.7.3 — see :func:`_resolve_toggle`.
 
 Provenance tracking is plumbed through the same walk gated by the
 ``include_provenance`` flag; with the flag off, the resolver's value output
@@ -119,7 +119,7 @@ _TBL_STYLE_PR_ORDER: tuple[str, ...] = (
     "seCell",
 )
 
-# Toggle properties XOR through the cascade per ECMA-376 17.7.3.
+# Toggle properties combine per ECMA-376 17.7.3 rather than by override.
 # Mapped from rPr child name to ResolvedFormatting field name.
 _TOGGLE_RPR: dict[str, str] = {
     "b": "bold",
@@ -135,17 +135,16 @@ _TOGGLE_RPR: dict[str, str] = {
     "outline": "outline",
     "shadow": "shadow",
 }
-# dstrike is intentionally excluded from the XOR toggle set — per
-# ECMA-376 17.7.3 the toggle list is the twelve above. dstrike is handled
-# in :func:`_apply_rpr` as a non-toggle property (last writer wins) and
-# surfaced on :class:`ResolvedFormatting.double_strike`.
+# dstrike is intentionally excluded — per ECMA-376 17.7.3 the toggle list is
+# the twelve above. dstrike is handled in :func:`_apply_rpr` as a non-toggle
+# property (last writer wins) and surfaced on
+# :class:`ResolvedFormatting.double_strike`.
 
 
 Layer = Literal[
     "docDefaults",
     "tableStyle",
     "paragraphStyle",
-    "linkedCharStyle",
     "styleNumbering",
     "numbering",
     "directParagraph",
@@ -155,6 +154,15 @@ Layer = Literal[
 _LAYER_ORDER: tuple[Layer, ...] = get_args(Layer)
 """The layers in ascending precedence, derived from :data:`Layer` itself so
 the two cannot drift apart."""
+
+# There is deliberately no ``linkedCharStyle`` layer. A paragraph style's
+# ``w:link`` partner (``Heading1`` / ``Heading1Char``) is not a cascade layer
+# at all: it exists so a user can apply the paragraph style's character half
+# to a selection, and Word never consults it when rendering runs inside the
+# paragraph. ``Heading1`` carries its own ``<w:b/>``, which is where heading
+# bold actually comes from. Measured against Word: a paragraph style whose
+# formatting lives *only* on its Char half renders as though the Char half
+# did not exist.
 
 
 def _includes(stop_below: Layer | None, layer: Layer) -> bool:
@@ -170,8 +178,9 @@ def _includes(stop_below: Layer | None, layer: Layer) -> bool:
 # reports ``styleNumbering`` and carries the supplying ``style_id``. That
 # matters to callers auditing a document — a hand-numbered paragraph and a
 # correctly-styled list paragraph are otherwise indistinguishable. The
-# formatting the numbering *level* contributes (indent, bullet font) is
-# always ``numbering``, since its precedence is the same either way.
+# formatting the numbering *level* contributes (its indent — the level's
+# ``w:rPr`` belongs to the glyph, not the text) is always ``numbering``,
+# since its precedence is the same either way.
 
 
 class StyleCascadeError(DocxPlusError):
@@ -201,8 +210,8 @@ class FormattingSource:
     ``style_id`` names the specific style (the lowest one in the basedOn
     chain that set the value); ``chain_depth`` records how many basedOn hops
     away that style was from the target. ``is_toggle_resolved`` is True when
-    the value is the XOR result across multiple layers rather than a direct
-    set.
+    the value was computed by the ECMA-376 17.7.3 toggle rule across more
+    than one contributing layer, rather than stated by one of them.
     """
 
     layer: Layer
@@ -216,14 +225,15 @@ class ResolvedFormatting:
     """The effective formatting for a paragraph, run, or table cell.
 
     Every field is ``None`` until some layer of the cascade sets it. Toggle
-    properties carry their XOR-resolved boolean. SPEC §4 specifies the fields.
+    properties carry the value the ECMA-376 17.7.3 rule produces. SPEC §4
+    specifies the fields.
 
     All twelve ECMA-376 17.7.3 toggle properties are surfaced: the six
     base toggles (``bold``, ``italic``, ``caps``, ``small_caps``,
     ``strike``, ``vanish``) and the six complex-script / decorative
     variants (``cs_bold``, ``cs_italic``, ``emboss``, ``imprint``,
-    ``outline``, ``shadow``). All XOR through the cascade with the same
-    semantics; an explicit ``w:val="false"`` resets parity to false.
+    ``outline``, ``shadow``). All combine by the same rule — see
+    :func:`_resolve_toggle`.
     """
 
     # Identity
@@ -465,23 +475,71 @@ def _resolve_with_cache(
 # --------------------------------------------------------------------------
 
 
+def _resolve_toggle(
+    base: tuple[bool, FormattingSource] | None,
+    levels: list[tuple[bool, FormattingSource]],
+    direct: tuple[bool, FormattingSource] | None,
+) -> tuple[bool, FormattingSource] | None:
+    """Combine one toggle property's contributions per ECMA-376 17.7.3.
+
+    ``base`` is what ``docDefaults`` stated, ``levels`` what each *style*
+    level stated (each already flattened over its own basedOn chain by plain
+    override), and ``direct`` what direct formatting stated. ``None`` means
+    "not specified there".
+
+    The rule, measured against Word rather than inferred:
+
+    * Direct formatting is **absolute**. ``<w:b/>`` on a run is bold and
+      ``<w:b w:val="0"/>`` is not, whatever the styles underneath said. It
+      never participates in the XOR.
+    * Otherwise the result is the ``docDefaults`` value flipped once for
+      every style level whose value **differs from it**. A level restating
+      the default is inert, which is why ``<w:b w:val="0"/>`` on a style
+      does nothing when nothing is bold to begin with, and why a bare
+      ``<w:b/>`` does nothing when the default is already bold.
+
+    Returns ``None`` when no layer mentioned the property at all, which is
+    how an unset toggle stays ``None`` rather than becoming ``False``.
+    """
+    if direct is not None:
+        return direct
+    if base is None and not levels:
+        return None
+    base_value = base[0] if base is not None else False
+    flips = sum(1 for value, _ in levels if value != base_value)
+    effective = base_value != (flips % 2 == 1)
+
+    # Provenance goes to the most specific layer that had an opinion, and
+    # records whether more than one did — a caller asking "why is this bold?"
+    # needs to know the answer was computed rather than stated.
+    winner = levels[-1][1] if levels else base[1]  # type: ignore[index]
+    contributors = len(levels) + (1 if base is not None else 0)
+    return effective, replace(winner, is_toggle_resolved=contributors > 1)
+
+
 @dataclass
 class _Accumulator:
-    """Mutable in-progress state during the cascade walk."""
+    """Mutable in-progress state during the cascade walk.
+
+    Non-toggle properties resolve by override as the walk proceeds. Toggle
+    properties cannot: their rule needs one value *per style level*, so they
+    are collected into per-level buckets and combined in :meth:`freeze`.
+    """
 
     theme: ThemeColors | None
     want_provenance: bool
     values: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, FormattingSource] = field(default_factory=dict)
     partial: bool = False
-    absolute_toggles: bool = False
-    """While set, a toggle element states a value rather than flipping one.
 
-    The XOR rule of ECMA-376 17.7.3 applies between *levels* of the style
-    hierarchy. A ``w:link`` partner is not another level — it is the same
-    style's character half — so its toggles must not XOR against the
-    paragraph half's. See :func:`_apply_paragraph_cascade`.
-    """
+    # Toggle collection. ``toggle_levels`` holds one bucket per style level
+    # entered via :meth:`toggle_level`, in cascade order; within a bucket the
+    # last writer wins, which is what makes a basedOn chain override rather
+    # than alternate.
+    toggle_base: dict[str, tuple[bool, FormattingSource]] = field(default_factory=dict)
+    toggle_levels: list[dict[str, tuple[bool, FormattingSource]]] = field(default_factory=list)
+    toggle_direct: dict[str, tuple[bool, FormattingSource]] = field(default_factory=dict)
+    _sink: dict[str, tuple[bool, FormattingSource]] | None = None
 
     def set(self, name: str, value: Any, source: FormattingSource) -> None:
         """Set a non-toggle property, recording provenance if requested."""
@@ -492,31 +550,61 @@ class _Accumulator:
             self.provenance[name] = source
 
     def toggle(self, name: str, val_attr: str | None, source: FormattingSource) -> None:
-        """Apply XOR toggle rule to ``name`` per ECMA-376 17.7.3.
+        """Record a toggle specification into the sink currently in scope.
 
         ``val_attr`` is the ``w:val`` attribute on the toggle element, or
-        ``None`` if absent.
+        ``None`` if absent (which means "on").
         """
-        if val_attr in ("0", "false"):
-            new_value = False
-            toggle_resolved = False
-        elif self.absolute_toggles:
-            new_value = True
-            toggle_resolved = False
-        else:
-            current = self.values.get(name)
-            new_value = True if current is None else not current
-            toggle_resolved = current is not None
-        self.values[name] = new_value
-        if self.want_provenance:
-            self.provenance[name] = replace(source, is_toggle_resolved=toggle_resolved)
+        sink = self.toggle_direct if self._sink is None else self._sink
+        sink[name] = (val_attr not in ("0", "false"), source)
+
+    def toggle_base_scope(self) -> _ToggleScope:
+        """Direct toggles into the ``docDefaults`` base bucket."""
+        return _ToggleScope(self, self.toggle_base)
+
+    def toggle_level_scope(self) -> _ToggleScope:
+        """Open a fresh style level for toggles to accumulate into."""
+        bucket: dict[str, tuple[bool, FormattingSource]] = {}
+        self.toggle_levels.append(bucket)
+        return _ToggleScope(self, bucket)
 
     def freeze(self) -> ResolvedFormatting:
         """Snapshot into an immutable :class:`ResolvedFormatting`."""
         kwargs: dict[str, Any] = dict(self.values)
+        for name in _TOGGLE_RPR.values():
+            resolved = _resolve_toggle(
+                self.toggle_base.get(name),
+                [bucket[name] for bucket in self.toggle_levels if name in bucket],
+                self.toggle_direct.get(name),
+            )
+            if resolved is None:
+                continue
+            kwargs[name], source = resolved
+            if self.want_provenance:
+                self.provenance[name] = source
         kwargs["partial"] = self.partial
         kwargs["provenance"] = dict(self.provenance) if self.want_provenance else None
         return ResolvedFormatting(**kwargs)
+
+
+class _ToggleScope:
+    """Context manager routing :meth:`_Accumulator.toggle` at one sink.
+
+    Outside any scope, toggles land in the direct-formatting bucket — which
+    is where an unscoped ``_apply_rpr`` call is coming from.
+    """
+
+    def __init__(self, acc: _Accumulator, sink: dict[str, tuple[bool, FormattingSource]]) -> None:
+        self._acc = acc
+        self._sink = sink
+        self._previous: dict[str, tuple[bool, FormattingSource]] | None = None
+
+    def __enter__(self) -> None:
+        self._previous = self._acc._sink
+        self._acc._sink = self._sink
+
+    def __exit__(self, *exc_info: object) -> None:
+        self._acc._sink = self._previous
 
 
 # --------------------------------------------------------------------------
@@ -546,7 +634,6 @@ class _ResolverCache:
     _styles: dict[str, etree._Element | None] = field(default_factory=dict)
     _chains: dict[str, list[tuple[str, etree._Element]]] = field(default_factory=dict)
     _names: dict[str, str | None] = field(default_factory=dict)
-    _links: dict[str, str | None] = field(default_factory=dict)
     _abstract_nums: dict[int, etree._Element | None] = field(default_factory=dict)
     _numbering_root: etree._Element | None = None
     _numbering_read: bool = False
@@ -586,13 +673,10 @@ class _ResolverCache:
             self._names[style_id] = name_el.get(qn("w:val")) if name_el is not None else None
         return self._names[style_id]
 
-    def linked_style_id(self, style_id: str) -> str | None:
-        """The ``w:link`` companion character style of ``style_id``, if any."""
-        if style_id not in self._links:
-            style_el = self.style(style_id)
-            link_el = style_el.find(qn("w:link")) if style_el is not None else None
-            self._links[style_id] = link_el.get(qn("w:val")) if link_el is not None else None
-        return self._links[style_id]
+    # No ``linked_style_id`` lookup: the cascade never consults a ``w:link``
+    # partner. ``styles.find_unused_styles`` reads the element directly,
+    # because collapsing an unused linked *pair* into one finding is a
+    # reporting decision rather than a cascade one.
 
     def doc_defaults(self) -> tuple[etree._Element | None, etree._Element | None]:
         """The ``(rPr, pPr)`` under ``w:docDefaults``, either possibly None."""
@@ -691,25 +775,8 @@ def _apply_paragraph_cascade(
             _apply_rpr(acc, direct_ppr_rpr, FormattingSource(layer="directParagraph"))
 
     if run_element is not None:
-        # Linked character style (for Run targets only), per SPEC §4.
-        #
-        # Its toggles are applied as absolute values, not XOR flips, because
-        # a ``w:link`` partner is not a further level of the style hierarchy
-        # — it is the same style's character half, and Word writes the two
-        # with identical ``w:rPr``. Treating them as independent levels
-        # cancelled every toggle: a run inside a stock ``Heading 1``
-        # paragraph resolved ``bold=False`` while the paragraph itself
-        # resolved ``bold=True``. Only the XOR needs suppressing; the layer
-        # still overrides normally, which is what lets a style carrying its
-        # character formatting solely on the Char half resolve at all.
-        if p_style_id is not None and _includes(stop_below, "linkedCharStyle"):
-            linked_id = cache.linked_style_id(p_style_id)
-            if linked_id is not None:
-                acc.absolute_toggles = True
-                try:
-                    _apply_style_chain(acc, cache, linked_id, "linkedCharStyle")
-                finally:
-                    acc.absolute_toggles = False
+        # The paragraph style's ``w:link`` partner is deliberately not applied
+        # here — see the note beside :data:`Layer`.
 
         # Run-level rStyle reference (character style applied to one run).
         # Per ECMA-376 17.3.2.29 this is a style layer that sits BELOW direct
@@ -753,7 +820,9 @@ def _apply_doc_defaults(acc: _Accumulator, cache: _ResolverCache) -> None:
     rpr, ppr = cache.doc_defaults()
     source = FormattingSource(layer="docDefaults")
     if rpr is not None:
-        _apply_rpr(acc, rpr, source)
+        # docDefaults is the toggle rule's *base*, not one of its levels.
+        with acc.toggle_base_scope():
+            _apply_rpr(acc, rpr, source)
     if ppr is not None:
         _apply_ppr(acc, ppr, source)
 
@@ -764,18 +833,24 @@ def _apply_style_chain(
     leaf_style_id: str,
     layer: Layer,
 ) -> None:
-    """Walk the basedOn chain and apply each style's pPr/rPr ancestors-first."""
+    """Walk the basedOn chain and apply each style's pPr/rPr ancestors-first.
+
+    The whole chain is **one** level of the toggle rule. A child re-asserting
+    its parent's ``<w:b/>`` overrides rather than cancels — inheritance is not
+    a hierarchy boundary.
+    """
     chain = cache.chain(leaf_style_id)
-    # Apply in reverse: deepest ancestor first so leaf (most specific) wins.
-    for depth, (style_id, style_el) in enumerate(reversed(chain)):
-        chain_depth = len(chain) - 1 - depth
-        source = FormattingSource(layer=layer, style_id=style_id, chain_depth=chain_depth)
-        ppr = style_el.find(qn("w:pPr"))
-        if ppr is not None:
-            _apply_ppr(acc, ppr, source)
-        rpr = style_el.find(qn("w:rPr"))
-        if rpr is not None:
-            _apply_rpr(acc, rpr, source)
+    with acc.toggle_level_scope():
+        # Apply in reverse: deepest ancestor first so leaf (most specific) wins.
+        for depth, (style_id, style_el) in enumerate(reversed(chain)):
+            chain_depth = len(chain) - 1 - depth
+            source = FormattingSource(layer=layer, style_id=style_id, chain_depth=chain_depth)
+            ppr = style_el.find(qn("w:pPr"))
+            if ppr is not None:
+                _apply_ppr(acc, ppr, source)
+            rpr = style_el.find(qn("w:rPr"))
+            if rpr is not None:
+                _apply_rpr(acc, rpr, source)
 
 
 def _collect_style_chain(
@@ -838,37 +913,41 @@ def _apply_table_style_chain(
     chain = cache.chain(style_id)
     matching = _matching_conditional_types(table_context) if table_context is not None else set()
 
-    # Ancestors-first: reverse the leaf-to-root chain.
-    for depth, (sid, style_el) in enumerate(reversed(chain)):
-        chain_depth = len(chain) - 1 - depth
-        source = FormattingSource(layer="tableStyle", style_id=sid, chain_depth=chain_depth)
+    # The chain and its conditional branches are all one toggle level: a
+    # firstRow branch re-stating the base style's bold overrides it rather
+    # than cancelling it.
+    with acc.toggle_level_scope():
+        # Ancestors-first: reverse the leaf-to-root chain.
+        for depth, (sid, style_el) in enumerate(reversed(chain)):
+            chain_depth = len(chain) - 1 - depth
+            source = FormattingSource(layer="tableStyle", style_id=sid, chain_depth=chain_depth)
 
-        # 1. Base pPr / rPr for this style level.
-        ppr = style_el.find(qn("w:pPr"))
-        if ppr is not None:
-            _apply_ppr(acc, ppr, source)
-        rpr = style_el.find(qn("w:rPr"))
-        if rpr is not None:
-            _apply_rpr(acc, rpr, source)
+            # 1. Base pPr / rPr for this style level.
+            ppr = style_el.find(qn("w:pPr"))
+            if ppr is not None:
+                _apply_ppr(acc, ppr, source)
+            rpr = style_el.find(qn("w:rPr"))
+            if rpr is not None:
+                _apply_rpr(acc, rpr, source)
 
-        # 2. Matching conditional branches for this style level, in spec order.
-        if not matching:
-            continue
-        branches: dict[str, etree._Element] = {}
-        for branch in style_el.findall(qn("w:tblStylePr")):
-            type_attr = branch.get(qn("w:type"))
-            if type_attr is not None:
-                branches[type_attr] = branch
-        for cond_type in _TBL_STYLE_PR_ORDER:
-            if cond_type not in matching or cond_type not in branches:
+            # 2. Matching conditional branches for this style level, in spec order.
+            if not matching:
                 continue
-            branch = branches[cond_type]
-            branch_ppr = branch.find(qn("w:pPr"))
-            if branch_ppr is not None:
-                _apply_ppr(acc, branch_ppr, source)
-            branch_rpr = branch.find(qn("w:rPr"))
-            if branch_rpr is not None:
-                _apply_rpr(acc, branch_rpr, source)
+            branches: dict[str, etree._Element] = {}
+            for branch in style_el.findall(qn("w:tblStylePr")):
+                type_attr = branch.get(qn("w:type"))
+                if type_attr is not None:
+                    branches[type_attr] = branch
+            for cond_type in _TBL_STYLE_PR_ORDER:
+                if cond_type not in matching or cond_type not in branches:
+                    continue
+                branch = branches[cond_type]
+                branch_ppr = branch.find(qn("w:pPr"))
+                if branch_ppr is not None:
+                    _apply_ppr(acc, branch_ppr, source)
+                branch_rpr = branch.find(qn("w:rPr"))
+                if branch_rpr is not None:
+                    _apply_rpr(acc, branch_rpr, source)
 
 
 def _matching_conditional_types(ctx: TableContext) -> set[str]:
@@ -1138,9 +1217,10 @@ def _apply_numbering(
     lvl_ppr = lvl_el.find(qn("w:pPr"))
     if lvl_ppr is not None:
         _apply_ppr(acc, lvl_ppr, level_source)
-    lvl_rpr = lvl_el.find(qn("w:rPr"))
-    if lvl_rpr is not None:
-        _apply_rpr(acc, lvl_rpr, level_source)
+    # The level's ``w:rPr`` is deliberately *not* applied. It formats the
+    # number or bullet glyph, not the paragraph's text: a level carrying
+    # ``<w:b/>`` renders a bold bullet in front of unbolded prose. Applying
+    # it here reported the glyph's formatting as the run's.
 
 
 # --------------------------------------------------------------------------

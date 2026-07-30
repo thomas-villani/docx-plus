@@ -6,6 +6,50 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The cascade resolver's toggle rule was wrong, and is now measured
+  rather than inferred.** Bold, italic and the other ten ECMA-376 17.7.3
+  toggles were folded with a running XOR over the whole walk. Checked
+  against live Word across 79 probe cases, the resolver agreed on only 51
+  of 74 property answers. It now agrees on all of them. Six distinct
+  causes, each a behaviour change:
+    - **`basedOn` chains no longer alternate.** A chain is *one* level of
+      the hierarchy and flattens by plain override, so a child style
+      restating its parent's `<w:b/>` stays bold. Previously every such
+      pair cancelled — the single most common shape in a real
+      `styles.xml`.
+    - **Direct formatting is absolute.** A bare `<w:b/>` on a run states
+      bold rather than flipping it, so direct bold over a bold style
+      resolves bold. Word writes `w:val="0"` when a user un-bolds
+      something, which is the case that genuinely turns it off.
+    - **`docDefaults` is the base, not a level.** A style restating the
+      document default is inert instead of cancelling it.
+    - **`w:val="0"` at a style level is only meaningful when it differs
+      from the base.** A table style asking for bold and a paragraph
+      style asking for not-bold resolves *bold*, which is what Word
+      renders.
+    - **The `linkedCharStyle` layer is gone.** A paragraph style's
+      `w:link` partner is a UI affordance for applying its character half
+      to a selection; Word never consults it to render a run. A style
+      whose formatting lived only on its `Char` half used to resolve, and
+      no longer does. `Layer` loses the member — **breaking** for callers
+      naming it in a `stop_below` argument or matching on
+      `FormattingSource.layer`.
+    - **A numbering level's `w:rPr` no longer reaches run text.** It
+      formats the number or bullet glyph, so a level carrying `<w:b/>`
+      renders a bold "1." in front of unbolded prose. Reporting it as the
+      paragraph's own formatting described something the reader never
+      sees.
+
+  This moves two `lint` rules in the user's favour: `redundant-direct-
+  formatting` now correctly flags direct formatting that restates an
+  already-resolved toggle, which it previously protected on the false
+  premise that removing it would change the rendering.
+
+  `tests/test_cascade_word_verified.py` carries the measurements as a
+  parametrised table so the rule cannot drift back.
+
 ### Added
 
 - **Community health files** — `CONTRIBUTING.md`, `SECURITY.md`,

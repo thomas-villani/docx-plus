@@ -4,9 +4,9 @@ The affordance answers "what would this look like *without* that layer?",
 which provenance alone cannot: provenance names the layer that won, not the
 value that would have surfaced in its absence.
 
-Also covers the linked-character-style toggle rule, since that is the one
-place two layers describe the same style and the distinction is only
-visible through a partial resolve.
+Also covers the ``w:link`` partner, which is deliberately *not* a layer —
+the one place where two style definitions describe the same style, and the
+one most likely to be mistaken for a further level of the hierarchy.
 """
 
 from __future__ import annotations
@@ -138,17 +138,18 @@ def test_rejects_an_unknown_layer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The linked character style is the same style, not another layer.
+# The w:link partner is the same style's other half, not another layer.
 # ---------------------------------------------------------------------------
 
 
 def test_a_run_in_a_bold_heading_resolves_bold() -> None:
-    """Regression: the linked Char style must not XOR the toggle back off.
+    """Regression: the linked Char style must not cancel the toggle.
 
     Word writes ``Heading1`` and its ``w:link`` partner ``Heading1Char``
     with identical ``w:rPr``. Applying both as independent layers made every
     toggle cancel, so a run inside a stock ``Heading 1`` paragraph resolved
-    ``bold=False`` while the paragraph itself resolved ``bold=True``.
+    ``bold=False`` while the paragraph itself resolved ``bold=True``. The
+    bold comes from ``Heading1``'s own ``w:rPr``; the partner is inert.
     """
     doc = Document()
     para = doc.add_paragraph("Heading text", style="Heading 1")
@@ -172,11 +173,13 @@ def test_paragraph_and_run_agree_on_a_styles_formatting() -> None:
         assert getattr(para_resolved, prop) == getattr(run_resolved, prop), prop
 
 
-def test_linked_char_style_still_supplies_what_the_paragraph_style_omits() -> None:
-    """Suppressed XOR, not a suppressed layer — it still exists for a reason.
+def test_a_link_partners_formatting_is_not_applied() -> None:
+    """The ``w:link`` partner is not a cascade layer, so it contributes nothing.
 
-    A style carrying its character formatting solely on the Char half must
-    still resolve, which is why the linked style is applied at all.
+    Measured against Word: a paragraph style whose character formatting
+    lives *only* on its Char half renders as though the Char half did not
+    exist. The partner is a UI affordance for applying that formatting to a
+    selection, not something Word consults to render the paragraph.
     """
     doc = Document()
     styles = doc.styles.element
@@ -193,11 +196,32 @@ def test_linked_char_style_still_supplies_what_the_paragraph_style_omits() -> No
     sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": "OnlyLinked"})
     run = para.add_run("text")
 
-    assert resolve_effective_formatting(run).font_size == 24.0
+    assert resolve_effective_formatting(run).font_size == 11.0  # docDefaults
 
 
-def test_absolute_toggles_do_not_leak_past_the_linked_style() -> None:
-    """Direct run formatting after the linked pass must still override."""
+def test_a_link_partner_does_not_override_the_style_itself() -> None:
+    """When the two halves disagree, the paragraph style's own rPr wins."""
+    doc = Document()
+    styles = doc.styles.element
+
+    para_style = sub(styles, "w:style", **{"w:type": "paragraph", "w:styleId": "Disagree"})
+    sub(para_style, "w:name", **{"w:val": "Disagree"})
+    sub(para_style, "w:link", **{"w:val": "DisagreeChar"})
+    sub(sub(para_style, "w:rPr"), "w:sz", **{"w:val": "24"})  # 12pt
+
+    char_style = sub(styles, "w:style", **{"w:type": "character", "w:styleId": "DisagreeChar"})
+    sub(char_style, "w:name", **{"w:val": "Disagree Char"})
+    sub(char_style, "w:link", **{"w:val": "Disagree"})
+    sub(sub(char_style, "w:rPr"), "w:sz", **{"w:val": "48"})  # 24pt
+
+    para = doc.add_paragraph()
+    sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": "Disagree"})
+    run = para.add_run("text")
+
+    assert resolve_effective_formatting(run).font_size == 12.0
+
+
+def test_direct_run_formatting_still_overrides_a_heading_style() -> None:
     doc = Document()
     para = doc.add_paragraph("Heading text", style="Heading 1")
     run = para.runs[0]
