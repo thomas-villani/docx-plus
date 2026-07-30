@@ -170,34 +170,48 @@ The cascade is walked at `inspect.py:253-317`
    "not yet materialised" (a common pre-Word state) and skipped silently.
 5. **Direct paragraph formatting** — `w:pPr` on the paragraph itself,
    including any `w:rPr` nested under it (paragraph-mark formatting).
-6. **Direct run formatting** — `w:rPr` on a target `Run`. Run targets
-   also pick up the linked character style (`w:link` on the paragraph
-   style) before this layer.
+6. **Direct run formatting** — `w:rPr` on a target `Run`.
+
+There is deliberately **no linked-character-style layer**. A paragraph
+style's `w:link` partner (`Heading1` / `Heading1Char`) is a UI affordance
+for applying that style's character half to a selection; Word never
+consults it when rendering runs inside the paragraph. `Heading1` carries
+its own `<w:b/>`, which is where heading bold comes from.
 
 ### Toggle properties
 
-Six rPr children are toggles in `_TOGGLE_RPR` at `inspect.py:37-44`:
-`b`, `i`, `caps`, `smallCaps`, `strike`, `vanish`. (`bCs`, `iCs`,
-`emboss`, `imprint`, `outline`, `shadow` are spec'd toggles but not yet
-surfaced on `ResolvedFormatting`; `dstrike` is intentionally **not** a
-toggle per ECMA-376.)
+Twelve rPr children are toggles in `_TOGGLE_RPR`: `b`, `i`, `bCs`, `iCs`,
+`caps`, `smallCaps`, `strike`, `vanish`, `emboss`, `imprint`, `outline`,
+`shadow`. (`dstrike` is intentionally **not** a toggle per ECMA-376.)
 
-Toggle semantics live in `_Accumulator.toggle` at `inspect.py:223-238`:
+Toggle semantics live in `_resolve_toggle`. They are not override, and
+they are not a running XOR either — the rule needs one value *per style
+level*, which is why `_Accumulator` collects toggles into buckets and
+combines them in `freeze()` rather than folding as it walks:
 
-- An element with `w:val` in `("0", "false")` resets parity to false. Any
-  subsequent layer that asserts the toggle flips it back on (this is the
-  "explicit override" branch of ECMA-376 17.7.3).
-- Any other `w:val` (including absent) XORs against the current parity.
-  Even count = false, odd count = true.
+- **`docDefaults` is the base**, not a level.
+- **Each style level** — table style, paragraph style, character style —
+  is flattened over its own `w:basedOn` chain by **plain override**.
+  Inheritance is not a hierarchy boundary.
+- The result is the base flipped once per level whose value **differs
+  from it**. A level restating the base is inert, so `<w:b w:val="0"/>`
+  on a style does nothing when nothing is bold to begin with.
+- **Direct formatting is absolute.** `<w:b/>` on a run is bold and
+  `<w:b w:val="0"/>` is not, whatever the styles said.
 
-This produces the right answer for the test cases listed in
-`IMPLEMENTATION.md §5`:
+Worked cases:
 
 - Style defines bold, no further override → bold
-- Style A bold, B basedOn A bold → not bold (XOR)
-- Style A bold, B basedOn A `w:b w:val="false"` → not bold (reset)
+- Style A bold, B basedOn A bold → **bold** (one level, override)
+- Style A bold, B basedOn A `w:b w:val="false"` → not bold (override)
+- Paragraph style bold + character style bold → **not bold** (two levels)
 - Direct bold on a non-bold style → bold
+- Direct bold on a **bold** style → bold (absolute, not a flip)
 - Direct `w:b w:val="false"` on a bold style → not bold
+
+This rule was settled by measuring live Word rather than by reading the
+spec, whose prose admits several incompatible readings. The measurements
+are the parametrised table in `tests/test_cascade_word_verified.py`.
 
 ### Theme color resolution
 
@@ -236,8 +250,8 @@ values returned with the flag off are bit-identical to those with it on.
   that actually set the property (not the leaf style, the *resolving*
   style)
 - `chain_depth` — how many basedOn hops away from the target
-- `is_toggle_resolved` — True when the value came from the XOR chain
-  rather than a single explicit assignment
+- `is_toggle_resolved` — True when a toggle's value was computed across
+  more than one contributing layer rather than stated by one of them
 
 Provenance is the differentiated feature behind the inspector. It is the
 basis for any future "why is this paragraph 14pt italic?" tooling.

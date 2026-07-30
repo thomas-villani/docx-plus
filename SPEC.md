@@ -238,8 +238,8 @@ def resolve_effective_formatting(
 
 ### The cascade — implement exactly this order
 
-Later layers win. Toggle properties XOR through the basedOn chain per
-ECMA-376 17.7.3 rather than override.
+Later layers win, except toggle properties, which follow the ECMA-376
+17.7.3 rule described below rather than overriding.
 
 1. **docDefaults** — `w:docDefaults/w:rPrDefault` and `w:pPrDefault` from
    `styles.xml`
@@ -253,14 +253,16 @@ ECMA-376 17.7.3 rather than override.
 4. **Numbering** — if the paragraph has `w:numPr`, apply formatting from the
    corresponding numbering definition in `numbering.xml`.
 5. **Direct paragraph formatting** — `w:pPr` on the paragraph itself.
-6. **Direct run formatting** — `w:rPr` on the run itself (runs only).
+6. **Character style** — `w:rStyle` on the run, and its `basedOn` chain.
+7. **Direct run formatting** — `w:rPr` on the run itself (runs only).
 
-For `Run` targets, also apply the linked character style (`w:link` from the
-paragraph style) before step 6.
+The paragraph style's `w:link` partner is **not** a layer. Word never
+consults it when rendering a run; it exists so the style's character half
+can be applied to a selection from the UI.
 
 ### Toggle properties
 
-These XOR through the cascade:
+These twelve follow the toggle rule:
 
 ```
 b, bCs, caps, emboss, i, iCs, imprint, outline, shadow, smallCaps,
@@ -269,10 +271,23 @@ strike, vanish
 
 `dstrike` is **not** a toggle (per ECMA-376; verify in implementation).
 
-Implementation note: track each toggle property's parity as the cascade is
-walked. The final effective value is the parity (even count = false, odd =
-true), unless an explicit `w:val="false"` is encountered, which resets the
-parity to false from that point in the cascade.
+Implementation note: a running parity over the whole walk is **wrong**.
+The rule needs one value per *style level*, so collect rather than fold:
+
+- `docDefaults` supplies the **base** value; it is not a level.
+- Each style level — table style, paragraph style, character style — is
+  flattened over its own `basedOn` chain by **plain override**. A child
+  restating its parent's `<w:b/>` stays bold; inheritance is not a
+  hierarchy boundary.
+- The effective value is the base flipped once for every level whose value
+  **differs** from the base. A level restating the base contributes
+  nothing, so `<w:b w:val="0"/>` on a style is inert unless something
+  below it turned bold on.
+- Direct formatting is **absolute**: it states the value outright and
+  never participates in the flip count.
+
+Settled by measurement against Word, not by reading the spec prose — see
+`tests/test_cascade_word_verified.py`.
 
 ### Theme references
 
@@ -338,11 +353,11 @@ When `include_provenance=True`, the `.provenance` field is populated:
 @dataclass(frozen=True)
 class FormattingSource:
     layer: Literal[
-        "docDefaults", "tableStyle", "paragraphStyle",
-        "linkedCharStyle", "numbering", "directParagraph", "directRun"
+        "docDefaults", "tableStyle", "paragraphStyle", "styleNumbering",
+        "numbering", "directParagraph", "runStyle", "directRun"
     ]
     style_id: Optional[str] = None     # for *Style layers, which style provided it
-    is_toggle_resolved: bool = False   # True if value came from XOR chain
+    is_toggle_resolved: bool = False   # True if the toggle rule computed it
     chain_depth: Optional[int] = None  # for *Style layers, how many basedOn hops
 ```
 
@@ -364,8 +379,9 @@ paragraph 14pt italic?" and is the basis for any future debug tooling.
 
 - Round-trip every cascade layer: build a doc with formatting only at that
   layer, resolve, assert it appears.
-- Verify toggle XOR: 3-level style chain with bold at each level, assert
-  parity.
+- Verify the toggle rule: a bold paragraph style plus a bold character
+  style must resolve *not* bold, while a 3-level `basedOn` chain with bold
+  at each level must stay bold.
 - Verify `basedOn` cycle detection: hand-construct a cyclic chain, assert
   `StyleCascadeError`.
 - Verify theme color resolution: doc with `themeColor="accent1"`, assert
@@ -413,7 +429,7 @@ def modify_style(
     """Modify a style's properties. Pass only the properties to change;
     others are preserved. Toggle properties: pass True/False to set
     explicitly (writes w:val="true"/"false"); pass None to clear the
-    setting (XOR with parent will resume)."""
+    setting (the inherited value resumes)."""
 
 def apply_style(
     target: Paragraph | Run | _Cell,
@@ -833,7 +849,7 @@ with provenance. Demonstrates `resolve_effective_formatting` with
     font_name: Calibri Light  <- paragraphStyle: Title (chain_depth=0)
     font_size: 28.0           <- paragraphStyle: Title
     color_rgb: 2F5496         <- paragraphStyle: Title (theme: accent1 + shade)
-    bold: True                <- toggle resolved: paragraphStyle:Title XOR docDefaults
+    bold: True                <- paragraphStyle: Title
     ...
 ```
 

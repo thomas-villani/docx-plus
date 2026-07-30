@@ -186,6 +186,15 @@ correctly and uselessly is a rule nobody runs twice.
   XOR cancelled every toggle the pair agreed on. The paragraph and the
   run disagreed about the same style. Only visible once the baselines made
   the two answers directly comparable.
+
+  The first fix suppressed the XOR for the `w:link` partner, which made
+  the symptom go away on a wrong premise. Driving the resolver against
+  live Word afterwards showed the partner is not a cascade layer at all,
+  and that the toggle rule diverged from Word in five further ways — the
+  resolver agreed on 51 of 74 measured answers. It now agrees on all of
+  them; see the `Fixed` entry in `CHANGELOG.md` and the measured table in
+  `tests/test_cascade_word_verified.py`. **The lesson worth keeping: for
+  anything the format's prose leaves ambiguous, measure Word.**
 - **Paragraph-mark `rPr` is not a run baseline.** It formats the pilcrow.
   The old paragraph-level baseline folded it in, so a run matching it
   looked redundant when deleting the property would have changed the

@@ -116,7 +116,7 @@ for the algorithm walkthrough.
 |---|---|---|
 | `resolve_effective_formatting(target, *, include_provenance=False, table_context=None)` | function | The headline API — walks six cascade layers, returns `ResolvedFormatting`. `table_context` overrides the auto-derived cell position for conditional table-style branches |
 | `ResolvedFormatting` | dataclass (frozen) | 34 formatting fields + `partial` + optional `provenance`. SPEC §4. All twelve ECMA-376 17.7.3 toggles are surfaced (`bold`, `italic`, `cs_bold`, `cs_italic`, `caps`, `small_caps`, `strike`, `vanish`, `emboss`, `imprint`, `outline`, `shadow`) |
-| `FormattingSource` | dataclass (frozen) | `layer`, `style_id`, `chain_depth`, `is_toggle_resolved` |
+| `FormattingSource` | dataclass (frozen) | `layer`, `style_id`, `chain_depth`, `is_toggle_resolved`. `layer` is one of `docDefaults`, `tableStyle`, `paragraphStyle`, `styleNumbering`, `numbering`, `directParagraph`, `runStyle`, `directRun` |
 | `TableContext` | dataclass (frozen) | Cell position within a table — `is_first_row`, `is_last_row`, `is_first_col`, `is_last_col`, `is_band_row`, `is_band_col`. Drives `<w:tblStylePr>` branch selection (`firstRow`, `lastRow`, `band1Horz`, …) per ECMA-376 17.7.6.5 |
 | `StyleCascadeError` | exception | `basedOn` cycles or depth > 11 |
 | `MissingPartError` | exception | Referenced part absent (reserved — currently no caller raises it) |
@@ -469,7 +469,7 @@ needs them yet — see `TEST_GAPS.md` N1).
 - **Toggle properties** (`bold`, `italic`, `caps`, `small_caps`,
   `strike`, `vanish`). `True` writes the element with no `w:val`.
   `False` writes `w:val="false"`. `None` (in `modify_style`) removes the
-  element so XOR with the parent style resumes. See
+  element so the inherited value resumes. See
   [`ARCHITECTURE.md` §2](ARCHITECTURE.md#2-the-cascade-resolver).
 - **Identifiers.** Style IDs (`w:styleId`) — machine-readable, what
   every function takes. Style names (`w:name`) — human-readable, what
