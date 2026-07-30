@@ -56,7 +56,7 @@ $ docx-plus inspect report.docx --provenance
 [1] "Quarterly Review"
     style: Title
     font_size : 28.0   <- paragraphStyle: Title
-    bold      : True   <- paragraphStyle: Title (toggle XOR)
+    bold      : True   <- paragraphStyle: Title
 ```
 
 `--provenance` annotates each field with the cascade layer (and style id) that
