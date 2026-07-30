@@ -246,7 +246,8 @@ Later layers win, except toggle properties, which follow the ECMA-376
 2. **Table style** — only if `target` is inside a table; walk the table
    style's `basedOn` chain. Apply conditional formatting (`w:tblStylePr` for
    firstRow, lastRow, firstCol, etc.) based on the target's position in the
-   table.
+   table **and** on the table's `w:tblLook` — see "Conditional table
+   formatting" below.
 3. **Paragraph style chain** — walk the referenced paragraph style and its
    `basedOn` ancestors to the root. Cycle detection required. Max depth 11
    (Word's limit) — raise `StyleCascadeError` if exceeded.
@@ -288,6 +289,53 @@ The rule needs one value per *style level*, so collect rather than fold:
 
 Settled by measurement against Word, not by reading the spec prose — see
 `tests/test_cascade_word_verified.py`.
+
+### Conditional table formatting
+
+A table style's `w:tblStylePr` branches do **not** all apply to whatever
+cell happens to match them positionally. Three things decide it, and this
+too was settled by measurement — see `tests/test_tables_word_verified.py`.
+
+**1. The table's `w:tblLook` gates every branch.** These are the Header
+Row / First Column / Banded Rows tick-boxes in Word's Table Design tab. A
+cell in row 0 of a table whose `tblLook` clears `firstRow` takes no
+`firstRow` formatting. Read the flags in this order:
+
+- the named attributes (`w:firstRow`, `w:noHBand`, …) if any is present,
+  with the absent ones defaulting to off;
+- otherwise the legacy `w:val` hex bitmask, which Word still honours;
+- and if there is no `w:tblLook` at all, **everything is enabled** —
+  absent means unrestricted, not restricted.
+
+A corner branch needs both of its axes: with `firstColumn` cleared, the
+top-left cell takes `firstRow`, not `nwCell`.
+
+**2. Banding needs a declared band size.** `w:tblStyleRowBandSize` /
+`w:tblStyleColBandSize` on the table instance, else anywhere in its style
+chain, else **zero — which means no banding at all**, not a band size of
+one. Word's own table styles all declare an explicit `1`. The stripe
+sequence starts at row / column 0 unless the matching `firstRow` /
+`firstCol` conditional actually paints that line, in which case it starts
+at 1; the `tblLook` flag alone does not shift it.
+
+**3. Precedence is not the order ECMA-376 17.7.6.5 lists.** Applying
+later-wins, the measured order is:
+
+```
+band1Horz, band2Horz, band1Vert, band2Vert,
+firstCol, lastCol, firstRow, lastRow,
+nwCell, neCell, swCell, seCell
+```
+
+So a vertical band beats a horizontal one and a row branch beats a column
+branch — the spec's listing implies the opposite of both, and Word
+*rewrites* a style's branches into the spec's order when it saves, so
+document order is no guide either.
+
+`wholeTable` is absent from that list because Word discards
+`<w:tblStylePr w:type="wholeTable">` outright: it renders neither the
+branch's `rPr` nor its `pPr`, and drops the element on save. Whole-table
+formatting belongs on the style's own `w:rPr` / `w:pPr`.
 
 ### Theme references
 

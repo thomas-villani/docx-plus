@@ -8,6 +8,52 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Conditional table-style formatting ignored `<w:tblLook>` entirely,
+  and is now measured rather than inferred.** The resolver picked
+  `<w:tblStylePr>` branches from the cell's position alone, so it applied
+  header-row, first-column and banding formatting to tables that had those
+  boxes unticked. Across 1015 cells read back from live Word it agreed on
+  19 of the first 80; it now agrees on all 1015. Six distinct causes, each
+  a behaviour change:
+    - **`w:tblLook` now gates every branch.** These are the Header Row /
+      First Column / Banded Rows tick-boxes in Word's Table Design tab.
+      Both forms are honoured — the named attributes and the legacy
+      `w:val` hex bitmask that Word 2007 wrote — and a table with *no*
+      `<w:tblLook>` enables everything, which is what Word does rather
+      than the `0`-defaults the schema implies. Because python-docx's
+      `add_table` emits Word's default look, `lastRow`, `lastColumn` and
+      vertical banding are off unless a document asks for them.
+    - **A corner branch needs both of its axes.** With `firstColumn`
+      cleared, the top-left cell takes `firstRow`, not `nwCell`.
+    - **Banding requires a declared band size.** `w:tblStyleRowBandSize` /
+      `w:tblStyleColBandSize` is read from the table instance and then its
+      style chain — previously only the instance was consulted, and an
+      absent value defaulted to `1`. Absent means **no banding**; Word's
+      own table styles all declare an explicit `1` for this reason.
+    - **The band sequence starts at row / column 0.** It shifts to 1 only
+      when the matching `firstRow` / `firstCol` conditional actually
+      paints that line — the `tblLook` flag alone does not shift it. The
+      old code always skipped line 0, which was right only for the common
+      header-row case.
+    - **Branch precedence was inverted on two axes.** A vertical band
+      beats a horizontal one, and a row branch beats a column branch. Both
+      are the opposite of the order ECMA-376 17.7.6.5 lists, which is what
+      the old code followed — and document order is no guide either, since
+      Word rewrites a style's branches into the spec's order on save.
+    - **The `wholeTable` branch is inert.** Word discards
+      `<w:tblStylePr w:type="wholeTable">` on load: it renders neither the
+      `rPr` nor the `pPr` and drops the element when it saves. Whole-table
+      formatting belongs on the style's own `w:rPr` / `w:pPr`, which the
+      base pass already applies.
+
+  `TableContext` gains `first_row_enabled`, `last_row_enabled`,
+  `first_col_enabled` and `last_col_enabled`, all defaulting to True so a
+  hand-built context behaves like a table with no `<w:tblLook>`. The
+  positional fields keep their meaning.
+
+  `tests/test_tables_word_verified.py` carries the measured grids as a
+  parametrised table so the behaviour cannot drift back.
+
 - **The cascade resolver's toggle rule was wrong, and is now measured
   rather than inferred.** Bold, italic and the other ten ECMA-376 17.7.3
   toggles were folded with a running XOR over the whole walk. Checked

@@ -38,6 +38,13 @@ print(r.bold)                     # True / False / None
   when resolving conditional table-style branches (`firstRow`, `lastRow`,
   banded fills, …).
 
+> **Conditional table branches are gated.** A cell being in row 0 is not
+> enough: the table's `w:tblLook` has to ask for `firstRow` (Word's "Header
+> Row" tick-box), a corner branch needs both its axes enabled, and banding
+> needs a declared `w:tblStyleRowBandSize` / `ColBandSize` — absent means
+> *no* banding, not a size of 1. A `TableContext` you build by hand
+> enables everything unless you clear a `*_enabled` flag.
+
 ```python
 r = resolve_effective_formatting(p, include_provenance=True)
 src = r.provenance["font_size"]

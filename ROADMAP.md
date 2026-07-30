@@ -195,6 +195,22 @@ correctly and uselessly is a rule nobody runs twice.
   them; see the `Fixed` entry in `CHANGELOG.md` and the measured table in
   `tests/test_cascade_word_verified.py`. **The lesson worth keeping: for
   anything the format's prose leaves ambiguous, measure Word.**
+
+  Applying that lesson to the rest of the cascade found the same density
+  of error one layer over. Conditional table formatting never read
+  `<w:tblLook>`, so it painted header rows and banding onto tables that
+  had asked for neither; it agreed with Word on 19 of the first 80 cells
+  measured. Six causes, now at 1015 of 1015 — see
+  `tests/test_tables_word_verified.py`. Two of them are worth
+  generalising: **the spec's listed order is not always the application
+  order** (Word applies vertical bands over horizontal ones and rows over
+  columns, both inverted from 17.7.6.5), and **Word normalises on load**,
+  so a `wholeTable` branch that the file plainly contains is discarded
+  before anything renders. Neither is visible from the XML alone.
+
+  Still measured only by inference, and next in line: theme luminance
+  (`lumMod` / `lumOff` are implemented but unwired), `w:contextualSpacing`,
+  and the cell cascade.
 - **Paragraph-mark `rPr` is not a run baseline.** It formats the pilcrow.
   The old paragraph-level baseline folded it in, so a run matching it
   looked redundant when deleting the property would have changed the
