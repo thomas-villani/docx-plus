@@ -229,8 +229,9 @@ def test_theme_color_resolves_via_theme(themed_docx_path: Path) -> None:
     doc = Document(str(themed_docx_path))
     p = doc.paragraphs[0]
     resolved = resolve_effective_formatting(p)
-    # accent1 (4F81BD in the default Office theme) with themeShade=80 -> 254062
-    assert resolved.color_rgb == "254062"
+    # accent1 (4F81BD in the default Office theme) with themeShade=80, which
+    # Word renders as 244061 — see tests/test_theme_word_verified.py.
+    assert resolved.color_rgb == "244061"
     assert resolved.partial is False
 
 

@@ -208,8 +208,27 @@ correctly and uselessly is a rule nobody runs twice.
   so a `wholeTable` branch that the file plainly contains is discarded
   before anything renders. Neither is visible from the XML alone.
 
-  Still measured only by inference, and next in line: theme luminance
-  (`lumMod` / `lumOff` are implemented but unwired), `w:contextualSpacing`,
+  **Theme colours, third pass.** The flagged item here — "`lumMod` /
+  `lumOff` implemented but unwired" — turned out to be a documentation
+  bug, not a code one: `w:color` cannot carry those attributes, so there
+  is no gap to close. Measuring the layer anyway found two things that
+  were real. `<w:clrSchemeMapping>` was ignored, so a document that remaps
+  its slots resolved `text1` to black where Word renders it white; and the
+  tint/shade transforms ran in floating point, which lands on the wrong
+  byte at the integer boundaries these values keep hitting. Exact on 18 of
+  47 measured values before, 32 after, with the worst-case error halved to
+  one unit. The remaining 15 are enumerated in
+  `tests/test_theme_word_verified.py` — Word's rounding at those
+  boundaries was not reverse-engineered, and the effort/benefit did not
+  justify continuing.
+
+  A method note worth keeping: Word's COM will not tell you a rendered
+  theme colour. `Font.Color` returns a theme-*encoded* integer, so the
+  ground truth had to come from exporting the document — filtered HTML and
+  PDF independently, which agreed, and only then was the fitting worth
+  doing.
+
+  Still measured only by inference, and next in line: `w:contextualSpacing`
   and the cell cascade.
 - **Paragraph-mark `rPr` is not a run baseline.** It formats the pilcrow.
   The old paragraph-level baseline folded it in, so a run matching it

@@ -25,14 +25,32 @@ implement the DrawingML ``lumMod`` / ``lumOff`` transforms for callers that
 read theme colors *referenced from DrawingML* (shape fills, ``w14`` text
 effects), where those transforms do appear — they are deliberately not part
 of the ``w:color`` resolution path because that element cannot carry them.
+They are correspondingly **not** verified against Word: no cascade input
+can produce one, so there is nothing to render and compare.
+
+Which scheme slot a name resolves to is per-document. ``settings.xml``
+carries a ``<w:clrSchemeMapping>`` that redirects the *semantic* names —
+``text1``, ``background1``, ``accent1``, ``hyperlink``, … — onto scheme
+slots; a dark-themed template swaps ``t1`` and ``bg1`` so ``text1`` renders
+white. The direct slot names (``dark1`` / ``light1`` / ``dark2`` /
+``light2``) are never redirected, so the mapping is not a rename of the
+scheme. Measured against Word.
+
+Arithmetic here is exact (:class:`fractions.Fraction`), not floating
+point. These transforms land on integer boundaries often enough that it
+matters: ``1 - 0xE6/255`` is 0.09803921568627449 in binary floating point,
+and 255 times that is 24.999999999999996, one below the 25 Word paints.
+Exactness also makes the RGB -> HSL -> RGB round-trip lossless, which is
+what lets the final channel be truncated (matching Word) without a no-op
+transform changing the colour.
 
 The module is read-only; writing themes is a v0.2 non-goal (SPEC §1).
 """
 
 from __future__ import annotations
 
-import colorsys
 from dataclasses import dataclass, field
+from fractions import Fraction
 from typing import TYPE_CHECKING
 
 from lxml import etree
@@ -45,12 +63,15 @@ if TYPE_CHECKING:
     from docx.document import Document
 
 
+_HALF = Fraction(1, 2)
+
 _THEME_RELTYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
 
-# Word's ST_ThemeColor name -> DrawingML clrScheme child element name.
-# Per ECMA-376 17.18.97: text1/background1/text2/background2 are aliases for
-# dk1/lt1/dk2/lt2 respectively.
-_THEME_NAME_TO_SCHEME_KEY: dict[str, str] = {
+# ECMA-376 ST_ColorSchemeIndex -> DrawingML clrScheme child element name.
+# This is the *scheme slot* map and is fixed; which slot a given
+# ``w:themeColor`` name lands in is a separate, per-document question — see
+# _CLR_SCHEME_MAPPING_ATTR.
+_SCHEME_INDEX_TO_KEY: dict[str, str] = {
     "dark1": "dk1",
     "light1": "lt1",
     "dark2": "dk2",
@@ -63,10 +84,45 @@ _THEME_NAME_TO_SCHEME_KEY: dict[str, str] = {
     "accent6": "accent6",
     "hyperlink": "hlink",
     "followedHyperlink": "folHlink",
-    "text1": "dk1",
-    "text2": "dk2",
-    "background1": "lt1",
-    "background2": "lt2",
+}
+
+# Word's ST_ThemeColor name -> the ``<w:clrSchemeMapping>`` attribute that
+# says which scheme slot it resolves to.
+#
+# Only the *semantic* names are remapped. ``dark1`` / ``light1`` / ``dark2``
+# / ``light2`` name scheme slots directly and are never redirected —
+# measured against Word, which honours the mapping for ``text1`` and friends
+# while leaving ``dark1`` alone in the same document.
+_CLR_SCHEME_MAPPING_ATTR: dict[str, str] = {
+    "text1": "t1",
+    "background1": "bg1",
+    "text2": "t2",
+    "background2": "bg2",
+    "accent1": "accent1",
+    "accent2": "accent2",
+    "accent3": "accent3",
+    "accent4": "accent4",
+    "accent5": "accent5",
+    "accent6": "accent6",
+    "hyperlink": "hyperlink",
+    "followedHyperlink": "followedHyperlink",
+}
+
+# The mapping Word writes into a new document, and what it assumes for any
+# attribute a ``<w:clrSchemeMapping>`` leaves out.
+_DEFAULT_CLR_SCHEME_MAPPING: dict[str, str] = {
+    "t1": "dark1",
+    "bg1": "light1",
+    "t2": "dark2",
+    "bg2": "light2",
+    "accent1": "accent1",
+    "accent2": "accent2",
+    "accent3": "accent3",
+    "accent4": "accent4",
+    "accent5": "accent5",
+    "accent6": "accent6",
+    "hyperlink": "hyperlink",
+    "followedHyperlink": "followedHyperlink",
 }
 
 
@@ -94,13 +150,24 @@ class ThemeColors:
         fonts: ``ST_Theme`` font token (``"minorHAnsi"``,
             ``"majorEastAsia"``, …) -> concrete typeface name. Empty when
             the theme has no ``a:fontScheme``.
+        mapping: The document's ``<w:clrSchemeMapping>`` — attribute name
+            (``"t1"``, ``"bg1"``, ``"accent1"``, …) -> scheme slot. Defaults
+            to what Word writes into a new document, so an absent or partial
+            element behaves as Word treats it.
     """
 
     scheme: dict[str, str]
     fonts: dict[str, str] = field(default_factory=dict)
+    mapping: dict[str, str] = field(default_factory=lambda: dict(_DEFAULT_CLR_SCHEME_MAPPING))
 
     def base(self, theme_name: str) -> str | None:
         """Return the unmodified hex color for a Word theme color name.
+
+        Resolves through the document's ``<w:clrSchemeMapping>`` where one
+        applies: ``text1`` means "whatever slot this document maps ``t1``
+        to", which is ``dark1`` by default but need not be. The direct slot
+        names (``dark1`` / ``light1`` / ``dark2`` / ``light2``) bypass the
+        mapping.
 
         Args:
             theme_name: A value from ``ST_ThemeColor`` (e.g. ``"accent1"``,
@@ -110,7 +177,12 @@ class ThemeColors:
             Uppercase ``RRGGBB`` hex string, or ``None`` if the name is not a
             recognized theme color or the underlying scheme entry is missing.
         """
-        key = _THEME_NAME_TO_SCHEME_KEY.get(theme_name)
+        attr = _CLR_SCHEME_MAPPING_ATTR.get(theme_name)
+        if attr is not None:
+            slot = self.mapping.get(attr, _DEFAULT_CLR_SCHEME_MAPPING[attr])
+        else:
+            slot = theme_name
+        key = _SCHEME_INDEX_TO_KEY.get(slot)
         if key is None:
             return None
         return self.scheme.get(key)
@@ -152,7 +224,35 @@ def load_theme(doc: Document) -> ThemeColors | None:
         root = etree.fromstring(theme_xml)
     except etree.XMLSyntaxError:
         return None
-    return ThemeColors(scheme=_parse_clr_scheme(root), fonts=_parse_font_scheme(root))
+    return ThemeColors(
+        scheme=_parse_clr_scheme(root),
+        fonts=_parse_font_scheme(root),
+        mapping=_read_clr_scheme_mapping(doc),
+    )
+
+
+def _read_clr_scheme_mapping(doc: Document) -> dict[str, str]:
+    """Read ``<w:clrSchemeMapping>`` from ``settings.xml``.
+
+    Word consults this to decide which scheme slot a ``w:themeColor`` name
+    such as ``text1`` refers to; a dark-themed template swaps ``t1`` and
+    ``bg1`` so that ``text1`` renders white. Attributes the element omits —
+    and a document with no element or no settings part at all — fall back to
+    Word's defaults.
+    """
+    mapping = dict(_DEFAULT_CLR_SCHEME_MAPPING)
+    try:
+        settings_el = doc.settings.element
+    except Exception:  # pragma: no cover - a document with no settings part
+        return mapping
+    element = settings_el.find(qn("w:clrSchemeMapping"))
+    if element is None:
+        return mapping
+    for attr in _DEFAULT_CLR_SCHEME_MAPPING:
+        value = element.get(qn(f"w:{attr}"))
+        if value in _SCHEME_INDEX_TO_KEY:
+            mapping[attr] = value
+    return mapping
 
 
 def resolve_theme_font(theme: ThemeColors | None, token: str) -> str | None:
@@ -231,8 +331,7 @@ def apply_theme_tint(hex_color: str, tint_byte: str) -> str:
     """
     t = _parse_hex_byte(tint_byte)
     h, lum, s = _rgb_to_hls(hex_color)
-    new_l = lum * t + (1 - t)
-    return _hls_to_hex(h, new_l, s)
+    return _hls_to_hex(h, _lerp_to_white(lum, t), s)
 
 
 def apply_theme_shade(hex_color: str, shade_byte: str) -> str:
@@ -254,6 +353,11 @@ def apply_theme_shade(hex_color: str, shade_byte: str) -> str:
     return _hls_to_hex(h, lum * s_val, sat)
 
 
+def _lerp_to_white(lum: Fraction, tint: Fraction) -> Fraction:
+    """``L * t + (1 - t)`` — kept exact so boundary values land where Word puts them."""
+    return lum * tint + (Fraction(1) - tint)
+
+
 def apply_lum_mod(hex_color: str, lum_mod: int) -> str:
     """Multiply L by ``lum_mod / 100000`` per ECMA-376 17.18.40.
 
@@ -266,7 +370,7 @@ def apply_lum_mod(hex_color: str, lum_mod: int) -> str:
     Returns:
         Uppercase ``RRGGBB`` hex string with L clamped to ``[0, 1]``.
     """
-    factor = lum_mod / 100000.0
+    factor = Fraction(lum_mod, 100000)
     h, lum, sat = _rgb_to_hls(hex_color)
     return _hls_to_hex(h, lum * factor, sat)
 
@@ -284,7 +388,7 @@ def apply_lum_off(hex_color: str, lum_off: int) -> str:
     Returns:
         Uppercase ``RRGGBB`` hex string.
     """
-    delta = lum_off / 100000.0
+    delta = Fraction(lum_off, 100000)
     h, lum, sat = _rgb_to_hls(hex_color)
     return _hls_to_hex(h, lum + delta, sat)
 
@@ -370,17 +474,24 @@ def _extract_color(scheme_child: etree._Element) -> str | None:
     return None
 
 
-def _parse_hex_byte(byte_str: str) -> float:
+def _parse_hex_byte(byte_str: str) -> Fraction:
     try:
         value = int(byte_str, 16)
     except (TypeError, ValueError) as exc:
         raise ThemeError(f"expected hex byte, got {byte_str!r}") from exc
     if not 0 <= value <= 0xFF:
         raise ThemeError(f"hex byte {byte_str!r} out of range")
-    return value / 255.0
+    return Fraction(value, 255)
 
 
-def _rgb_to_hls(hex_color: str) -> tuple[float, float, float]:
+def _rgb_to_hls(hex_color: str) -> tuple[Fraction, Fraction, Fraction]:
+    """Exact HSL, as Fractions in ``[0, 1]``, in colorsys's ``(h, l, s)`` order.
+
+    Deliberately not :func:`colorsys.rgb_to_hls`: these transforms land on
+    exact integer boundaries often enough that binary floating point changes
+    the answer. ``1 - 0xE6/255`` is 0.09803921568627449, and 255 times that
+    is 24.999999999999996 — which truncates to 24 where Word renders 25.
+    """
     cleaned = hex_color.lstrip("#")
     if len(cleaned) != 6:
         raise ThemeError(f"expected 6-character hex color, got {hex_color!r}")
@@ -390,13 +501,58 @@ def _rgb_to_hls(hex_color: str) -> tuple[float, float, float]:
         b = int(cleaned[4:6], 16)
     except ValueError as exc:
         raise ThemeError(f"unparseable hex color {hex_color!r}") from exc
-    return colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
+
+    rf, gf, bf = Fraction(r, 255), Fraction(g, 255), Fraction(b, 255)
+    hi, lo = max(rf, gf, bf), min(rf, gf, bf)
+    lum = (hi + lo) / 2
+    if hi == lo:
+        return Fraction(0), lum, Fraction(0)
+    span = hi - lo
+    sat = span / (hi + lo) if lum <= _HALF else span / (2 - hi - lo)
+    if hi == rf:
+        hue = (gf - bf) / span
+    elif hi == gf:
+        hue = 2 + (bf - rf) / span
+    else:
+        hue = 4 + (rf - gf) / span
+    return (hue / 6) % 1, lum, sat
 
 
-def _hls_to_hex(h: float, lum: float, s: float) -> str:
-    clamped_l = max(0.0, min(1.0, lum))
-    r, g, b = colorsys.hls_to_rgb(h, clamped_l, s)
-    return f"{round(r * 255):02X}{round(g * 255):02X}{round(b * 255):02X}"
+def _hue_to_channel(m1: Fraction, m2: Fraction, hue: Fraction) -> Fraction:
+    hue = hue % 1
+    if hue < Fraction(1, 6):
+        return m1 + (m2 - m1) * 6 * hue
+    if hue < _HALF:
+        return m2
+    if hue < Fraction(2, 3):
+        return m1 + (m2 - m1) * (Fraction(2, 3) - hue) * 6
+    return m1
+
+
+def _hls_to_hex(h: Fraction, lum: Fraction, s: Fraction) -> str:
+    """Convert back to hex, truncating each channel as Word does.
+
+    Truncation is safe here only because the arithmetic is exact: an
+    untransformed colour round-trips to channel values that are exact
+    multiples of 1/255, so ``floor`` and ``round`` agree and a no-op
+    transform stays a no-op. In floating point that invariant does not
+    hold, which is why this module does not use :mod:`colorsys`.
+    """
+    lum = max(Fraction(0), min(Fraction(1), lum))
+    if s == 0:
+        channels = (lum, lum, lum)
+    else:
+        m2 = lum * (1 + s) if lum <= _HALF else lum + s - lum * s
+        m1 = 2 * lum - m2
+        channels = tuple(  # type: ignore[assignment]
+            _hue_to_channel(m1, m2, h + offset)
+            for offset in (Fraction(1, 3), Fraction(0), Fraction(-1, 3))
+        )
+    out = []
+    for channel in channels:
+        scaled = channel * 255
+        out.append(max(0, min(255, scaled.numerator // scaled.denominator)))
+    return "".join(f"{value:02X}" for value in out)
 
 
 __all__ = [

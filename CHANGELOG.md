@@ -8,6 +8,50 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Theme colours ignored the document's `<w:clrSchemeMapping>`, and the
+  tint/shade arithmetic did not match Word.** Two independent problems,
+  both found by exporting a probe document from Word and reading the
+  colours it actually wrote:
+    - **`<w:clrSchemeMapping>` is now honoured.** `settings.xml` decides
+      which theme slot a `w:themeColor` name resolves to; the resolver
+      hardcoded `text1`→`dk1`, `background1`→`lt1` and so on. That matches
+      Word's default mapping, so ordinary documents were fine — but a
+      document that remaps the slots (a dark-themed template swaps `t1`
+      and `bg1`) resolved `text1` to **black where Word renders it
+      white**, and every accent and hyperlink colour could be redirected
+      too. Only the semantic names follow the mapping; `dark1` / `light1`
+      / `dark2` / `light2` name a slot outright and are never redirected,
+      so this is not a rename of the scheme. `ThemeColors` gains a
+      `mapping` field, defaulting to Word's defaults so an absent or
+      partial element behaves as Word treats it.
+    - **`themeTint` / `themeShade` now use exact arithmetic.** The
+      transforms ran through `colorsys` in binary floating point, which
+      changes the answer at the integer boundaries these values keep
+      landing on: `1 - 0xE6/255` is 0.09803921568627449, and 255 times
+      that is 24.999999999999996 — one below the 25 Word paints. Against
+      47 measured tint/shade values the resolver was exact on 18 with a
+      worst-case error of 2 units per channel; it is now exact on 32 with
+      a worst case of 1. Exactness also makes the RGB→HSL→RGB round-trip
+      lossless, which is what lets the final channel be truncated (as
+      Word does) while `themeTint="FF"` stays a no-op.
+
+  The residual is real and enumerated rather than waved at:
+  `tests/test_theme_word_verified.py` lists the 15 cases that land within
+  one unit of Word without matching exactly, and fails if a case is added
+  to that list or if a listed case starts matching. Word's rounding at
+  those boundaries was not reverse-engineered.
+
+  Two knock-on changes: `apply_theme_shade("4F81BD", "80")` now returns
+  `244061`, which is what Word renders — the previous `254062` was
+  asserted as Word-verified but nothing renders it. And `apply_lum_mod` /
+  `apply_lum_off` shift by up to one unit as a consequence of sharing the
+  arithmetic. Those two remain **unverified** against Word, and cannot be
+  verified through this library: they are DrawingML transforms and
+  `w:color` has no attribute that carries them, so no cascade input
+  produces one. The documentation previously described them as merely
+  "not wired into the cascade walker yet", which implied a gap where
+  there is none.
+
 - **Conditional table-style formatting ignored `<w:tblLook>` entirely,
   and is now measured rather than inferred.** The resolver picked
   `<w:tblStylePr>` branches from the cell's position alone, so it applied
