@@ -190,6 +190,17 @@ _TOGGLE_RPR: dict[str, str] = {
 StyleKind = Literal["paragraph", "character", "table", "numbering"]
 """The ``w:type`` of a ``w:style``, which every reference to it must match."""
 
+AUTO_COLOR = "auto"
+"""What :attr:`ResolvedFormatting.color_rgb` holds for Word's *Automatic*.
+
+The one value of that field which is not ``RRGGBB`` hex. Automatic is a
+colour Word **applies**, not the absence of one — it overrides whatever a
+lower cascade layer set, and reporting ``None`` would let that layer's colour
+leak through. Compare against this constant rather than the bare string, and
+note that ``color_rgb is not None`` no longer implies a parseable hex value.
+:func:`~docx_plus.styles.modify_style` accepts it, so a resolved value can be
+written straight back."""
+
 _DEFAULT_STYLE_KIND: StyleKind = "paragraph"
 """``w:type`` is optional; ECMA-376 17.7.4.17 makes a style without one a
 paragraph style."""
@@ -201,10 +212,25 @@ existed, so this reproduces both — though it may equally be Word repairing the
 document on load rather than a cascade rule."""
 
 _ON_OFF_TRUE = frozenset({"1", "true", "on"})
+"""Every ST_OnOff spelling that means *on*.
+
+``on`` / ``off`` are the transitional-WML spellings (ECMA-376 Part 4).
+Word-2003-era files and several third-party generators emit them, and reading
+``off`` as anything but false inverts the property rather than merely failing
+to recognise it — so this set is the single reader for **every** ST_OnOff
+attribute in the resolver. Do not open-code the test."""
 
 
 def _on_off(value: str | None, *, absent: bool = False) -> bool:
-    """Read an ECMA-376 ST_OnOff attribute. A present-but-empty value is on."""
+    """Read an ECMA-376 ST_OnOff attribute.
+
+    Args:
+        value: The ``w:val`` attribute, or ``None`` if it is not present.
+        absent: What a missing ``w:val`` means. Toggles and the ``w:pPr``
+            flags default to *on* when bare (``<w:b/>`` is bold), so those
+            callers pass ``True``; an attribute whose absence means nothing
+            in particular leaves it ``False``.
+    """
     if value is None:
         return absent
     return value in _ON_OFF_TRUE
@@ -863,7 +889,7 @@ class _Accumulator:
         ``None`` if absent (which means "on").
         """
         sink = self.toggle_direct if self._sink is None else self._sink
-        sink[name] = (val_attr not in ("0", "false"), source)
+        sink[name] = (_on_off(val_attr, absent=True), source)
 
     def toggle_base_scope(self) -> _ToggleScope:
         """Direct toggles into the ``docDefaults`` base bucket."""
@@ -919,6 +945,48 @@ class _ToggleScope:
 # --------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _TableLayout:
+    """The parts of a cell's :class:`TableContext` that are table-wide.
+
+    Attributes:
+        row_index: ``w:tr`` element -> its 0-based position. A dict rather
+            than a ``list.index`` call, which was O(rows) per *cell*.
+        row_count: How many ``w:tr`` the table has, for ``is_last_row``.
+        look: The resolved ``<w:tblLook>`` flags.
+        row_offset: 1 when the first row is claimed by a ``firstRow``
+            conditional, so banding starts below it; else 0.
+        col_offset: The same for ``firstCol``.
+        row_band_size: ``w:tblStyleRowBandSize``, 0 when the style declares
+            none — which means *no* banding, not a stripe size of 1.
+        col_band_size: ``w:tblStyleColBandSize``, on the same terms.
+    """
+
+    row_index: dict[etree._Element, int]
+    row_count: int
+    look: dict[str, bool]
+    row_offset: int
+    col_offset: int
+    row_band_size: int
+    col_band_size: int
+
+    @classmethod
+    def build(cls, tbl: etree._Element, cache: _ResolverCache) -> _TableLayout:
+        """Read every table-wide fact once."""
+        rows = [child for child in tbl if child.tag == qn("w:tr")]
+        look = _read_tbl_look(tbl)
+        chain = _table_style_chain(tbl, cache)
+        return cls(
+            row_index={row: index for index, row in enumerate(rows)},
+            row_count=len(rows),
+            look=look,
+            row_offset=1 if look["firstRow"] and _defines_branch(chain, "firstRow") else 0,
+            col_offset=1 if look["firstColumn"] and _defines_branch(chain, "firstCol") else 0,
+            row_band_size=_read_band_size(tbl, chain, "w:tblStyleRowBandSize"),
+            col_band_size=_read_band_size(tbl, chain, "w:tblStyleColBandSize"),
+        )
+
+
 @dataclass
 class _ResolverCache:
     """Memoizes the document-level lookups a cascade walk repeats.
@@ -949,11 +1017,28 @@ class _ResolverCache:
     _doc_defaults: tuple[etree._Element | None, etree._Element | None] | None = None
     _default_paragraph_style: str | None = None
     _default_paragraph_style_read: bool = False
+    _table_layouts: dict[etree._Element, _TableLayout] = field(default_factory=dict)
 
     @classmethod
     def for_document(cls, doc: Document) -> _ResolverCache:
         """Build a cache over ``doc``, parsing the theme once."""
         return cls(doc=doc, styles_root=doc.styles.element, theme=load_theme(doc))
+
+    def table_layout(self, tbl: etree._Element) -> _TableLayout:
+        """The per-table facts every cell in ``tbl`` shares.
+
+        ``<w:tblLook>``, the table style chain, both band sizes and the two
+        banding offsets do not vary by cell, but deriving a cell's
+        :class:`TableContext` needs all of them. Recomputing per target put
+        :func:`_derive_table_context_from_element` at **52% of a table-heavy
+        sweep** (1000 paragraphs in a 200x5 table); it is the same shape of
+        waste the theme cache was built for.
+        """
+        layout = self._table_layouts.get(tbl)
+        if layout is None:
+            layout = _TableLayout.build(tbl, self)
+            self._table_layouts[tbl] = layout
+        return layout
 
     def style(self, style_id: str, kind: StyleKind | None = None) -> etree._Element | None:
         """The ``w:style`` for ``style_id``, or None if undefined or mistyped.
@@ -1417,7 +1502,7 @@ def _read_tbl_look(tbl: etree._Element) -> dict[str, bool]:
 
     attrs = {name: look.get(qn(f"w:{name}")) for name in _TBL_LOOK_BITS}
     if any(value is not None for value in attrs.values()):
-        flags = {name: value in ("1", "true", "on") for name, value in attrs.items()}
+        flags = {name: _on_off(value) for name, value in attrs.items()}
     else:
         raw = look.get(qn("w:val"))
         try:
@@ -1507,6 +1592,40 @@ def _band_membership(index: int, offset: int, size: int, enabled: bool) -> tuple
     return stripe % 2 == 0, stripe % 2 == 1
 
 
+def _grid_span(tc: etree._Element) -> int:
+    """How many grid columns a ``<w:tc>`` occupies (``w:gridSpan``, default 1)."""
+    tc_pr = tc.find(qn("w:tcPr"))
+    if tc_pr is None:
+        return 1
+    span_el = tc_pr.find(qn("w:gridSpan"))
+    if span_el is None:
+        return 1
+    try:
+        return max(1, int(span_el.get(qn("w:val")) or "1"))
+    except ValueError:
+        return 1
+
+
+def _grid_column(cells: list[etree._Element], tc: etree._Element) -> int:
+    """The 0-based **grid** column ``tc`` starts at, not its position in ``cells``.
+
+    A horizontally merged cell occupies several grid columns, so the two
+    diverge after the first merge in a row — and it is the grid column that
+    decides vertical band membership and ``is_last_col``. Counting ``w:tc``
+    elements put a cell to the right of a ``gridSpan="2"`` merge one stripe
+    early.
+
+    Raises:
+        ValueError: If ``tc`` is not among ``cells``.
+    """
+    column = 0
+    for cell in cells:
+        if cell is tc:
+            return column
+        column += _grid_span(cell)
+    raise ValueError("cell is not in this row")
+
+
 def _derive_table_context_from_element(node: etree._Element, cache: _ResolverCache) -> TableContext:
     """Derive a :class:`TableContext` from a body element's table position.
 
@@ -1534,34 +1653,33 @@ def _derive_table_context_from_element(node: etree._Element, cache: _ResolverCac
     if tbl is None or tbl.tag != qn("w:tbl"):
         return TableContext()
 
-    rows = [child for child in tbl if child.tag == qn("w:tr")]
+    layout = cache.table_layout(tbl)
     cells = [child for child in tr if child.tag == qn("w:tc")]
+    row_idx = layout.row_index.get(tr)
     try:
-        row_idx = rows.index(tr)
-        col_idx = cells.index(tc)
+        col_idx = _grid_column(cells, tc)
     except ValueError:
+        row_idx = None
+    if row_idx is None or col_idx is None:
         # tr/tc not a direct child of its parent — happens when a <w:sdt>
         # wraps the row's cells. Position is indeterminate; fall back to an
         # empty context (caller may pass an explicit one). See TableContext.
         return TableContext()
 
-    look = _read_tbl_look(tbl)
-    chain = _table_style_chain(tbl, cache)
-
-    row_offset = 1 if look["firstRow"] and _defines_branch(chain, "firstRow") else 0
-    col_offset = 1 if look["firstColumn"] and _defines_branch(chain, "firstCol") else 0
+    look = layout.look
     is_band_row, is_band2_row = _band_membership(
-        row_idx, row_offset, _read_band_size(tbl, chain, "w:tblStyleRowBandSize"), look["hBand"]
+        row_idx, layout.row_offset, layout.row_band_size, look["hBand"]
     )
     is_band_col, is_band2_col = _band_membership(
-        col_idx, col_offset, _read_band_size(tbl, chain, "w:tblStyleColBandSize"), look["vBand"]
+        col_idx, layout.col_offset, layout.col_band_size, look["vBand"]
     )
+    grid_width = sum(_grid_span(cell) for cell in cells)
 
     return TableContext(
         is_first_row=row_idx == 0,
-        is_last_row=row_idx == len(rows) - 1,
+        is_last_row=row_idx == layout.row_count - 1,
         is_first_col=col_idx == 0,
-        is_last_col=col_idx == len(cells) - 1,
+        is_last_col=col_idx + _grid_span(tc) == grid_width,
         is_band_row=is_band_row,
         is_band_col=is_band_col,
         is_band2_row=is_band2_row,
@@ -1741,8 +1859,7 @@ def _apply_ppr(acc: _Accumulator, ppr: etree._Element, source: FormattingSource)
     ):
         flag_el = ppr.find(qn(f"w:{tag}"))
         if flag_el is not None:
-            raw = flag_el.get(qn("w:val"))
-            acc.set(field_name, raw not in ("0", "false"), source)
+            acc.set(field_name, _on_off(flag_el.get(qn("w:val")), absent=True), source)
 
     outline = ppr.find(qn("w:outlineLvl"))
     if outline is not None:
@@ -1849,8 +1966,7 @@ def _apply_rpr(acc: _Accumulator, rpr: etree._Element, source: FormattingSource)
                 acc.set("underline", val, source)
         elif local == "dstrike":
             # ECMA-376 17.3.2.10: not a toggle (last writer wins).
-            val = child.get(qn("w:val"))
-            acc.set("double_strike", val != "false" and val != "0", source)
+            acc.set("double_strike", _on_off(child.get(qn("w:val")), absent=True), source)
         elif local == "highlight":
             val = child.get(qn("w:val"))
             if val is not None:
@@ -1877,6 +1993,16 @@ def _resolve_color(color_el: etree._Element, acc: _Accumulator) -> str | None:
     ``lumMod`` / ``lumOff`` transforms are not applicable here: the
     ``w:color`` schema cannot carry them (see :mod:`docx_plus.styles.theme`).
 
+    ``<w:color w:val="auto"/>`` resolves to the literal string ``"auto"``,
+    not to ``None``. "Automatic" is a **value Word applies**, not an absence
+    of one: it overrides whatever a lower cascade layer set, and returning
+    ``None`` here would let that layer's colour leak through. The case is
+    not hypothetical — ``MediumShading2-Accent1`` and its six siblings,
+    shipped in python-docx's own ``default.docx``, paint ``firstCol`` text
+    white and use a ``lastRow`` branch carrying ``auto`` to put it back.
+    ``"auto"`` is the format's own token and is accepted by
+    :func:`~docx_plus.styles.modify_style`, so a resolved value round-trips.
+
     On an unresolvable theme reference the result is flagged
     ``partial`` (SPEC §4). The unresolved name is surfaced as the value
     **only** when the theme part is entirely absent — so callers without a
@@ -1900,9 +2026,11 @@ def _resolve_color(color_el: etree._Element, acc: _Accumulator) -> str | None:
             return theme_name
         return None
     val = color_el.get(qn("w:val"))
-    if val and val.lower() != "auto":
-        return val.upper()
-    return None
+    if not val:
+        return None
+    if val.lower() == "auto":
+        return AUTO_COLOR
+    return val.upper()
 
 
 def _resolve_font_theme(token: str, acc: _Accumulator) -> str:
@@ -2055,10 +2183,15 @@ def _find_level(abstract_num: etree._Element, ilvl: int) -> etree._Element | Non
 
 
 __all__ = [
+    "AUTO_COLOR",
     "FormattingSource",
+    "Layer",
     "MissingPartError",
+    "ParagraphSpacing",
     "ResolvedFormatting",
     "StyleCascadeError",
+    "StyleKind",
     "TableContext",
     "resolve_effective_formatting",
+    "resolve_paragraph_spacing",
 ]

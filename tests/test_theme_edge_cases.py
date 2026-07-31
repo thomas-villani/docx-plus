@@ -12,6 +12,7 @@ from __future__ import annotations
 from docx import Document
 
 from docx_plus.core.oxml import sub
+from docx_plus.styles import AUTO_COLOR, apply_style, create_style
 from docx_plus.styles.inspect import resolve_effective_formatting
 from docx_plus.styles.theme import (
     ThemeColors,
@@ -162,8 +163,8 @@ def test_resolver_not_partial_for_normal_color() -> None:
     assert resolved.color_rgb == "FF0000"
 
 
-def test_color_val_auto_does_not_set_color() -> None:
-    """``w:color w:val="auto"`` without themeColor leaves color unset."""
+def test_color_val_auto_resolves_to_the_auto_sentinel() -> None:
+    """``w:color w:val="auto"`` is a value Word applies, not an absence of one."""
     doc = Document()
     styles_el = doc.styles.element
     s = sub(styles_el, "w:style", **{"w:type": "paragraph", "w:styleId": "A"})
@@ -176,7 +177,39 @@ def test_color_val_auto_does_not_set_color() -> None:
     sub(ppr, "w:pStyle", **{"w:val": "A"})
 
     resolved = resolve_effective_formatting(p)
-    assert resolved.color_rgb is None
+    assert resolved.color_rgb == AUTO_COLOR
+
+
+def test_auto_overrides_a_lower_layers_color() -> None:
+    """The whole point of the sentinel: Automatic beats an inherited colour.
+
+    Word's own ``MediumShading2-Accent1`` — shipped in python-docx's
+    ``default.docx`` — paints ``firstCol`` text white and relies on a
+    ``lastRow`` branch carrying ``auto`` to put it back. Returning ``None``
+    for ``auto`` let the lower layer's colour leak through instead.
+    """
+    doc = Document()
+    create_style(doc, "Red", style_type="paragraph", color_rgb="FF0000")
+    p = doc.add_paragraph()
+    apply_style(p, "Red")
+    run = p.add_run("text")
+    rpr = run._r.get_or_add_rPr()
+    sub(rpr, "w:color", **{"w:val": "auto"})
+
+    resolved = resolve_effective_formatting(run, include_provenance=True)
+    assert resolved.color_rgb == AUTO_COLOR
+    assert resolved.provenance is not None
+    assert resolved.provenance["color_rgb"].layer == "directRun"
+
+
+def test_the_auto_sentinel_round_trips_through_the_writer() -> None:
+    """A resolved ``auto`` can be written straight back without a hex error."""
+    doc = Document()
+    create_style(doc, "Auto", style_type="paragraph", color_rgb=AUTO_COLOR)
+    p = doc.add_paragraph()
+    apply_style(p, "Auto")
+
+    assert resolve_effective_formatting(p).color_rgb == AUTO_COLOR
 
 
 # --------------------------------------------------------------------------

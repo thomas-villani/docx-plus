@@ -11,9 +11,12 @@ hands back the same cell more than once.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from docx import Document
+from docx.oxml.ns import nsdecls
+from docx.oxml.parser import parse_xml
 from docx.shared import Pt
 
 from docx_plus.core.ns import qn
@@ -314,3 +317,62 @@ def test_baseline_is_skipped_for_runs_when_runs_are() -> None:
 
     assert resolved.runs == ()
     assert resolved.baseline is not None
+
+
+# --------------------------------------------------------------------------
+# Hyperlinks. `Paragraph.runs` is direct `w:r` children only, but
+# `Paragraph.text` walks `w:r | w:hyperlink` — so taking python-docx's run
+# list left the sweep reporting text whose formatting it had never resolved,
+# and every run-level lint rule blind to the inside of a link.
+# --------------------------------------------------------------------------
+
+
+def _paragraph_with_hyperlink(doc: Document) -> Any:
+    paragraph = doc.add_paragraph()
+    paragraph.add_run("plain ")
+    paragraph._p.append(
+        parse_xml(
+            f"<w:hyperlink {nsdecls('w')}><w:r><w:rPr><w:b/></w:rPr>"
+            f"<w:t>linked</w:t></w:r></w:hyperlink>"
+        )
+    )
+    paragraph.add_run(" tail")
+    return paragraph
+
+
+def test_the_sweep_resolves_runs_inside_a_hyperlink() -> None:
+    doc = Document()
+    _paragraph_with_hyperlink(doc)
+
+    resolved = next(iter_resolved_paragraphs(doc))
+
+    assert [r.run.text for r in resolved.runs] == ["plain ", "linked", " tail"]
+    assert [r.formatting.bold for r in resolved.runs] == [None, True, None]
+
+
+def test_python_docx_still_omits_the_hyperlink_run() -> None:
+    """Pins *why* the helper exists — if upstream changes, this fails first."""
+    doc = Document()
+    paragraph = _paragraph_with_hyperlink(doc)
+
+    assert [r.text for r in paragraph.runs] == ["plain ", " tail"]
+    assert paragraph.text == "plain linked tail"
+
+
+def test_runs_cover_exactly_the_text_the_paragraph_reports() -> None:
+    """The invariant a text-offset rule depends on: every offset has a run."""
+    doc = Document()
+    _paragraph_with_hyperlink(doc)
+
+    resolved = next(iter_resolved_paragraphs(doc))
+
+    assert "".join(r.run.text for r in resolved.runs) == resolved.text
+
+
+def test_run_indices_stay_contiguous_across_a_hyperlink() -> None:
+    doc = Document()
+    _paragraph_with_hyperlink(doc)
+
+    resolved = next(iter_resolved_paragraphs(doc))
+
+    assert [r.index for r in resolved.runs] == [0, 1, 2]

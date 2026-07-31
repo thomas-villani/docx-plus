@@ -58,6 +58,19 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nobody can repair do not fail that gate. `lint` gained `--profile` /
   `--no-profile` to match.
 
+- **`AUTO_COLOR`, `Layer`, and `StyleKind` are exported from
+  `docx_plus.styles`.** `Layer` was already named in the public signature
+  of `resolve_effective_formatting(stop_below=)` and `LintContext.resolve`
+  without being importable from anywhere but a private module.
+
+- **The sweep is roughly 25% faster, and does 78% fewer function calls.**
+  Two findings from profiling a 200x5 table: `_derive_table_context_from_element`
+  was 52% of the run, recomputing `<w:tblLook>`, the table style chain and
+  both band sizes once per *cell* rather than once per table (now memoized
+  on the resolver cache); and `qn()` was 25%, called 563,000 times with a
+  few hundred distinct literals (now `functools.cache`d, which speeds up
+  every module, not just the resolver).
+
 - **`docx_plus/examples/lint_document.py`** — a runnable demo of both
   halves: it builds a document carrying one instance of several defects,
   prints the findings, then prints the plan. Every other capability
@@ -81,6 +94,42 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   resolved `contextual_spacing` flag, and which edges were suppressed.
 
 ### Fixed
+
+- **`w:val="off"` was read as *true* for every toggle, `dstrike`, and the
+  four `w:pPr` flags** — inverting the property rather than failing to
+  recognise it. `on` / `off` are the transitional-WML spellings of
+  ST_OnOff; Word-2003-era files and several third-party generators emit
+  them. The root cause was three different ST_OnOff readers in one file
+  with three different value sets, one of them added this cycle and wired
+  only to `w:default`. There is now a single reader, `_on_off`, and every
+  spelling is pinned by a test — including through `contextualSpacing`,
+  where a wrong read propagated into `resolve_paragraph_spacing`.
+
+- **`<w:color w:val="auto"/>` was discarded, letting a lower cascade
+  layer's colour leak through.** *Automatic* is a colour Word applies, not
+  an absence of one: it overrides whatever a style set. Word's own
+  `MediumShading2-Accent1` — shipped in python-docx's `default.docx` —
+  paints `firstCol` text white and relies on a `lastRow` branch carrying
+  `auto` to put it back, so the bottom-left cell of such a table resolved
+  white where Word renders it black. `color_rgb` now reports the new
+  `AUTO_COLOR` sentinel (`"auto"`), which `modify_style` also accepts so a
+  resolved value round-trips. **Note `color_rgb is not None` no longer
+  implies a parseable hex value.** Pre-existing, not new in v0.6; this
+  cycle's 1015-cell table measurement used font size as its probe, so the
+  colour axis was never exercised.
+
+- **The sweep never resolved runs inside a `<w:hyperlink>`.**
+  `Paragraph.runs` is direct `<w:r>` children only, while
+  `Paragraph.text` walks `w:r | w:hyperlink` — so `ResolvedParagraph`
+  reported text whose formatting it had never resolved, and every
+  run-level lint rule was blind to the inside of a link. `runs` and `text`
+  now cover exactly the same content, which is the invariant a
+  text-offset fix depends on.
+
+- **Vertical band membership counted `<w:tc>` elements rather than grid
+  columns**, so a cell to the right of a `gridSpan="2"` merge was reported
+  one stripe early. Bounded in practice — Word's default `tblLook` leaves
+  vertical banding off — but wrong wherever it was on.
 
 - **`double-space` missed every other occurrence in a paragraph.** The
   pattern was `\S {2,}\S`, which consumes the word between two runs of

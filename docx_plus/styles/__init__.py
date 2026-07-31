@@ -1,11 +1,14 @@
 """Style inspection and modification."""
 
 from docx_plus.styles.inspect import (
+    AUTO_COLOR,
     FormattingSource,
+    Layer,
     MissingPartError,
     ParagraphSpacing,
     ResolvedFormatting,
     StyleCascadeError,
+    StyleKind,
     TableContext,
     resolve_effective_formatting,
     resolve_paragraph_spacing,
@@ -35,8 +38,10 @@ from docx_plus.styles.sweep import (
 )
 
 __all__ = [
+    "AUTO_COLOR",
     "FormattingSource",
     "InvalidColorError",
+    "Layer",
     "MissingPartError",
     "ParagraphSpacing",
     "ResolvedFormatting",
@@ -46,6 +51,7 @@ __all__ = [
     "StyleExistsError",
     "StyleInUseError",
     "StyleInfo",
+    "StyleKind",
     "StyleNotFoundError",
     "StyleProxy",
     "TableContext",

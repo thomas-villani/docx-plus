@@ -29,6 +29,7 @@ from docx.oxml.ns import qn
 
 from docx_plus.core.oxml import sub
 from docx_plus.styles import TableContext, resolve_effective_formatting
+from docx_plus.styles.inspect import _grid_column, _grid_span
 
 # What python-docx (and Word) put on a new table.
 WORD_DEFAULT_LOOK = {
@@ -829,3 +830,114 @@ def test_conditional_formatting_reaches_run_in_cell() -> None:
     run = table.rows[1].cells[0].paragraphs[0].add_run("data")
 
     assert resolve_effective_formatting(run).bold is True
+
+
+# --------------------------------------------------------------------------
+# gridSpan. A horizontally merged cell occupies several grid columns, so a
+# row's `w:tc` positions and its grid columns diverge after the first merge —
+# and it is the grid column that decides vertical banding and is_last_col.
+# --------------------------------------------------------------------------
+
+
+def _merge_first_two_cells(table) -> None:
+    """Turn cells 0 and 1 of row 1 into one `w:tc` spanning two grid columns."""
+    row = table.rows[1]
+    first, second = row._tr.findall(qn("w:tc"))[:2]
+    tc_pr = first.find(qn("w:tcPr"))
+    if tc_pr is None:
+        tc_pr = sub(first, "w:tcPr")
+    sub(tc_pr, "w:gridSpan", **{"w:val": "2"})
+    row._tr.remove(second)
+
+
+def test_vertical_banding_counts_grid_columns_not_tc_elements() -> None:
+    """The cell after a two-column merge is in the band its grid position says.
+
+    With `colBandSize=1` the stripe alternates every grid column. Counting
+    `w:tc` elements put the cell right of a `gridSpan="2"` merge one stripe
+    early — reported band2Vert where the grid says band1Vert.
+    """
+    doc = Document()
+    _add_table_style(
+        doc,
+        "Banded",
+        branches={
+            "band1Vert": {"w:color": {"w:val": "111111"}},
+            "band2Vert": {"w:color": {"w:val": "222222"}},
+        },
+    )
+    table = _add_table_with_style(
+        doc,
+        "Banded",
+        rows=2,
+        cols=4,
+        look={"noVBand": 0, "firstRow": 0, "firstColumn": 0},
+        band_sizes=(1, 1),
+    )
+    _merge_first_two_cells(table)
+
+    # Row 1 now holds three `w:tc`: grid columns 0-1 (merged), 2, and 3.
+    cells = table.rows[1]._tr.findall(qn("w:tc"))
+    resolved = [resolve_effective_formatting(_cell_paragraph(c, table)).color_rgb for c in cells]
+
+    # Grid column 0 -> band1, grid column 2 -> band1, grid column 3 -> band2.
+    assert resolved == ["111111", "111111", "222222"]
+
+
+def test_is_last_col_accounts_for_a_merge_widening_the_row() -> None:
+    """`lastCol` still lands on the rightmost cell once a merge widens the row.
+
+    Not a discriminating test on its own — counting `w:tc` and counting grid
+    columns agree about which cell is *last*. It is here because the merge
+    path is what changed, and this is the property that must not regress
+    while band membership is being recomputed from the grid.
+    """
+    doc = Document()
+    _add_table_style(doc, "LastCol", branches={"lastCol": {"w:color": {"w:val": "333333"}}})
+    table = _add_table_with_style(doc, "LastCol", rows=2, cols=4, look={"lastColumn": 1})
+    _merge_first_two_cells(table)
+
+    cells = table.rows[1]._tr.findall(qn("w:tc"))
+    resolved = [resolve_effective_formatting(_cell_paragraph(c, table)).color_rgb for c in cells]
+
+    assert resolved[-1] == "333333"
+    assert resolved[:-1] == [None, None]
+
+
+def test_grid_column_counts_spans_not_cells() -> None:
+    """The arithmetic itself: `w:tc` position and grid column diverge at a merge."""
+    doc = Document()
+    table = _add_table_with_style(doc, "Plain", rows=2, cols=4, look={})
+    _merge_first_two_cells(table)
+    cells = table.rows[1]._tr.findall(qn("w:tc"))
+
+    assert [_grid_column(cells, tc) for tc in cells] == [0, 2, 3]
+    assert [_grid_span(tc) for tc in cells] == [2, 1, 1]
+
+
+def test_grid_column_rejects_a_cell_from_another_row() -> None:
+    doc = Document()
+    table = _add_table_with_style(doc, "Plain", rows=2, cols=2, look={})
+    row0 = table.rows[0]._tr.findall(qn("w:tc"))
+    stranger = table.rows[1]._tr.findall(qn("w:tc"))[0]
+
+    with pytest.raises(ValueError, match="not in this row"):
+        _grid_column(row0, stranger)
+
+
+@pytest.mark.parametrize("raw", ["0", "-3", "notanumber"])
+def test_a_malformed_grid_span_falls_back_to_one(raw: str) -> None:
+    """A span below 1 would make two cells claim the same grid column."""
+    doc = Document()
+    table = _add_table_with_style(doc, "Plain", rows=1, cols=2, look={})
+    tc = table.rows[0]._tr.findall(qn("w:tc"))[0]
+    sub(sub(tc, "w:tcPr"), "w:gridSpan", **{"w:val": raw})
+
+    assert _grid_span(tc) == 1
+
+
+def _cell_paragraph(tc, table):
+    """Wrap a raw `w:tc` as a _Cell so the resolver accepts it."""
+    from docx.table import _Cell
+
+    return _Cell(tc, table)
