@@ -43,13 +43,15 @@ the v0.3 cycle (tracked changes, the `docx-plus` CLI), the v0.4
 cycle (threaded comments with resolve / reopen), and the v0.5 cycle
 (table formatting, custom numbering, comment durable ids and author
 presence, the packaged agent skill) are all complete.
-Thirteen runnable example scripts in
+The v0.6 lint layer (`lint`, `plan_fixes`, and the `lint` / `plan` CLI
+commands) is in the tree and documented below; it ships with the next
+release. Fourteen runnable example scripts in
 `docx_plus/examples/` demonstrate the surface: `inspect_document.py`,
 `restyle_existing.py`, `build_form.py`, `populate_form.py`,
 `add_comments.py`, `threaded_comments.py`, `multi_column_layout.py`,
 `bookmarks_and_xrefs.py`, `footnotes_and_endnotes.py`,
 `publishing_layout.py`, `track_changes.py`, `table_formatting.py`,
-`custom_numbering.py`. Start there if you
+`custom_numbering.py`, `lint_document.py`. Start there if you
 want to see the library in motion before reading the index.
 
 ### `docx_plus` (top-level package)
@@ -424,6 +426,48 @@ fills the gap. Scoped in `ROADMAP.md` §1 at the repo root.
 | `RevisionTarget` | type alias | `Run | Paragraph | tuple[Run, Run]` — same target shapes as `add_comment`; a range must lie within one paragraph |
 | `RevisionNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `accept_revision` / `reject_revision` on a missing id |
 
+### `docx_plus.lint`
+
+v0.6. Audit a document for formatting defects, and describe what
+repairing them would change. A **composing layer**, not a capability
+module: like `cli/` it sits above the capability packages and reads
+across them, adding no OOXML knowledge of its own — every judgement is
+built on `styles/`'s cascade resolver and the document sweep. **Nothing
+here writes:** `lint` reports and `plan_fixes` plans, and applying a plan
+is deferred to v0.7. Full reference in
+[`reference/lint.md`](reference/lint.md).
+
+| Symbol | Kind | Notes |
+|---|---|---|
+| `lint(doc, *, select=None, exclude=None, include_tables=True, profile=None)` | function | Sweep the document once and run the selected rules. Returns `list[Finding]` sorted by severity, then document order. `select` / `exclude` take rule **ids or tags**; naming a tag also enables that cluster's off-by-default rules. Body only — headers, footers, notes, and comments are not swept |
+| `plan_fixes(findings, *, allow_content=False)` | function | Turn findings into an ordered, serializable `FixPlan`. Decides the three things no individual rule can: applying order (deletions last, back to front), the content gate, and conflicts between edits |
+| `Finding` | dataclass (frozen) | `rule`, `kind`, `severity`, `message`, `location`, `observed`, `expected`, `fix`, `adds_content`; `fixable` and `sort_key` properties |
+| `Issue` | dataclass (frozen) | What a rule *body* yields — only what the rule itself knows. The engine promotes each to a `Finding` by stamping on the id / kind / severity from the registration, so a rule cannot advertise one severity and emit another |
+| `Location` | dataclass (frozen) | `paragraph_index`, `run_index`, `style_id`, `excerpt`; all optional, because a finding about a *style definition* has no paragraph to point at. `describe()` renders whichever it has. `paragraph_index` is 0-based and counts table-cell paragraphs |
+| `Fix` | dataclass (frozen) | `summary`, `safety`, `operations` — what a rule would do about what it found, described and never executed |
+| `FixOperation` | dataclass (frozen) | `op` + JSON-serializable `args`. `to_dict()` |
+| `FixOp` | type alias | The closed vocabulary: `clear-run-properties`, `clear-paragraph-properties`, `clear-paragraph-numbering`, `set-run-language`, `replace-paragraph-text`, `delete-paragraph`, `delete-style`. Named operations rather than callables, so a plan survives being written to a file and applied by another process |
+| `FixSafety` | type alias | `Literal["safe", "review", "destructive"]` — how recoverable applying it is. Orthogonal to `adds_content`, which is about content vs formatting |
+| `FixPlan` | dataclass (frozen) | `fixes`, `deferred`, `conflicts`, `unfixable`. Every finding lands in exactly one, so a plan accounts for the whole audit. `operations` flattens the kept fixes into applying order; `to_dict()` serializes |
+| `PlannedFix` | dataclass (frozen) | One kept or withheld fix paired with the finding that produced it. `rule` / `safety` / `adds_content` / `operations` / `deletes` properties |
+| `FixConflict` | dataclass (frozen) | `kept`, `dropped`, `reason` — two edits claimed the same run property or overlapping text spans; the earlier one wins |
+| `Profile` | dataclass (frozen) | Per-rule enable / disable and severity overrides — the one place a house opinion may live. `load()` takes a path, a mapping, or `None`; `discover(start)` walks up for `docx-plus-lint.json`. A profile may not configure a *tag* |
+| `RuleSettings` | dataclass (frozen) | `enabled`, `severity`, `options` for one rule |
+| `DEFAULT_PROFILE_NAME` | str | `"docx-plus-lint.json"` — what `Profile.discover` looks for |
+| `Rule` | dataclass (frozen) | A registered rule: `id`, `kind`, `severity`, `description`, `check`, `tags`, `default_on`. `matches(selector)` |
+| `rule(*, id, kind, severity, description, tags=(), default_on=True)` | decorator | Register a check function. Rules register at import, so a new one is a single function |
+| `all_rules()` | function | Every registered rule, in id order |
+| `select_rules(select, exclude, profile=None)` | function | Resolve selectors to rules. Precedence: profile adjusts the defaults, explicit `select` overrides both, `exclude` is applied last |
+| `LintContext` | dataclass | What a rule is given: `doc` and `paragraphs` (the whole swept document, so comparative rules are possible), plus `resolve(target, stop_below=...)` and `excerpt(paragraph_index)` |
+| `RuleKind` | type alias | `Literal["consistency", "structural", "policy"]` — the distinction that keeps an opinionated feature inside a lean library. No `policy` rule ships enabled |
+| `Severity` | type alias | `Literal["error", "warning", "info"]` |
+| `UnknownRuleError` | exception | Dual-bases: `DocxPlusError, KeyError`. A selector, or a profile, named a rule id or tag that does not exist |
+| `InvalidProfileError` | exception | Dual-bases: `DocxPlusError, ValueError`. The profile is unreadable or malformed |
+
+Twenty rules ship, sixteen on by default; eleven are deliberately
+report-only, because their repair is a judgement the document cannot
+supply. `docx-plus lint --list-rules` prints the catalogue.
+
 ### `docx_plus.cli`
 
 The `docx-plus` command-line interface — a thin shell over the library
@@ -435,6 +479,8 @@ every subcommand and flag, lives in [`cli.md`](cli.md).
 | `main(argv=None)` | function | Console entry point (`docx-plus = "docx_plus.cli:main"`; also `python -m docx_plus.cli`). Returns `0` on success, `1` on a handled library/CLI error, `2` when no command was given |
 | `build_parser()` | function | Construct the top-level `argparse.ArgumentParser` with every subcommand registered |
 | `docx-plus skill path\|list\|show\|install` | command | v0.5. Locate, read, or install the agent skill packaged at `docx_plus/skill/`. The one command that touches no `.docx`, so it takes `--dest` / `--user` / `--force` rather than `-o/--output` |
+| `docx-plus lint FILE` | command | v0.6. Report formatting defects. `--rule` / `--exclude` (id or tag, repeatable), `--no-tables`, `--profile` / `--no-profile`, `--list-rules`, `--json`. Read-only, and exits `1` when it found anything, so it gates a CI step directly |
+| `docx-plus plan FILE` | command | v0.6. Describe the repair — which edits, in what order, which are withheld for changing content, and which collide. `--allow-content` includes the withheld ones. Also read-only: **this release applies nothing** |
 
 ---
 

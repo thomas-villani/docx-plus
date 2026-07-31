@@ -10,8 +10,11 @@ description: >-
   modification, bookmarks and cross-references, custom bullet / numbered /
   multilevel list definitions, multi-column layout, page
   borders, line numbering, page-number and date fields, and document protection.
-  Also ships a `docx-plus` command-line interface (inspect formatting, remap
-  styles, edit content-control values, triage comment threads) for driving the
+  Also audits an existing document for formatting defects (direct formatting
+  fighting the styles, skipped outline levels, hand-typed lists, whitespace used
+  as layout) and describes the repair without applying it. Ships a `docx-plus`
+  command-line interface (inspect formatting, remap styles, edit content-control
+  values, triage comment threads, lint and plan) for driving the
   library from a shell or CI. docx_plus composes with
   python-docx — you keep your own Document object and call docx_plus for the
   operations python-docx can't reach.
@@ -98,7 +101,8 @@ copy-pasteable guide to that module's public API.
 | Table borders, cell / row / table shading, merging and unmerging cells | `tables`          | `reference/tables.md`       |
 | Anchored review comments that "show in document" correctly; reply threads; resolve / reopen | `comments`        | `reference/comments.md`     |
 | Track changes: mark insertions / deletions, read revisions, accept / reject | `revisions`       | `reference/revisions.md`    |
-| Drive the library from a shell / CI: inspect formatting, remap styles, edit control values, triage comments | `cli` (`docx-plus`) | `reference/cli.md`          |
+| Audit someone else's document before editing it: direct formatting fighting the styles, skipped outline levels, typed lists, whitespace as layout — and describe the repair | `lint`            | `reference/lint.md`         |
+| Drive the library from a shell / CI: inspect formatting, remap styles, edit control values, triage comments, lint | `cli` (`docx-plus`) | `reference/cli.md`          |
 
 ## Two patterns worth memorizing
 
@@ -153,8 +157,12 @@ doc.save("out.docx")
   threads (reply, resolve / reopen, read nested).
 - `reference/revisions.md` — tracked changes: enable/disable track-changes mode,
   mark insertions / deletions, read revisions, accept / reject.
+- `reference/lint.md` — audit a document for formatting defects (`lint`), and
+  turn the findings into an ordered, serializable repair description
+  (`plan_fixes`). Both are pure reads: nothing here writes.
 - `reference/cli.md` — the `docx-plus` console command (`inspect` / `restyle` /
-  `controls` / `comments`) for driving the library from a shell or CI.
+  `controls` / `comments` / `lint` / `plan`) for driving the library from a
+  shell or CI.
 
 For exhaustive signatures and the error taxonomy, the rendered docs are at
 <https://thomas-villani.github.io/docx-plus/> and the in-repo index is

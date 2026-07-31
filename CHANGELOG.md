@@ -58,6 +58,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nobody can repair do not fail that gate. `lint` gained `--profile` /
   `--no-profile` to match.
 
+- **`docx_plus/examples/lint_document.py`** — a runnable demo of both
+  halves: it builds a document carrying one instance of several defects,
+  prints the findings, then prints the plan. Every other capability
+  shipped an example; this one had not.
+
+- **Lint documentation.** `skill/reference/lint.md` gives agents the rule
+  catalogue, the fix vocabulary, profiles, and how to write a rule;
+  `skill/reference/cli.md` and `SKILL.md` gained the two new commands.
+  `docs/API.md` gained a `docx_plus.lint` section, and
+  `ARCHITECTURE.md` a §7.15 carrying the design rationale — it had no
+  `lint/` entry at all, including in its source-tree listing. README and
+  `docs/index.md` had still been listing "a document linter" as
+  *backlog*; both now describe it as shipped.
+
 - **`resolve_paragraph_spacing(paragraph) -> ParagraphSpacing`** — the
   vertical space Word actually leaves above and below a paragraph, as
   opposed to what the cascade declares. It folds in `<w:contextualSpacing>`
