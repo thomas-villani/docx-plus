@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from docx_plus.core.ns import qn
 from docx_plus.lint.models import Fix, FixOperation, Issue, Location
 from docx_plus.lint.registry import rule
+from docx_plus.lint.rules._common import document_adjacent, paragraph_element
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -40,6 +41,21 @@ _VERBATIM_STYLES = frozenset(
 # also makes the match span exactly the span the fix replaces.
 _DOUBLE_SPACE = re.compile(r"(?<=\S) {2,}(?=\S)")
 _SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.;:!?])")
+
+_SPACE_BEFORE_LOW_PUNCT = re.compile(r"\s+([,.])")
+"""The French variant. ``;``, ``:``, ``!`` and ``?`` take a preceding space
+in French typography, so only the comma and full stop remain reportable."""
+
+_FRENCH = "fr"
+"""Language-tag prefix whose typography wants a space before high
+punctuation. Matched on the primary subtag, so every region (``fr-FR``,
+``fr-CA``, ``fr-BE``) is covered."""
+
+
+def _is_french(resolved: ResolvedParagraph) -> bool:
+    """Whether the paragraph or any of its runs is tagged French."""
+    langs = [resolved.formatting.lang, *(run.formatting.lang for run in resolved.runs)]
+    return any(lang is not None and lang.split("-")[0].lower() == _FRENCH for lang in langs)
 
 
 def _is_verbatim(resolved: ResolvedParagraph) -> bool:
@@ -89,12 +105,21 @@ def _plural(count: int, noun: str) -> str:
 
 
 def _has_field(resolved: ResolvedParagraph) -> bool:
-    """True if the paragraph contains a complex field.
+    """True if the paragraph contains a field of either encoding.
 
     Its rendered text is then not its stored text: the field contributes
     its *cached result*, which is whatever Word last displayed.
+
+    Both encodings count. ``<w:fldChar>`` is the complex form; the simple
+    form is a single ``<w:fldSimple>`` whose text python-docx's
+    ``Paragraph.text`` does not report at all — so a paragraph ending in a
+    simple ``PAGE`` field looked to ``trailing-whitespace`` like one ending
+    in a bare space, and it planned to delete the space. Checking only the
+    complex form left the guard blind to the simpler half of what it
+    exists to guard against.
     """
-    return resolved.paragraph._p.find(f".//{qn('w:fldChar')}") is not None
+    element = paragraph_element(resolved)
+    return any(element.find(f".//{qn(tag)}") is not None for tag in ("w:fldChar", "w:fldSimple"))
 
 
 @rule(
@@ -184,11 +209,21 @@ def space_before_punctuation(ctx: LintContext) -> Iterator[Issue]:
 
     Reported once per paragraph, on the first occurrence, but the fix
     carries every one — same split as ``double-space``.
+
+    **French is exempt from the high punctuation.** French typography
+    *requires* a space before ``;``, ``:``, ``!`` and ``?``, so reporting
+    it there is not a nudge but an error — and the fix would have stripped
+    spaces the language demands. The rule's kind is ``consistency``,
+    meaning the document supplies the target, and the document does supply
+    it: ``ResolvedFormatting.lang``. A paragraph with any French run is
+    treated as French throughout, because a paragraph mixing languages is
+    what ``mixed-language`` is for.
     """
     for resolved in ctx.paragraphs:
         if _is_verbatim(resolved):
             continue
-        matches = list(_SPACE_BEFORE_PUNCT.finditer(resolved.text))
+        pattern = _SPACE_BEFORE_LOW_PUNCT if _is_french(resolved) else _SPACE_BEFORE_PUNCT
+        matches = list(pattern.finditer(resolved.text))
         if matches:
             first = matches[0]
             yield Issue(
@@ -265,42 +300,70 @@ def stray_empty_paragraph(ctx: LintContext) -> Iterator[Issue]:
 
     The fix deletes content, so it carries ``adds_content`` and a plan
     withholds it unless the caller asks for it.
+
+    A run is only a run within one container. Consecutive *sweep indices*
+    span table boundaries — a body paragraph, then a cell's paragraph, then
+    the next body paragraph — and joining those planned a
+    ``delete-paragraph`` against the only ``<w:p>`` of a ``<w:tc>``, which
+    is a document Word must repair on open. See
+    :func:`~docx_plus.lint.rules._common.document_adjacent`.
     """
     run_start: int | None = None
     run_length = 0
+    previous: ResolvedParagraph | None = None
 
     for resolved in [*ctx.paragraphs, None]:
         empty = resolved is not None and not resolved.text.strip()
         if empty and resolved is not None:
-            if run_start is None:
-                run_start = resolved.index
-            run_length += 1
-            continue
-        if run_start is not None and run_length >= 2:
-            # One is kept. The finding is "these are doing spacing's job",
-            # not "this gap should not exist", and collapsing the run to a
-            # single blank line is the smallest change that says so.
-            #
-            # Emitted back to front, because each deletion shifts every
-            # index after it. The plan orders *fixes* that way too, but a
-            # fix's own operations are applied in the order it gives them,
-            # so a fix that deletes more than one thing has to sequence
-            # itself.
-            doomed = range(run_start + run_length - 1, run_start, -1)
-            yield Issue(
-                message=f"{run_length} consecutive empty paragraphs used as spacing.",
-                location=Location(paragraph_index=run_start),
-                observed=f"{run_length} empty paragraphs",
-                expected="paragraph spacing (w:spacing)",
-                adds_content=True,
-                fix=Fix(
-                    summary=(f"Delete {_plural(len(doomed), 'empty paragraph')}, keeping one."),
-                    safety="destructive",
-                    operations=tuple(
-                        FixOperation(op="delete-paragraph", args={"paragraph_index": index})
-                        for index in doomed
-                    ),
-                ),
+            joins = (
+                run_start is not None
+                and previous is not None
+                and document_adjacent(previous, resolved)
             )
+            if joins:
+                run_length += 1
+                previous = resolved
+                continue
+            # Starts a new run — either the first empty paragraph, or the
+            # first one in a new container.
+            if run_start is not None and run_length >= 2:
+                yield _spacing_run_issue(run_start, run_length)
+            run_start = resolved.index
+            run_length = 1
+            previous = resolved
+            continue
+        previous = resolved
+        if run_start is not None and run_length >= 2:
+            yield _spacing_run_issue(run_start, run_length)
         run_start = None
         run_length = 0
+
+
+def _spacing_run_issue(run_start: int, run_length: int) -> Issue:
+    """One finding for a run of ``run_length`` empty paragraphs at ``run_start``.
+
+    One is kept. The finding is "these are doing spacing's job", not "this
+    gap should not exist", and collapsing the run to a single blank line is
+    the smallest change that says so.
+
+    The deletions are emitted **back to front**, because each one shifts
+    every index after it. :func:`~docx_plus.lint.plan_fixes` orders *fixes*
+    that way too, but a fix's own operations are applied in the order it
+    gives them, so a fix deleting more than one thing sequences itself.
+    """
+    doomed = range(run_start + run_length - 1, run_start, -1)
+    return Issue(
+        message=f"{run_length} consecutive empty paragraphs used as spacing.",
+        location=Location(paragraph_index=run_start),
+        observed=f"{run_length} empty paragraphs",
+        expected="paragraph spacing (w:spacing)",
+        adds_content=True,
+        fix=Fix(
+            summary=(f"Delete {_plural(len(doomed), 'empty paragraph')}, keeping one."),
+            safety="destructive",
+            operations=tuple(
+                FixOperation(op="delete-paragraph", args={"paragraph_index": index})
+                for index in doomed
+            ),
+        ),
+    )

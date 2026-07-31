@@ -33,6 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from docx_plus.core import DocxPlusError
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -42,6 +44,16 @@ if TYPE_CHECKING:
 # Operations that remove something. They order last and descending, and
 # they claim the whole of whatever they remove, so nothing else in the plan
 # may touch it.
+class InvalidFixError(DocxPlusError, ValueError):
+    """A rule produced a fix the plan cannot order safely.
+
+    Raised only for a fix that both deletes and does positional work — see
+    :func:`_reject_mixed_deletion`. It is a rule-authoring error rather
+    than anything about the document, so it surfaces at ``plan_fixes``
+    rather than being carried in the plan.
+    """
+
+
 _DELETING_OPS = frozenset({"delete-paragraph", "delete-style"})
 
 
@@ -110,6 +122,31 @@ class PlannedFix:
     def deletes(self) -> bool:
         """Whether any operation removes a paragraph or a style."""
         return any(op.op in _DELETING_OPS for op in self.fix.operations)
+
+    @property
+    def lowest_touched_index(self) -> int:
+        """The largest ``paragraph_index`` any of this fix's operations names.
+
+        What the back-to-front deletion order has to sort on. Sorting on the
+        *finding's* location instead was unsound: a finding located at
+        paragraph 1 whose fix deletes paragraph 20, planned alongside one
+        located at paragraph 5 deleting paragraph 6, came out as
+        ``[delete 6, delete 20]`` — and after 6 goes, the old 20 sits at 19.
+        No shipped rule produces that shape, but ``plan_fixes`` is public
+        and takes arbitrary findings.
+
+        Falls back to the finding's own location for a fix whose operations
+        name no paragraph at all, such as ``delete-style``.
+        """
+        indices = [
+            index
+            for op in self.fix.operations
+            if isinstance(index := op.args.get("paragraph_index"), int)
+        ]
+        if indices:
+            return max(indices)
+        location = self.finding.location
+        return location.paragraph_index if location.paragraph_index is not None else -1
 
     def to_dict(self) -> dict[str, Any]:
         """The serializable record for this planned fix."""
@@ -226,6 +263,11 @@ def plan_fixes(
     Returns:
         The plan. Nothing is applied.
 
+    Raises:
+        InvalidFixError: If a fix both deletes a paragraph and does
+            positional work elsewhere. See that error for why the plan
+            cannot order such a fix safely.
+
     Example:
         >>> from docx import Document
         >>> from docx_plus.lint import lint, plan_fixes
@@ -242,6 +284,8 @@ def plan_fixes(
         for finding in findings
         if finding.fix is not None
     ]
+    for candidate in planned:
+        _reject_mixed_deletion(candidate)
     unfixable = tuple(finding for finding in findings if finding.fix is None)
 
     ordered = sorted(planned, key=_order_key)
@@ -258,6 +302,29 @@ def plan_fixes(
     )
 
 
+def _reject_mixed_deletion(planned: PlannedFix) -> None:
+    """Refuse a fix that deletes a paragraph *and* edits one somewhere else.
+
+    The plan orders whole fixes, not individual operations, so such a fix
+    has to sit in exactly one of the two phases and is wrong in either. Put
+    it in the deletion phase and its non-deleting operation runs after
+    other deletions have shifted the index it names; put it in the first
+    phase and its own deletion runs before them, shifting theirs.
+
+    A rule wanting both should emit two findings. Loud rather than silent,
+    because ``rule`` is public: a third-party rule getting this wrong would
+    otherwise produce a plan that quietly corrupts a document.
+    """
+    if not planned.deletes:
+        return
+    stray = [op.op for op in planned.operations if op.op not in _DELETING_OPS]
+    if stray:
+        raise InvalidFixError(
+            f"{planned.rule}: a fix that deletes cannot also carry "
+            f"{', '.join(sorted(set(stray)))} — emit two findings instead"
+        )
+
+
 def _order_key(planned: PlannedFix) -> tuple[int, int, int, str, str]:
     """Sort deletions last and back to front, everything else in document order.
 
@@ -266,12 +333,17 @@ def _order_key(planned: PlannedFix) -> tuple[int, int, int, str, str]:
     it was swept, so a deletion at paragraph 12 shifts everything below it;
     running deletions last and in descending order means no edit is ever
     applied against an index some earlier edit moved.
+
+    The descending phase sorts on
+    :attr:`PlannedFix.lowest_touched_index` — the deepest index the fix's
+    *operations* name — not on where the finding was reported. The two
+    differ, and only the former makes the guarantee true.
     """
     location = planned.finding.location
     paragraph = location.paragraph_index if location.paragraph_index is not None else -1
     run = location.run_index if location.run_index is not None else -1
     if planned.deletes:
-        return (1, -paragraph, 0, planned.rule, location.style_id or "")
+        return (1, -planned.lowest_touched_index, 0, planned.rule, location.style_id or "")
     return (0, paragraph, run, planned.rule, "")
 
 
@@ -387,4 +459,4 @@ def _describe(claim: _Claim) -> str:
     return f"{where}, {claim.prop}"
 
 
-__all__ = ["FixConflict", "FixPlan", "PlannedFix", "plan_fixes"]
+__all__ = ["FixConflict", "FixPlan", "InvalidFixError", "PlannedFix", "plan_fixes"]

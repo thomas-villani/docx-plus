@@ -247,3 +247,19 @@ def test_lint_excerpt_is_quoted_so_whitespace_is_visible(
     out = capsys.readouterr().out
 
     assert '> "trailing space "' in out
+
+
+def test_profile_and_no_profile_are_mutually_exclusive(
+    messy_doc: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Naming a profile and then ignoring every profile is a contradiction.
+
+    `--no-profile` used to win silently, which also swallowed the
+    not-found check on an explicit path — so a typo'd `--profile` looked
+    like a clean run.
+    """
+    with pytest.raises(SystemExit) as exc:
+        main(["lint", str(messy_doc), "--profile", "nope.json", "--no-profile"])
+
+    assert exc.value.code == 2
+    assert "not allowed with" in capsys.readouterr().err

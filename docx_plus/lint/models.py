@@ -45,7 +45,46 @@ layer honest about opinions.
 """
 
 
-_SEVERITY_RANK: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
+_SEVERITY_RANK: dict[Severity, int] = {"error": 0, "warning": 1, "info": 2}
+
+_ELLIPSIS_ROOM = 3
+"""Characters an ``"..."`` suffix costs. Below this a `limit` cannot be
+honoured at all, so truncation is skipped rather than made longer than the
+input."""
+
+
+def _to_ascii(text: str) -> str:
+    r"""Render ``text`` using ASCII only, escaping anything outside it.
+
+    ``"Café"`` becomes ``"Caf\xe9"``. Uses Python's own escape spelling so
+    the result is unambiguous and searchable, and never silently drops a
+    character — a report that quietly deleted the thing it was describing
+    would be worse than one that spells it awkwardly.
+    """
+    if text.isascii():
+        return text
+    return text.encode("ascii", "backslashreplace").decode("ascii")
+
+
+def render_for_report(text: str, limit: int = 60) -> str:
+    r"""Make arbitrary document text safe to print in a report line.
+
+    Collapses line breaks, makes tabs visible as ``\t``, escapes everything
+    outside ASCII, then clips to ``limit`` printed characters. Every rule
+    putting document-derived text into a :class:`Location` should go
+    through this — :meth:`LintContext.excerpt` does it for paragraph text,
+    and this is the same treatment for anything else, such as a field
+    instruction.
+
+    Internal spacing is deliberately **preserved**: several rules are about
+    whitespace, and an excerpt that tidied it would hide the very thing
+    being reported.
+    """
+    text = text.replace("\r", " ").replace("\n", " ").replace("\t", "\\t")
+    text = _to_ascii(text)
+    if limit < _ELLIPSIS_ROOM or len(text) <= limit:
+        return text
+    return text[: limit - _ELLIPSIS_ROOM] + "..."
 
 
 FixSafety = Literal["safe", "review", "destructive"]
@@ -340,12 +379,21 @@ class LintContext:
         visible at all, and line breaks collapse to a space so one finding
         stays one line.
 
-        Output is ASCII-only: this reaches a Windows console at cp1252 via
-        ``docx-plus lint``.
+        Output is **ASCII-only, and enforced rather than hoped for**. This
+        reaches a Windows console via ``docx-plus lint``, where Python
+        encodes stdout as cp1252 whenever it is redirected to a file or a
+        pipe — so a document containing CJK text or an emoji used to end
+        the command in an unhandled ``UnicodeEncodeError`` rather than a
+        report. Anything outside ASCII becomes a ``\x``/``\u`` escape,
+        which keeps the character visible and greppable instead of
+        dropping it.
+
+        Truncation happens **after** escaping, so ``limit`` bounds the
+        printed width rather than the source length. See
+        :func:`render_for_report`, which is the same treatment for text
+        that does not come from a paragraph.
         """
-        text = self.paragraphs[paragraph_index].text
-        text = text.replace("\r", " ").replace("\n", " ").replace("\t", "\\t")
-        return text if len(text) <= limit else text[: limit - 3] + "..."
+        return render_for_report(self.paragraphs[paragraph_index].text, limit)
 
 
 CheckFn = Callable[[LintContext], Iterator[Issue]]

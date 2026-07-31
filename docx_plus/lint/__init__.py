@@ -53,7 +53,13 @@ from docx_plus.lint.models import (
     RuleKind,
     Severity,
 )
-from docx_plus.lint.plan import FixConflict, FixPlan, PlannedFix, plan_fixes
+from docx_plus.lint.plan import (
+    FixConflict,
+    FixPlan,
+    InvalidFixError,
+    PlannedFix,
+    plan_fixes,
+)
 from docx_plus.lint.profile import (
     DEFAULT_PROFILE_NAME,
     InvalidProfileError,
@@ -71,6 +77,7 @@ __all__ = [
     "FixOperation",
     "FixPlan",
     "FixSafety",
+    "InvalidFixError",
     "InvalidProfileError",
     "Issue",
     "LintContext",

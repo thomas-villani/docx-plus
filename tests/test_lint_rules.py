@@ -8,6 +8,7 @@ so what is under test is the rule as a user actually invokes it.
 
 from __future__ import annotations
 
+import pytest
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt, Twips
@@ -916,3 +917,155 @@ def test_manual_heading_formatting_still_fires_on_the_default_style() -> None:
     para.add_run("Background and Scope").bold = True
 
     assert len(_rules_fired(doc, "manual-heading-formatting")) == 1
+
+
+# --------------------------------------------------------------------------
+# Container boundaries. The sweep walks into table cells, so consecutive
+# sweep indices are not consecutive positions in the rendered document.
+# --------------------------------------------------------------------------
+
+
+def test_stray_empty_paragraph_does_not_join_across_a_table() -> None:
+    """The bug this guards: `delete-paragraph` against a cell's only `w:p`.
+
+    A body paragraph followed by a table sweeps as `Before / '' / '' /
+    After`, where the two empties are the sole paragraphs of two different
+    cells. Removing one leaves a `w:tc` with no block-level child, which
+    Word must repair on open.
+    """
+    doc = Document()
+    doc.add_paragraph("Before")
+    doc.add_table(rows=1, cols=2)
+    doc.add_paragraph("After")
+
+    assert _rules_fired(doc, "stray-empty-paragraph") == []
+
+
+def test_stray_empty_paragraph_still_fires_within_one_cell() -> None:
+    """Narrowing the rule must not switch it off inside a cell."""
+    doc = Document()
+    cell = doc.add_table(rows=1, cols=1).cell(0, 0)
+    cell.paragraphs[0].text = ""
+    cell.add_paragraph("")
+    cell.add_paragraph("")
+
+    findings = _rules_fired(doc, "stray-empty-paragraph")
+
+    assert len(findings) == 1
+    assert findings[0].fix is not None
+
+
+def test_stray_empty_paragraph_still_fires_in_the_body() -> None:
+    doc = Document()
+    doc.add_paragraph("Before")
+    doc.add_paragraph("")
+    doc.add_paragraph("")
+    doc.add_paragraph("After")
+
+    assert len(_rules_fired(doc, "stray-empty-paragraph")) == 1
+
+
+def test_a_table_between_two_blank_paragraphs_breaks_the_run() -> None:
+    """Adjacency is not just a shared parent — a table between them counts."""
+    doc = Document()
+    doc.add_paragraph("")
+    doc.add_table(rows=1, cols=1)
+    doc.add_paragraph("")
+
+    assert _rules_fired(doc, "stray-empty-paragraph") == []
+
+
+def test_heading_level_skip_does_not_compare_across_a_table() -> None:
+    doc = Document()
+    doc.add_paragraph("Top", style="Heading 1")
+    cell = doc.add_table(rows=1, cols=1).cell(0, 0)
+    cell.paragraphs[0].style = doc.styles["Heading 3"]
+    cell.paragraphs[0].text = "In a cell"
+
+    assert _rules_fired(doc, "heading-level-skip") == []
+
+
+# --------------------------------------------------------------------------
+# manual-list: a capital and a period is usually an initial, not a marker.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "J. Smith reported the results last year.",
+        "A. The first option is unattractive.",
+    ],
+)
+def test_manual_list_ignores_a_lone_capital_initial(text: str) -> None:
+    doc = Document()
+    doc.add_paragraph(text)
+
+    assert _rules_fired(doc, "manual-list") == []
+
+
+def test_manual_list_still_fires_when_the_letters_run_in_sequence() -> None:
+    """`A.` then `B.` is a list; `J. Smith` standing alone is a person."""
+    doc = Document()
+    doc.add_paragraph("A. First item")
+    doc.add_paragraph("B. Second item")
+
+    assert len(_rules_fired(doc, "manual-list")) == 2
+
+
+@pytest.mark.parametrize("text", ["(a) bracketed", "a) bracketed", "1. numbered", "- bulleted"])
+def test_manual_list_still_fires_on_unambiguous_markers(text: str) -> None:
+    doc = Document()
+    doc.add_paragraph(text)
+
+    assert len(_rules_fired(doc, "manual-list")) == 1
+
+
+# --------------------------------------------------------------------------
+# Field guards and language.
+# --------------------------------------------------------------------------
+
+
+def test_trailing_whitespace_ignores_a_simple_field() -> None:
+    """`w:fldSimple` is the other half of what the field guard exists for.
+
+    `Paragraph.text` does not report a simple field's text at all, so a
+    paragraph ending in one looked like it ended in a bare space.
+    """
+    from docx.oxml.ns import nsdecls
+    from docx.oxml.parser import parse_xml
+
+    doc = Document()
+    para = doc.add_paragraph("See ")
+    para._p.append(
+        parse_xml(
+            f'<w:fldSimple {nsdecls("w")} w:instr=" PAGE "><w:r><w:t>7</w:t></w:r></w:fldSimple>'
+        )
+    )
+
+    assert _rules_fired(doc, "trailing-whitespace") == []
+
+
+def test_space_before_punctuation_exempts_french() -> None:
+    """French typography requires the space before `;` `:` `!` `?`."""
+    doc = Document()
+    run = doc.add_paragraph().add_run("Bonjour : comment allez-vous ? Tres bien !")
+    sub(sub(run._r, "w:rPr"), "w:lang", **{"w:val": "fr-FR"})
+
+    assert _rules_fired(doc, "space-before-punctuation") == []
+
+
+def test_space_before_punctuation_still_flags_a_french_comma() -> None:
+    """The exemption is the high punctuation, not all of it."""
+    doc = Document()
+    run = doc.add_paragraph().add_run("Bonjour , tres bien")
+    sub(sub(run._r, "w:rPr"), "w:lang", **{"w:val": "fr-FR"})
+
+    assert len(_rules_fired(doc, "space-before-punctuation")) == 1
+
+
+def test_space_before_punctuation_still_flags_english() -> None:
+    doc = Document()
+    doc.add_paragraph("Hello : there ?")
+
+    assert len(_rules_fired(doc, "space-before-punctuation")) == 1

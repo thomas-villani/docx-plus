@@ -118,7 +118,10 @@ def add_lint_options(parser: argparse.ArgumentParser) -> None:
         action="store_false",
         help="skip paragraphs inside table cells",
     )
-    parser.add_argument(
+    # Mutually exclusive: naming a profile and then ignoring every profile
+    # is a contradiction, and argparse says so better than a runtime check.
+    profile_group = parser.add_mutually_exclusive_group()
+    profile_group.add_argument(
         "--profile",
         metavar="PATH",
         help=(
@@ -126,7 +129,7 @@ def add_lint_options(parser: argparse.ArgumentParser) -> None:
             f"looked for beside the document and upwards."
         ),
     )
-    parser.add_argument(
+    profile_group.add_argument(
         "--no-profile",
         action="store_true",
         help="ignore any profile, including a discovered one",
@@ -143,6 +146,13 @@ def resolve_profile(args: argparse.Namespace) -> Profile:
     different one is the worst of both.
     """
     if args.no_profile:
+        # argparse's mutually-exclusive group rejects the combination, so
+        # reaching here with both set would be a wiring bug rather than
+        # user input. Guard anyway: silently ignoring an explicit --profile
+        # is exactly the "asked for one thing, got another" the docstring
+        # above rules out, and it hid a nonexistent path entirely.
+        if args.profile:
+            raise CliError("--profile and --no-profile cannot be combined")
         return Profile()
     if args.profile:
         path = Path(args.profile).expanduser()
