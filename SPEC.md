@@ -256,7 +256,9 @@ Later layers win, except toggle properties, which follow the ECMA-376
    formatting" below.
 3. **Paragraph style chain** — walk the referenced paragraph style and its
    `basedOn` ancestors to the root. Cycle detection required. Max depth 11
-   (Word's limit) — raise `StyleCascadeError` if exceeded.
+   (Word's limit) — raise `StyleCascadeError` if exceeded. When `w:pStyle`
+   is absent — or does not resolve — this is the **default paragraph
+   style**; see "Default styles" below.
 4. **Numbering** — if the paragraph has `w:numPr`, apply formatting from the
    corresponding numbering definition in `numbering.xml`.
 5. **Direct paragraph formatting** — `w:pPr` on the paragraph itself.
@@ -266,6 +268,47 @@ Later layers win, except toggle properties, which follow the ECMA-376
 The paragraph style's `w:link` partner is **not** a layer. Word never
 consults it when rendering a run; it exists so the style's character half
 can be applied to a selection from the UI.
+
+### Default styles
+
+Layer 3 applies even when the paragraph names no style. A paragraph whose
+`w:pStyle` is **absent**, **dangling**, or **names a style of the wrong
+`w:type`** takes the document's default paragraph style, which becomes its
+style for every purpose — reported `style_id` / `style_name`, formatting,
+numbering, and its slot as a toggle level.
+
+Selecting it: the **last** `w:style w:type="paragraph"` whose `w:default`
+is on (ST_OnOff, so `1` / `true` / `on`). Declaration order is the
+tie-break — measured both ways round. Failing that, the style whose id is
+literally `Normal`; failing that, no paragraph style layer at all.
+
+Because it sits at layer 3, the default style **beats the table style** —
+both its base and its `w:tblStylePr` branches. A `Normal` declaring 20pt
+wins over a table style declaring 36pt, which is why the layer cannot be
+collapsed into `docDefaults`.
+
+The other two `w:default="1"` styles are **non-events**: the default
+*character* style (`DefaultParagraphFont`) never applies to any run, and
+the default *table* style (`TableNormal`) never applies to a table that
+names no style. Only the paragraph default has a fallback.
+
+A table cell resolves through the default paragraph style too — it is what
+a bare paragraph dropped into the cell picks up, and what Word reports for
+an untouched cell.
+
+### Style references are typed
+
+A style reference resolves only to a style of the type it demands:
+`w:pStyle` → `paragraph`, `w:rStyle` → `character`, `w:tblStyle` → `table`.
+A reference naming a style of another type is **ignored**, exactly as a
+dangling one is. `w:basedOn` is bound the same way: a link crossing types
+is a dead end, so a paragraph style based on a character style inherits
+nothing from it — though the style itself still applies.
+
+`w:type` is optional; a `w:style` without one is a paragraph style
+(ECMA-376 17.7.4.17).
+
+All of the above was measured against live Word — `tests/test_default_styles_word_verified.py`.
 
 ### Toggle properties
 

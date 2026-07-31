@@ -23,6 +23,17 @@ def _rules_fired(doc: Document, rule_id: str) -> list[Finding]:
     return lint(doc, select=[rule_id])
 
 
+def _define_style(doc: Document, style_id: str) -> None:
+    """Declare a bare paragraph style, so a ``w:pStyle`` naming it resolves.
+
+    A ``w:pStyle`` pointing at a style the document never defines resolves to
+    the *default* style, exactly as Word renders it — so a fixture that only
+    writes the reference is not testing the style it names.
+    """
+    style = sub(doc.styles.element, "w:style", **{"w:type": "paragraph", "w:styleId": style_id})
+    sub(style, "w:name", **{"w:val": style_id})
+
+
 # --------------------------------------------------------------------------
 # Typography.
 # --------------------------------------------------------------------------
@@ -45,6 +56,7 @@ def test_double_space_ignores_single_spacing() -> None:
 def test_double_space_skips_verbatim_styles() -> None:
     """Runs of spaces in preformatted text are content, not sloppiness."""
     doc = Document()
+    _define_style(doc, "HTMLPreformatted")
     para = doc.add_paragraph("indent    matters here")
     sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": "HTMLPreformatted"})
 
@@ -468,11 +480,26 @@ def test_paragraph_mark_formatting_is_not_the_run_baseline() -> None:
 def test_verbatim_style_detection_uses_resolved_style_id() -> None:
     """The skip is keyed off the resolved style id, not the raw pStyle text."""
     doc = Document()
+    _define_style(doc, "PlainText")
     para = doc.add_paragraph("code    block")
     sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": "PlainText"})
 
     assert _rules_fired(doc, "double-space") == []
     assert para._p.find(f"./{qn('w:pPr')}/{qn('w:pStyle')}") is not None
+
+
+def test_a_verbatim_pstyle_naming_no_style_is_not_verbatim() -> None:
+    """An undefined ``PlainText`` renders as the default style, so it is not exempt.
+
+    Word resolves a dangling ``w:pStyle`` to the default paragraph style
+    rather than to the style it names, so the spaces really are sloppiness.
+    """
+    doc = Document()
+    para = doc.add_paragraph("code    block")
+    sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": "PlainText"})
+
+    assert resolve_effective_formatting(para).style_id == "Normal"
+    assert len(_rules_fired(doc, "double-space")) == 1
 
 
 # --------------------------------------------------------------------------

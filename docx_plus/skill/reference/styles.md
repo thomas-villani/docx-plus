@@ -74,6 +74,24 @@ Units: `font_size` in points; `indent_*` / `spacing_*` in twips;
 `line_spacing` is twips unless `line_spacing_rule == "auto"`, where it's a
 multiplier (e.g. `1.15`); `color_rgb` / `highlight` are `"RRGGBB"` hex.
 
+### A paragraph with no `w:pStyle` still reports a style
+
+Word gives it the **default paragraph style** (the last `w:type="paragraph"`
+style with `w:default` on, else the one whose id is `Normal`), so
+`style_id` comes back `"Normal"` and everything that style declares is
+applied. The same fallback covers a `w:pStyle` that dangles or names a
+style of the wrong type — so a `style_id` you get back is the style Word
+actually renders, which may not be the one written in the XML.
+
+That layer **beats the table style**: a `Normal` declaring 20pt wins over a
+table style declaring 36pt. A table cell resolves through it too.
+
+Two things that sound symmetrical but are not: the default *character*
+style (`DefaultParagraphFont`) and default *table* style (`TableNormal`)
+never apply to anything. And a style reference only resolves within its own
+`w:type` — a `w:rStyle` naming a paragraph style contributes nothing, and a
+`w:basedOn` crossing types inherits nothing.
+
 ### Spacing needs a second call
 
 `spacing_before` / `spacing_after` are what the cascade *declares*. Whether

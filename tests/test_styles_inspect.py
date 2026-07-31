@@ -278,14 +278,19 @@ def test_based_on_depth_limit_raises() -> None:
 
 
 def test_missing_style_does_not_raise() -> None:
-    """A pStyle pointing at an undefined style is harmless — chain just ends."""
+    """A pStyle pointing at an undefined style resolves to the default style.
+
+    Word does not treat a dangling reference as "this style, but empty" — it
+    treats it as no reference at all, and the paragraph falls back to the
+    default paragraph style exactly as a bare paragraph would.
+    """
     doc = Document()
     p = doc.add_paragraph()
     ppr = p._p.get_or_add_pPr()
     sub(ppr, "w:pStyle", **{"w:val": "DoesNotExist"})
 
     resolved = resolve_effective_formatting(p)
-    assert resolved.style_id == "DoesNotExist"
+    assert resolved.style_id == "Normal"
     # docDefaults still apply
     assert resolved.font_size == 11.0
 
