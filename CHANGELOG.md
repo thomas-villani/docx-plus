@@ -8,6 +8,56 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`plan_fixes(findings) -> FixPlan`** — the linter's report-to-plan half.
+  Turns findings into an ordered, inspectable, JSON-serializable
+  description of what a repair pass would change, and stops there:
+  **nothing in this release applies a plan.** Findings gained a `Fix`
+  (`summary`, a `safety` class of `safe` / `review` / `destructive`, and a
+  sequence of `FixOperation`s from a closed seven-verb vocabulary);
+  `Finding.fixable` is now derived from it rather than stored, so the flag
+  cannot drift from the repair.
+
+  The planner owns the three decisions no individual rule can make,
+  because each is a property of the *set* of findings:
+
+    - **Order.** Deletions run last and back to front. Every operation
+      names a position in the document as it was swept, so a deletion
+      partway down invalidates every index below it.
+    - **The content gate.** A fix that removes a paragraph or a style
+      definition changes what the document *contains*, not how it looks.
+      Those are withheld unless `allow_content=True` and reported in
+      `plan.deferred` rather than silently dropped.
+    - **Conflicts.** Claims are per property and per half-open character
+      span, not per paragraph, so two rules clearing different properties
+      of one run both apply and adjacent text edits compose. Where two
+      genuinely collide the earlier wins and the loser is named.
+
+  Every finding lands in exactly one of `fixes`, `deferred`, `conflicts`,
+  or `unfixable`, so a plan accounts for the whole audit. Nine of the
+  twenty rules carry a fix; the other eleven are report-only because the
+  repair is a judgement the document cannot supply — promoting a heading
+  or demoting the one above it are both valid, and they produce different
+  documents.
+
+- **Lint profiles** — `Profile.load(path | mapping | None)` and
+  `Profile.discover(start)`, with per-rule `enabled` / `severity` /
+  `options`. `lint(doc, profile=...)` applies them; both CLI commands
+  discover `docx-plus-lint.json` beside the document or above it. An
+  explicit `--rule` beats a profile that disabled the rule, so a
+  checked-in file can never stop someone asking a direct question of one
+  document. `options` is the hook policy rules will read their targets
+  through and is read by nothing yet, since no policy rule ships. A
+  profile naming an unknown rule raises `UnknownRuleError` on load rather
+  than silently configuring nothing.
+
+- **`docx-plus plan FILE`** — the repair, made inspectable before anything
+  can apply it. Shares `--rule` / `--exclude` / `--no-tables` /
+  `--profile` / `--no-profile` with `lint`, and adds `--allow-content`.
+  Exits `1` when the plan holds any edit, applied or withheld, so it gates
+  a pipeline on "is there anything a repair pass would do"; findings
+  nobody can repair do not fail that gate. `lint` gained `--profile` /
+  `--no-profile` to match.
+
 - **`resolve_paragraph_spacing(paragraph) -> ParagraphSpacing`** — the
   vertical space Word actually leaves above and below a paragraph, as
   opposed to what the cascade declares. It folds in `<w:contextualSpacing>`
@@ -17,6 +67,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   resolved `contextual_spacing` flag, and which edges were suppressed.
 
 ### Fixed
+
+- **`double-space` missed every other occurrence in a paragraph.** The
+  pattern was `\S {2,}\S`, which consumes the word between two runs of
+  spaces, so the search for the next one started past the character that
+  would have anchored it: `"a  b  c"` reported one occurrence, not two.
+  Invisible while the rule only reported — one finding per paragraph
+  either way — and it would have left the paragraph half-repaired the
+  moment a fix carried the spans. Now anchored with lookarounds.
 
 - **The default paragraph style was never applied, so a paragraph with no
   `w:pStyle` resolved to `docDefaults` alone.** That is most paragraphs in

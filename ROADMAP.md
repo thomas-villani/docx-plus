@@ -389,29 +389,84 @@ disagree and "which run is the outlier needs a run-walk". The stage-1
 sweep hands us that run-walk for free, so the rule is *more* capable
 here.
 
-### Stage 3 — report → plan
+### Stage 3 — report → plan — **shipped**
 
-`plan_fixes(findings)` returns a `FixPlan`: an ordered, inspectable,
-serializable list of edits, each naming the public `docx_plus` call it
-would make, plus a safety class and the `adds_content` flag. Conflict
-detection between edits from different rules targeting the same run
-belongs here. **Nothing applies it in v0.6.**
+`plan_fixes(findings)` returns a `FixPlan`, and nothing applies it.
+Findings carry a `Fix`; `fixable` is now derived from it rather than
+stored, so the flag cannot drift from the repair.
 
-The **high-level "restyle" planner** on the backlog is this plan's
-engine for the style-related rules — computing the minimal cascade
-modification that reaches a target `ResolvedFormatting`. Designing it
-against a plan that cannot execute is the cheap place to do it.
+**The fix vocabulary is closed, not callable.** Seven named operations
+(`FixOp`) with JSON arguments, rather than a bound method per rule. A
+plan has to survive being written to a file, reviewed, and handed to a
+different process than the one that built it, and none of that works if
+an edit is a Python object. The plan serializes end to end.
 
-A **profile** (a small declarative config enabling policy rules and
-supplying their targets, per wordlive §6) is designed in here but only
-needs to *load* in v0.6, since no policy rule can act until v0.7.
+Three things fell out of building it that the design note above did not
+anticipate:
 
-### CLI
+- **The planner's real job is the three decisions no rule can make**,
+  because each is a property of the *set* of findings. Order (deletions
+  last and back to front, since every operation names a position in the
+  document as swept). The content gate. Conflicts.
+- **Conflict detection has to be finer than "the same run".** Claims are
+  per property and per half-open character span, so two rules clearing
+  two different properties of one run both apply, and a `double-space`
+  span adjacent to a `space-before-punctuation` span composes. Coarser
+  detection would call a paragraph carrying several unrelated defects
+  unfixable, which is the common case rather than an edge one. The gate
+  runs *before* conflict detection, so a withheld deletion cannot knock
+  out an edit that is actually going to happen.
+- **Text fixes have to be spans against the original text.** Anything
+  phrased as "find this, replace it" cannot be checked for overlap
+  without replaying it, and `plan_fixes` never sees the document. Writing
+  the fix that way exposed a detection bug in passing: `double-space`
+  matched `\S {2,}\S`, which consumes the word between two double spaces,
+  so `"a  b  c"` reported one occurrence and would have been half-fixed.
 
-`docx-plus lint FILE [--rules ...] [--json]` and
-`docx-plus plan FILE [--json]`. Both are read commands, so both take
-`--json` and neither needs `-o/--output` — the mutating-command
-convention is untouched this cycle.
+**Nine of twenty rules carry a fix, and the eleven that do not are the
+finding.** A skipped outline level can be repaired by promoting this
+heading or demoting the one above it, and those produce different
+documents; two styles that resolve identically give no reason to prefer
+either as the survivor; typed indentation needs a number the document
+does not contain. Each rule's docstring says which case it is, and the
+list is pinned by a test — a rule quietly gaining a fix is a decision
+about someone's document. `direct-numbering-override` is the sharpest
+of them: it carries a fix *except* for `numId=0`, which is the ECMA-376
+opt-out sentinel and the one override somebody meant.
+
+The **high-level "restyle" planner** on the backlog is still the missing
+engine for the style-related rules — `duplicate-styles`,
+`manual-heading-formatting`, and `font-outliers` are all report-only for
+want of it, since each needs "which style should this be" answered.
+
+**Profiles shipped** as designed: per-rule `enabled` / `severity` /
+`options`, loadable from a path, a mapping, or nothing, and discovered as
+`docx-plus-lint.json` beside the document or above it. `options` is read
+by nothing, because no policy rule ships. One rule settled while writing
+it: **an explicit `--rule` beats a profile that disabled it**, so a
+checked-in file can never stop someone asking a direct question of one
+document. A profile may not configure a *tag* — "apply this severity to
+whatever carries the tag today" is not a stable thing to check in — and a
+profile naming an unknown rule fails on load rather than silently doing
+nothing.
+
+### CLI — shipped
+
+`docx-plus lint FILE` and `docx-plus plan FILE`, sharing `--rule` /
+`--exclude` / `--no-tables` / `--profile` / `--no-profile`; `plan` adds
+`--allow-content`. Both are read commands, so both take `--json` and
+neither needs `-o/--output` — the mutating-command convention is
+untouched this cycle. `plan` exits `1` when the plan holds any edit,
+applied or withheld, so it gates a pipeline on "is there anything a
+repair pass would do"; findings nobody can repair do not fail that gate.
+
+### Outstanding before a v0.6 release
+
+- The **agent skill has no `lint` page**, and `skill/reference/cli.md`
+  does not mention `lint` or `plan`. The skill is the agent-facing
+  surface for the cycle's flagship feature, so it needs one.
+- `docs/API.md` is still stamped at the v0.5.0 surface and lists no
+  `lint` entry — part of the usual post-release prose re-stamp.
 
 ## v0.7 — sketched: the regularizer
 

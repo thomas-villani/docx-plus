@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from docx_plus.lint.models import Issue, Location
+from docx_plus.lint.models import Fix, FixOperation, Issue, Location
 from docx_plus.lint.registry import rule
 from docx_plus.styles import find_unused_styles
 
@@ -65,6 +65,12 @@ def duplicate_styles(ctx: LintContext) -> Iterator[Issue]:
     table paragraphs are skipped, since their baselines also carry the
     numbering level and the table style — neither of which belongs to the
     paragraph style being compared.
+
+    Report-only. Merging duplicates means remapping every paragraph onto
+    one of them and deleting the rest, and *which* one survives is not
+    something the document answers: the three ids render alike, so nothing
+    in the formatting favours any of them. Picking by name or by first use
+    would be the plan making a decision it cannot justify.
     """
     by_formatting: defaultdict[tuple[tuple[str, object], ...], dict[str, int]] = defaultdict(dict)
 
@@ -141,4 +147,9 @@ def unused_styles(ctx: LintContext) -> Iterator[Issue]:
             # formatting one — nothing renders differently, but the
             # document loses something it had.
             adds_content=True,
+            fix=Fix(
+                summary=f"Delete the unused style {info.style_id}.",
+                safety="destructive",
+                operations=(FixOperation(op="delete-style", args={"style_id": info.style_id}),),
+            ),
         )

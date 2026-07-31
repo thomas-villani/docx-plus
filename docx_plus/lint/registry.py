@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from docx_plus.lint.models import CheckFn, RuleKind, Severity
+    from docx_plus.lint.profile import Profile
 
 
 _REGISTRY: dict[str, Rule] = {}
@@ -82,33 +83,44 @@ def all_rules() -> list[Rule]:
 def select_rules(
     select: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
+    profile: Profile | None = None,
 ) -> list[Rule]:
     """Resolve selectors to the rules that should run.
 
     Selection semantics, matching the sibling `wordlive` linter so the two
     behave the same way:
 
-    - ``select=None`` runs every rule with ``default_on=True``.
+    - ``select=None`` runs every rule with ``default_on=True``, as adjusted
+      by ``profile``.
     - A non-empty ``select`` runs exactly what it names, **including
-      off-by-default rules** — naming a tag is how a user opts into that
-      cluster's heuristic rules.
+      off-by-default rules and anything a profile disabled** — naming a tag
+      is how a user opts into that cluster's heuristic rules, and asking
+      for a rule by name is not something configuration gets to veto.
     - ``exclude`` is applied last and always wins.
 
     Args:
         select: Rule ids and/or tags to run.
         exclude: Rule ids and/or tags to skip.
+        profile: A loaded profile whose per-rule ``enabled`` overrides the
+            registered ``default_on``.
 
     Returns:
         The matching rules, sorted by id.
 
     Raises:
-        UnknownRuleError: If a selector matches no registered rule or tag.
+        UnknownRuleError: If a selector, or a rule id named by ``profile``,
+            matches no registered rule or tag.
     """
     rules = all_rules()
+
+    if profile is not None:
+        _reject_unknown_ids(profile.rules, rules)
 
     if select:
         _reject_unknown(select, rules)
         chosen = [r for r in rules if any(r.matches(s) for s in select)]
+    elif profile is not None:
+        chosen = [r for r in rules if profile.enabled(r.id, default=r.default_on)]
     else:
         chosen = [r for r in rules if r.default_on]
 
@@ -117,6 +129,20 @@ def select_rules(
         chosen = [r for r in chosen if not any(r.matches(s) for s in exclude)]
 
     return chosen
+
+
+def _reject_unknown_ids(named: Iterable[str], rules: Sequence[Rule]) -> None:
+    """Reject rule ids a profile names that do not exist.
+
+    Tags are not accepted here, unlike in a selector: a profile sets
+    per-rule severities and options, and "apply this severity to whatever
+    happens to carry the tag today" is not a stable thing to check into a
+    repository.
+    """
+    known = {r.id for r in rules}
+    unknown = [name for name in named if name not in known]
+    if unknown:
+        raise UnknownRuleError(f"profile names unknown rule(s): {', '.join(sorted(unknown))}")
 
 
 def _reject_unknown(selectors: Sequence[str], rules: Sequence[Rule]) -> None:

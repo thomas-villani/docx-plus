@@ -17,6 +17,8 @@ Commands:
   (:mod:`docx_plus.comments`).
 - ``lint`` — audit a document for formatting defects
   (:mod:`docx_plus.lint`).
+- ``plan`` — show the edits that would repair it
+  (:func:`docx_plus.lint.plan_fixes`).
 - ``skill`` — locate, read, or install the packaged agent skill
   (:mod:`docx_plus.cli.skill`).
 
@@ -25,9 +27,9 @@ explicit ``--in-place``) so the input is never overwritten by accident.
 ``skill`` is the exception: it touches no ``.docx`` at all, so it takes
 ``--dest`` / ``--user`` instead.
 
-``lint`` is the one command that exits ``1`` on a *successful* run that found
-something, so it works as a CI gate. A genuine failure still surfaces as an
-``error:`` line on stderr.
+``lint`` and ``plan`` are the commands that exit ``1`` on a *successful* run
+that found something, so they work as CI gates. A genuine failure still
+surfaces as an ``error:`` line on stderr.
 """
 
 from __future__ import annotations
@@ -36,7 +38,7 @@ import argparse
 import sys
 
 from docx_plus import __version__
-from docx_plus.cli import comments, controls, inspect, lint, restyle, skill
+from docx_plus.cli import comments, controls, inspect, lint, plan, restyle, skill
 from docx_plus.cli._io import CliError
 from docx_plus.core import DocxPlusError
 
@@ -49,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"docx-plus {__version__}")
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
-    for module in (inspect, restyle, controls, comments, lint, skill):
+    for module in (inspect, restyle, controls, comments, lint, plan, skill):
         module.register(subparsers)
     return parser
 

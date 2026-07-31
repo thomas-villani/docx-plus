@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from docx_plus.lint.models import Finding, LintContext
+from docx_plus.lint.profile import Profile
 from docx_plus.lint.registry import select_rules
 from docx_plus.styles import iter_resolved_paragraphs
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
+    from pathlib import Path
+    from typing import Any
 
     from docx.document import Document
 
@@ -22,6 +25,7 @@ def lint(
     select: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
     include_tables: bool = True,
+    profile: Profile | str | Path | Mapping[str, Any] | None = None,
 ) -> list[Finding]:
     """Audit ``doc`` and return what the selected rules noticed.
 
@@ -36,12 +40,18 @@ def lint(
             off-by-default rules.
         exclude: Rule ids and/or tags to skip; applied last.
         include_tables: Whether to sweep paragraphs inside table cells.
+        profile: A :class:`~docx_plus.lint.Profile`, or anything
+            :meth:`~docx_plus.lint.Profile.load` accepts. Supplies a team's
+            enable/disable and severity overrides. ``select`` and
+            ``exclude`` are applied *after* it, so naming a rule explicitly
+            always wins over what a profile said about it.
 
     Returns:
         Findings sorted by severity, then document order.
 
     Raises:
         UnknownRuleError: If a selector matches no rule id or tag.
+        InvalidProfileError: If ``profile`` is malformed.
         StyleCascadeError: If a ``basedOn`` chain has a cycle or exceeds
             Word's depth limit.
 
@@ -59,7 +69,8 @@ def lint(
         ...     print(finding.rule, "-", finding.message)
         double-space - Two or more consecutive spaces between words.
     """
-    rules = select_rules(select, exclude)
+    loaded = profile if isinstance(profile, Profile) else Profile.load(profile)
+    rules = select_rules(select, exclude, loaded)
     # Provenance and baselines are always on. Neither is an optional extra
     # here: the consistency rules are built on knowing *which* cascade layer
     # set a value and what the value would have been without it, which is
@@ -80,28 +91,35 @@ def lint(
 
     findings: list[Finding] = []
     for rule in rules:
-        findings.extend(_run(rule, context))
+        findings.extend(_run(rule, context, loaded))
 
     return sorted(findings, key=lambda f: f.sort_key)
 
 
-def _run(rule: Rule, context: LintContext) -> list[Finding]:
+def _run(rule: Rule, context: LintContext, profile: Profile) -> list[Finding]:
     """Run one rule, promoting each :class:`Issue` it yields to a Finding.
 
     A rule body supplies only what it knows — the message, where, and what
     it saw. The id, kind, and severity come from the registration, so a rule
     cannot drift from what ``list_rules`` advertises about it.
+
+    An :class:`Issue` that names its own severity keeps it. A rule
+    downgrading one finding is saying something about *that* finding — the
+    numbering opt-out sentinel is a legitimate override, unlike every other
+    one the rule reports — and a profile's blanket "treat this rule as an
+    error" is not an answer to that.
     """
+    default = profile.severity(rule.id, default=rule.severity)
     return [
         Finding(
             rule=rule.id,
             kind=rule.kind,
-            severity=issue.severity or rule.severity,
+            severity=issue.severity or default,
             message=issue.message,
             location=issue.location,
             observed=issue.observed,
             expected=issue.expected,
-            fixable=issue.fixable,
+            fix=issue.fix,
             adds_content=issue.adds_content,
         )
         for issue in rule.check(context)
