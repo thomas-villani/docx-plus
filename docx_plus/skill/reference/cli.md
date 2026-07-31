@@ -23,8 +23,10 @@ when the caller is a shell, CI step, or another non-Python tool.
   `controls set` / `clear`, `comments resolve` / `reopen`): they require
   `-o/--output`, or `--in-place` to opt into overwriting the source.
 - **Exit codes:** `0` success; `1` for a handled error (bad path, missing
-  output, un-coercible value, unknown tag or comment id — printed as
-  `error: ...` on stderr); `2` for a usage error or no command.
+  output, un-coercible value, unknown tag or comment id), printed as a
+  single line on stderr; `2` for a usage error or no command. A mistake the
+  CLI catches is prefixed `error:`; a typed library error names its class
+  instead (`UnknownRuleError: ...`, `InvalidProfileError: ...`).
 - **`lint` and `plan` overload exit `1`** as "I found something", so they
   gate a CI step directly. Both are read-only, so there is nothing to
   overwrite.

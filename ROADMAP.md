@@ -485,6 +485,34 @@ left open and three more found while writing them:
 Still outstanding: the version re-stamp (`API.md`, `SKILLS.md`, README,
 `docs/index.md`), which by definition follows the bump.
 
+### Review — done, and what it deferred
+
+Before the release, three reviewers went over everything since v0.5.0
+(82 files, ~16.5k insertions): the `lint/` package, the `styles/`
+rewrite, and the CLI / skill / docs / packaging surface. Five confirmed
+critical bugs and around fifteen significant ones were fixed; all are in
+the CHANGELOG. Two findings are worth recording as *deliberately* left:
+
+- **`resolve_paragraph_spacing` builds a throwaway `_ResolverCache` per
+  call**, so it is ~6x slower per paragraph than going through the sweep
+  (2144 vs 363 microseconds, measured over 300 body paragraphs). That is
+  the same shape as `resolve_effective_formatting`, which is documented
+  to work that way, so it is consistent rather than wrong — but there is
+  no batch entry point for spacing. A `include_spacing=` flag on
+  `iter_resolved_paragraphs` is the obvious answer, and it is v0.7 work.
+- **`modify.py` open-codes the ST_OnOff test twice more.** Both use the
+  correct value set, so this is duplication rather than the bug fixed in
+  the resolver; unifying them means either exporting `_on_off` across
+  modules or promoting it into `core/`, and neither is worth doing
+  mid-release.
+
+The tail of consistency items the review raised — an exhaustive `match`
+over `FixOp` so a new operation cannot silently lose conflict detection,
+`Literal` types on `_Claim`'s string fields, `Profile.option` reaching
+the four hard-coded rule thresholds, and the shared "dominant value"
+helper the rule modules each reimplement — are all real and all
+non-blocking.
+
 ## v0.7 — sketched: the regularizer
 
 Applies a `FixPlan`. Each rule that is safely invertible gains an

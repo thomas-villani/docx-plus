@@ -7,10 +7,12 @@ Plus read-only theme-color resolution.
 
 ## Inspecting effective formatting
 
-`resolve_effective_formatting` walks the six cascade layers (document defaults →
-table style → paragraph style chain via `basedOn` → numbering → paragraph
-direct → run direct) and returns a single frozen `ResolvedFormatting` with the
-value that actually wins for each field.
+`resolve_effective_formatting` walks the eight cascade layers, lowest first —
+`docDefaults` → `tableStyle` → `paragraphStyle` (the chain via `basedOn`) →
+`styleNumbering` → `numbering` → `directParagraph` → `runStyle` (`w:rStyle`) →
+`directRun` — and returns a single frozen `ResolvedFormatting` with the value
+that actually wins for each field. Those eight names are the `Layer` alias:
+what `provenance[field].layer` reports and what `stop_below` accepts.
 
 ```python
 from docx import Document
@@ -25,7 +27,7 @@ print(r.font_size)                # 28.0  (points)
 print(r.bold)                     # True / False / None
 ```
 
-`resolve_effective_formatting(target, *, include_provenance=False, table_context=None)`
+`resolve_effective_formatting(target, *, include_provenance=False, table_context=None, stop_below=None)`
 
 - `target` — a `Paragraph`, a `Run`, or a table `_Cell`
   (`doc.tables[0].rows[0].cells[0]`). For a `Run`, run-direct formatting is
@@ -37,6 +39,17 @@ print(r.bold)                     # True / False / None
 - `table_context` — a `TableContext` to override the auto-derived cell position
   when resolving conditional table-style branches (`firstRow`, `lastRow`,
   banded fills, …).
+- `stop_below=Layer` — resolve as if that layer and everything above it were
+  absent. `stop_below="directRun"` answers "what would this run look like
+  without its own `<w:rPr>`?", which is how you tell direct formatting that
+  *changes* something from direct formatting that merely restates the style.
+
+```python
+full = resolve_effective_formatting(run)
+base = resolve_effective_formatting(run, stop_below="directRun")
+if full.font_size == base.font_size:
+    print("the direct size is redundant — the style already says that")
+```
 
 > **Conditional table branches are gated.** A cell being in row 0 is not
 > enough: the table's `w:tblLook` has to ask for `firstRow` (Word's "Header
@@ -120,6 +133,47 @@ Two things it accounts for, both measured against live Word:
   apart. Do not sum two resolved values to get a gap.
 
 `space_below` of one paragraph always equals `space_above` of the next.
+
+## Sweeping a whole document
+
+`resolve_effective_formatting` rebuilds every document-level lookup on each
+call — the theme, the styles part, each `basedOn` chain. Right for one
+paragraph, wrong for all of them. `iter_resolved_paragraphs` resolves the
+whole document against one shared cache:
+
+```python
+from docx_plus.styles import iter_resolved_paragraphs
+
+for resolved in iter_resolved_paragraphs(doc, include_baseline=True):
+    print(resolved.index, resolved.formatting.style_id, resolved.text)
+    for run in resolved.runs:
+        if run.baseline and run.formatting.bold != run.baseline.bold:
+            print("   run", run.index, "sets bold directly")
+```
+
+`iter_resolved_paragraphs(doc, *, include_provenance=False, include_runs=True,
+include_tables=True, include_baseline=False)` yields `ResolvedParagraph`
+lazily, in document order:
+
+- `.paragraph`, `.index`, `.formatting`, `.runs`, `.table_depth`, `.baseline`
+- `.in_table` and `.text` convenience properties
+- each `ResolvedRun` carries `.run`, `.index`, `.formatting`, `.baseline`
+
+`include_baseline=True` also resolves each target with its own direct layer
+excluded (`stop_below="directParagraph"` / `"directRun"`), which is what makes
+"is this direct override doing anything?" answerable. It roughly doubles the
+work, so it is off by default.
+
+> **`index` is not an index into `doc.paragraphs`.** The sweep descends into
+> table cells, which `doc.paragraphs` omits, so the two diverge at the first
+> table. Pass `include_tables=False` to make them line up.
+
+> **Body only.** Headers, footers, footnotes, endnotes, and comments are not
+> swept — they live in separate parts with their own style references.
+
+`runs` includes runs inside a `<w:hyperlink>`, which `Paragraph.runs` omits;
+together they cover exactly the text `.text` reports. Runs inside `<w:ins>`,
+`<w:del>` and `<w:sdt>` are in neither, matching python-docx.
 
 ## Creating, modifying, applying styles
 

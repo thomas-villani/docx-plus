@@ -21,9 +21,9 @@ usage: docx-plus [-h] [--version] <command> ...
 
 Two conventions hold across every command that touches a `.docx`:
 
-- **Read commands take `--json`.** `inspect`, `controls list`, and
-  `comments list` default to human-readable text; `--json` emits structured
-  output for piping into `jq` or another tool.
+- **Read commands take `--json`.** `inspect`, `controls list`,
+  `comments list`, `lint`, and `plan` default to human-readable text;
+  `--json` emits structured output for piping into `jq` or another tool.
 - **Mutating commands never overwrite the input by accident.** `restyle`,
   `controls set` / `clear`, and `comments resolve` / `reopen` require an
   explicit `-o/--output` path, or the `--in-place` flag to opt into
@@ -38,7 +38,11 @@ error or when no command is given.
 
 `lint` and `plan` overload `1` deliberately: a successful run that *found
 something* also exits `1`, so both work as CI gates. A genuine failure is
-still distinguishable — it prints an `error:` line to stderr and no findings.
+still distinguishable — it writes a single line to **stderr** and prints no
+findings. A mistake the CLI itself catches is prefixed `error:`; a typed
+library error names its class instead, so a mistyped selector reads
+`UnknownRuleError: unknown rule id or tag: ...` and a malformed profile
+reads `InvalidProfileError: ...`.
 
 ## `inspect`
 
@@ -308,13 +312,14 @@ find it.
 
 ```console
 $ docx-plus skill install
-installed 10 files to .claude/skills/docx-plus
+installed 11 files to .claude/skills/docx-plus
 
 $ docx-plus skill list
 cli
 comments
 forms
 layout
+lint
 numbering
 publishing
 revisions
