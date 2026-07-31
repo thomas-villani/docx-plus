@@ -467,6 +467,7 @@ EXPECTED_TOPICS = {
     "comments",
     "forms",
     "layout",
+    "lint",
     "numbering",
     "publishing",
     "revisions",
@@ -531,7 +532,7 @@ class TestSkillInstall:
         installed = dest / "docx-plus"
         assert (installed / "SKILL.md").is_file()
         assert {p.stem for p in (installed / "reference").glob("*.md")} == EXPECTED_TOPICS
-        assert "installed 10 files" in capsys.readouterr().out
+        assert "installed 11 files" in capsys.readouterr().out
 
     def test_content_matches_the_package(self, tmp_path: Path) -> None:
         dest = tmp_path / "skills"

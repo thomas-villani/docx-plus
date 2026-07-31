@@ -46,7 +46,8 @@ Requires Python 3.10+. The only dependencies are `python-docx` and
 | **[Notes](ARCHITECTURE.md#79-footnotes-and-endnotes)** | Footnotes and endnotes over the separate `footnotes.xml` / `endnotes.xml` parts; insert and edit in place (v0.2). |
 | **[Publishing](ARCHITECTURE.md#710-publishing)** | Table of Contents, figure / table captions via `SEQ`, Table of Figures (v0.2). |
 | **[Protection](ARCHITECTURE.md#7-fields-and-protection)** | Form-fill, read-only, comments-only, or tracked-changes enforcement at the document level. |
-| **[Command line](cli.md)** | `docx-plus inspect / restyle / controls / comments / skill` over the library. |
+| **[Lint](reference/lint.md)** | Audit a document for direct formatting fighting the styles, skipped outline levels, hand-typed lists, and whitespace used as layout — then describe the repair as an ordered, serializable plan (v0.6). Read-only throughout: nothing applies a plan. |
+| **[Command line](cli.md)** | `docx-plus inspect / restyle / controls / comments / lint / plan / skill` over the library. |
 
 ## Where to start
 
@@ -266,7 +267,7 @@ on minor versions and are called out in the
 is the live record of what is shipped, backlogged, and deliberately
 declined. On the backlog: content-control data binding to Custom XML
 Parts, bibliography and `BIBLIOGRAPHY` fields, theme writing, glossary
-placeholder text, password-protected forms, and a document linter.
+placeholder text, and password-protected forms.
 
 ## Contributing
 

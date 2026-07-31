@@ -11,20 +11,23 @@ subcommand is a thin wrapper over one tested function. Built on stdlib
 **You usually don't need this from Python.** If you're already writing Python,
 call the underlying functions directly (`resolve_effective_formatting`,
 `remap_styles`, `read_controls` / `set_control_value` / `clear_control`,
-`read_threads` / `resolve_comment`). Reach for the CLI when the caller is a
-shell, CI step, or another non-Python tool.
+`read_threads` / `resolve_comment`, `lint` / `plan_fixes`). Reach for the CLI
+when the caller is a shell, CI step, or another non-Python tool.
 
 ## Conventions
 
 - **Read commands take `--json`** (`inspect`, `controls list`,
-  `comments list`): default is human-readable text; `--json` emits structured
-  output.
+  `comments list`, `lint`, `plan`): default is human-readable text; `--json`
+  emits structured output.
 - **Mutating commands never overwrite the input by accident** (`restyle`,
   `controls set` / `clear`, `comments resolve` / `reopen`): they require
   `-o/--output`, or `--in-place` to opt into overwriting the source.
 - **Exit codes:** `0` success; `1` for a handled error (bad path, missing
   output, un-coercible value, unknown tag or comment id — printed as
   `error: ...` on stderr); `2` for a usage error or no command.
+- **`lint` and `plan` overload exit `1`** as "I found something", so they
+  gate a CI step directly. Both are read-only, so there is nothing to
+  overwrite.
 - **`skill` is the exception to all of the above** — it touches no `.docx`,
   so it takes neither `--json` nor `-o/--output`.
 
@@ -87,6 +90,99 @@ attached to, and a `[resolved]` marker; a comment with no anchor in the document
 body is flagged as orphaned. Resolution is **thread-wide**, so `resolve` /
 `reopen` accept any comment id in the thread. An unknown id is a clean
 `error: ...` (exit 1).
+
+## `lint` — audit formatting
+
+```bash
+docx-plus lint report.docx                      # findings, human-readable
+docx-plus lint report.docx --json               # the full finding shape
+docx-plus lint report.docx --rule typography    # one cluster of rules
+docx-plus lint report.docx --exclude double-space
+docx-plus lint --list-rules                     # the catalogue; no document needed
+docx-plus lint report.docx --profile house.json
+```
+
+Wraps `docx_plus.lint.lint`. Read-only. Output is one finding per block —
+severity mark, location, rule id, message, and the paragraph excerpt quoted
+beneath:
+
+```
+W paragraph 1         heading-level-skip           Outline jumps from level 1 to level 3, skipping level 2.
+                                                   > "Deep Dive"
+W paragraph 3         manual-list                  Paragraph begins with a typed list marker but carries no numbering.
+                                                   > "1. First typed item"
+W paragraph 5         style-drift                  Paragraph overrides space after directly, deviating from Normal.
+                                                   > "Drifting paragraph"
+i paragraph 2         double-space                 Two or more consecutive spaces between words.
+                                                   > "Body with  two spaces and a space ."
+i paragraph 2         space-before-punctuation     Whitespace before '.'.
+                                                   > "Body with  two spaces and a space ."
+i paragraph 4, run 0  redundant-direct-formatting  Run sets size directly to the value it already inherits; the direct formatting has no effect but overrides the style.
+                                                   > "redundant"
+
+6 findings (3 warning, 3 info).
+```
+
+Excerpts are quoted because several rules are about whitespace nobody can see;
+a tab prints as `\t`.
+
+`--rule` and `--exclude` both take a rule **id** or a **tag**, and both repeat.
+Naming a tag also *enables* that cluster's off-by-default rules. A selector
+matching nothing is an error, not a silent empty result. `--no-tables` skips
+paragraphs inside table cells; headers, footers, notes, and comments are never
+audited.
+
+**Exit code `1` when it found anything**, so `docx-plus lint doc.docx` works as
+a CI gate on its own. See `reference/lint.md` for the rule catalogue, the
+`consistency` / `structural` / `policy` kinds, and profiles.
+
+## `plan` — describe the repair
+
+```bash
+docx-plus plan report.docx                    # the edits, in applying order
+docx-plus plan report.docx --allow-content    # include deletions
+docx-plus plan report.docx --json             # the whole plan, serialized
+```
+
+Wraps `plan_fixes`. Also read-only — **this release applies nothing.** The
+command exists so a repair is inspectable before anything can perform it.
+
+```
+4 edit(s), in the order they would be applied:
+
+1. [check] paragraph 2  double-space
+     Collapse 1 run of spaces to a single space.
+     - replace-paragraph-text paragraph_index=2 spans=[9-11->' ']
+2. [check] paragraph 2  space-before-punctuation
+     Remove the whitespace before 1 punctuation mark.
+     - replace-paragraph-text paragraph_index=2 spans=[33-34->'']
+3. [safe ] paragraph 4, run 0  redundant-direct-formatting
+     Delete the run's direct size; the style supplies the same value.
+     - clear-run-properties paragraph_index=4 run_index=0 properties=font_size
+4. [check] paragraph 5  style-drift
+     Clear the paragraph's direct space after so Normal applies.
+     - clear-paragraph-properties paragraph_index=5 properties=spacing_after
+
+2 finding(s) with no known repair:
+     1  heading-level-skip
+     1  manual-list
+
+4 to apply, 0 withheld, 0 dropped, 2 unfixable.
+```
+
+Four possible sections, for the four things that can happen to a finding: it
+becomes an edit, it is **withheld** for changing what the document contains
+(deleting a paragraph or a style — `--allow-content` includes those), it is
+**dropped** for colliding with an earlier edit, or nobody knows how to fix it.
+Every finding lands in exactly one, so the report accounts for the whole audit.
+
+The bracketed mark is the safety class: `safe` renders identically afterwards,
+`check` changes rendering or text deliberately, `DROP` removes something that
+cannot be reconstructed.
+
+Exit code `1` when the plan holds any edit, applied or withheld. `--rule`,
+`--exclude`, `--no-tables`, `--profile`, and `--no-profile` work exactly as
+they do for `lint`.
 
 ## `skill` — the packaged agent skill
 

@@ -56,6 +56,7 @@ point an agent loads first, plus topic reference files it pulls in on demand.
 | `reference/tables.md` | Table and cell borders, shading, merging / unmerging, `w:hMerge` normalization |
 | `reference/comments.md` | Anchored comments, threads, durable ids, author presence |
 | `reference/revisions.md` | Tracked changes (mark / read / accept / reject); track-changes toggle |
+| `reference/lint.md` | Audit a document for formatting defects; describe the repair as a plan. Read-only |
 | `reference/cli.md` | The `docx-plus` command line |
 
 ## Accuracy

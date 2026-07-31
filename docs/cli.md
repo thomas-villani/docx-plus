@@ -155,12 +155,16 @@ W paragraph 1         heading-level-skip           Outline jumps from level 1 to
                                                    > "Deep Dive"
 W paragraph 3         manual-list                  Paragraph begins with a typed list marker but carries no numbering.
                                                    > "1. First typed item"
-i paragraph 4         double-space                 Two or more consecutive spaces between words.
+W paragraph 5         style-drift                  Paragraph overrides space after directly, deviating from Normal.
+                                                   > "Drifting paragraph"
+i paragraph 2         double-space                 Two or more consecutive spaces between words.
                                                    > "Body with  two spaces and a space ."
-i paragraph 9, run 0  redundant-direct-formatting  Run sets size directly to the value it already inherits.
+i paragraph 2         space-before-punctuation     Whitespace before '.'.
+                                                   > "Body with  two spaces and a space ."
+i paragraph 4, run 0  redundant-direct-formatting  Run sets size directly to the value it already inherits; the direct formatting has no effect but overrides the style.
                                                    > "redundant"
 
-8 findings (4 warning, 4 info).
+6 findings (3 warning, 3 info).
 ```
 
 Excerpts are quoted because several rules are about whitespace nobody can
@@ -238,15 +242,18 @@ inspectable before anything can perform it.
 
 ```console
 $ docx-plus plan report.docx
-3 edit(s), in the order they would be applied:
+4 edit(s), in the order they would be applied:
 
-1. [check] paragraph 0  double-space
+1. [check] paragraph 2  double-space
      Collapse 1 run of spaces to a single space.
-     - replace-paragraph-text paragraph_index=0 spans=[9-11->' ']
-2. [safe ] paragraph 4, run 0  redundant-direct-formatting
+     - replace-paragraph-text paragraph_index=2 spans=[9-11->' ']
+2. [check] paragraph 2  space-before-punctuation
+     Remove the whitespace before 1 punctuation mark.
+     - replace-paragraph-text paragraph_index=2 spans=[33-34->'']
+3. [safe ] paragraph 4, run 0  redundant-direct-formatting
      Delete the run's direct size; the style supplies the same value.
      - clear-run-properties paragraph_index=4 run_index=0 properties=font_size
-3. [check] paragraph 5  style-drift
+4. [check] paragraph 5  style-drift
      Clear the paragraph's direct space after so Normal applies.
      - clear-paragraph-properties paragraph_index=5 properties=spacing_after
 
@@ -254,7 +261,7 @@ $ docx-plus plan report.docx
      1  heading-level-skip
      1  manual-list
 
-3 to apply, 0 withheld, 0 dropped, 2 unfixable.
+4 to apply, 0 withheld, 0 dropped, 2 unfixable.
 ```
 
 The four possible sections are the four things that can happen to a finding:

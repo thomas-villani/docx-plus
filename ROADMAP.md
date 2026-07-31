@@ -460,13 +460,30 @@ untouched this cycle. `plan` exits `1` when the plan holds any edit,
 applied or withheld, so it gates a pipeline on "is there anything a
 repair pass would do"; findings nobody can repair do not fail that gate.
 
-### Outstanding before a v0.6 release
+### Docs — shipped
 
-- The **agent skill has no `lint` page**, and `skill/reference/cli.md`
-  does not mention `lint` or `plan`. The skill is the agent-facing
-  surface for the cycle's flagship feature, so it needs one.
-- `docs/API.md` is still stamped at the v0.5.0 surface and lists no
-  `lint` entry — part of the usual post-release prose re-stamp.
+The public-facing surface for the cycle, closing the two gaps stage 3
+left open and three more found while writing them:
+
+- `skill/reference/lint.md` — the agent-facing page for the flagship
+  feature, with the rule catalogue, the fix vocabulary, profiles, and
+  how to write a rule. `skill/reference/cli.md` gained `lint` and `plan`
+  sections, and `SKILL.md` its capability-map row.
+- `docs/API.md` gained a `docx_plus.lint` section covering all
+  twenty-four public symbols, plus the two new CLI commands.
+- **`ARCHITECTURE.md` had no `lint/` section at all** — §7.15 now
+  carries the design rationale (why a composing layer, why `Issue` →
+  `Finding`, why a closed op vocabulary rather than named public calls,
+  why claims are per-property, why the gate runs before conflicts), and
+  the source tree listing gained `lint/`, the two CLI modules, and the
+  four examples it had been missing since v0.3.
+- **`README.md` and `docs/index.md` still listed "a document linter" as
+  *backlog*.** Both now carry a Lint capability row instead.
+- `docx_plus/examples/lint_document.py` — every other capability ships
+  a runnable example; this one did not.
+
+Still outstanding: the version re-stamp (`API.md`, `SKILLS.md`, README,
+`docs/index.md`), which by definition follows the bump.
 
 ## v0.7 — sketched: the regularizer
 

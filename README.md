@@ -79,7 +79,8 @@ Requires Python 3.10+. The only dependencies are `python-docx` and `lxml`.
 | **Notes** | Footnotes and endnotes over the separate `footnotes.xml` / `endnotes.xml` parts; insert and edit in place. | [`notes/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#79-footnotes-and-endnotes) |
 | **Publishing** | Table of Contents, figure / table captions via `SEQ`, Table of Figures. | [`publishing/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#710-publishing) |
 | **Protection** | Form-fill, read-only, comments-only, or tracked-changes enforcement at the document level. | [`protection/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#7-fields-and-protection) |
-| **CLI** | `docx-plus inspect / restyle / controls / comments / skill` — the library from a shell. | [`cli/`](https://thomas-villani.github.io/docx-plus/cli/) |
+| **Lint** | Audit a document for direct formatting fighting the styles, skipped outline levels, hand-typed lists, and whitespace used as layout — then describe the repair as an ordered, serializable plan. Read-only. | [`lint/`](https://thomas-villani.github.io/docx-plus/reference/lint/) |
+| **CLI** | `docx-plus inspect / restyle / controls / comments / lint / plan / skill` — the library from a shell. | [`cli/`](https://thomas-villani.github.io/docx-plus/cli/) |
 
 ## Quickstart
 
@@ -239,12 +240,16 @@ $ docx-plus restyle draft.docx --target Heading1 -o clean.docx
 $ docx-plus controls list form.docx --json          # every content control
 $ docx-plus controls set form.docx --tag name --value "Ada Lovelace" -o filled.docx
 $ docx-plus comments list draft.docx --unresolved   # open comment threads
+$ docx-plus lint report.docx                        # formatting defects
+$ docx-plus plan report.docx                        # what repairing them would change
 $ docx-plus skill install                           # drop the agent skill into .claude/skills/
 ```
 
 Read commands take `--json`. Mutating commands require `-o/--output` (or
 an explicit `--in-place`) so the source is never overwritten by accident.
-Full reference: [CLI docs](https://thomas-villani.github.io/docx-plus/cli/).
+`lint` and `plan` exit `1` when they found something, so either drops
+into a CI step directly. Full reference:
+[CLI docs](https://thomas-villani.github.io/docx-plus/cli/).
 
 ## For AI coding agents
 
@@ -292,8 +297,8 @@ on minor versions and will be called out in
 [`ROADMAP.md`](https://github.com/thomas-villani/docx-plus/blob/main/ROADMAP.md) is the live record of what is shipped,
 backlogged, and deliberately declined. Currently on the backlog:
 content-control data binding to Custom XML Parts, bibliography and
-`BIBLIOGRAPHY` fields, theme writing, glossary placeholder text,
-password-protected forms, and a document linter. If your use case needs
+`BIBLIOGRAPHY` fields, theme writing, glossary placeholder text, and
+password-protected forms. If your use case needs
 one of these, [open an issue](https://github.com/thomas-villani/docx-plus/issues/new/choose) —
 demand reorders the list.
 
