@@ -16,12 +16,14 @@ each other.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 from lxml import etree
 
+from docx_plus.core.ns import qn
 from docx_plus.styles.inspect import (
     ResolvedFormatting,
     _resolve_with_cache,
@@ -32,8 +34,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from docx.document import Document
+    from docx.oxml.text.run import CT_R
     from docx.table import _Cell
-    from docx.text.run import Run
 
 
 @dataclass(frozen=True)
@@ -67,16 +69,23 @@ class ResolvedParagraph:
             ``doc.paragraphs``.
         formatting: The paragraph's fully-resolved formatting. Run-level
             properties here reflect the paragraph mark, not any one run.
-        runs: One :class:`ResolvedRun` per run, in order. Empty when the
-            sweep was run with ``include_runs=False``, and for an empty
-            paragraph.
+        runs: One :class:`ResolvedRun` per run, in order, **including runs
+            inside a ``<w:hyperlink>``** — which ``Paragraph.runs`` omits.
+            Together they cover exactly the text :attr:`text` reports. Empty
+            when the sweep was run with ``include_runs=False``, and for an
+            empty paragraph.
         table_depth: 0 for a body-level paragraph, 1 inside a table, 2
             inside a table nested in a table, and so on.
         baseline: The same paragraph resolved with
-            ``stop_below="directParagraph"`` — what it would look like if
-            its own ``<w:pPr>`` were deleted, which is what makes "this
+            ``stop_below="directParagraph"``, which is what makes "this
             direct override deviates from the style" answerable. ``None``
             unless the sweep was run with ``include_baseline=True``.
+
+            Note this is *not* the same as deleting the paragraph's
+            ``<w:pPr>``: the ``numbering`` layer sits **below**
+            ``directParagraph``, so a direct ``<w:numPr>`` still supplies
+            ``num_id`` and the indents it implies. The baseline excludes
+            the direct paragraph layer, not the whole element.
     """
 
     paragraph: Paragraph
@@ -93,7 +102,14 @@ class ResolvedParagraph:
 
     @property
     def text(self) -> str:
-        """The paragraph's text, for convenience when scanning content."""
+        """The paragraph's text, for convenience when scanning content.
+
+        Covers exactly the runs in :attr:`runs` — both include the inside of
+        a ``<w:hyperlink>`` and both exclude ``<w:ins>`` / ``<w:del>`` /
+        ``<w:sdt>``, matching python-docx's own ``Paragraph.text``. A rule
+        may therefore index into this string and expect a run to answer for
+        every offset.
+        """
         return self.paragraph.text
 
 
@@ -181,7 +197,7 @@ def iter_resolved_paragraphs(
                         else None
                     ),
                 )
-                for run_index, run in enumerate(paragraph.runs)
+                for run_index, run in enumerate(_iter_runs(paragraph))
             )
         yield ResolvedParagraph(
             paragraph=paragraph,
@@ -196,6 +212,33 @@ def iter_resolved_paragraphs(
             ),
         )
         counter += 1
+
+
+def _iter_runs(paragraph: Paragraph) -> Iterator[Run]:
+    """Yield the paragraph's runs in document order, hyperlinks included.
+
+    ``Paragraph.runs`` is direct ``<w:r>`` children only, so it misses every
+    run inside a ``<w:hyperlink>`` — while ``Paragraph.text`` *includes* that
+    text, because ``CT_P.text`` walks ``w:r | w:hyperlink``. Taking the
+    narrower list left :attr:`ResolvedParagraph.text` reporting text whose
+    formatting had never been resolved, and made every run-level lint rule
+    blind to the inside of a link. This matches the two back up.
+
+    Deliberately built on the XML rather than ``iter_inner_content()`` /
+    ``Hyperlink``, which python-docx only grew in 1.1.0 — the supported
+    floor is 1.0.0.
+
+    Runs inside ``<w:ins>``, ``<w:del>``, and ``<w:sdt>`` stay out, because
+    ``Paragraph.text`` excludes them too; ``text`` and ``runs`` covering the
+    same content is the invariant worth holding.
+    """
+    for child in paragraph._p:
+        if child.tag == qn("w:r"):
+            yield Run(cast("CT_R", child), paragraph)
+        elif child.tag == qn("w:hyperlink"):
+            for sub_child in child:
+                if sub_child.tag == qn("w:r"):
+                    yield Run(cast("CT_R", sub_child), paragraph)
 
 
 def _walk(

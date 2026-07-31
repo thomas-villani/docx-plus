@@ -25,6 +25,7 @@ from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import el, xpath
 from docx_plus.core.oxml import ordered_insert as _ordered_insert
+from docx_plus.styles.inspect import AUTO_COLOR
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -1092,9 +1093,19 @@ def _write_font_name(style_el: etree._Element, value: str | None) -> None:
 
 
 def _write_color(style_el: etree._Element, value: str | None) -> None:
-    """Write a hex color. Accepts 'RRGGBB' (with/without leading #) or None."""
+    """Write a color.
+
+    Accepts ``'RRGGBB'`` (with or without a leading ``#``), the literal
+    ``'auto'`` for Word's *Automatic* (:data:`~docx_plus.styles.AUTO_COLOR`),
+    or ``None`` to remove the element. ``'auto'`` is accepted so that a value
+    read back by ``resolve_effective_formatting`` can be written straight
+    back — it is a colour Word applies, not an absence of one.
+    """
     if value is None:
         _remove_rpr_child(style_el, "color")
+        return
+    if value.lower() == AUTO_COLOR:
+        _set_rpr_child(style_el, "color", {"w:val": AUTO_COLOR})
         return
     cleaned = value.lstrip("#").upper()
     if len(cleaned) != 6:

@@ -337,14 +337,26 @@ def test_a_run_in_a_stock_heading_resolves_bold() -> None:
 
 
 # --------------------------------------------------------------------------
-# Every toggle behaves alike: the six complex-script / decorative variants
-# (bCs, iCs, emboss, imprint, outline, shadow) plus the six base ones.
+# Every toggle behaves alike — and this list is now *all twelve* of ECMA-376
+# 17.7.3, not just the six complex-script / decorative variants.
+#
+# It used to hold only those six. A mutation probe found the gap: replacing
+# the XOR-parity rule with plain override *for caps, smallCaps, strike and
+# vanish only* survived the entire suite, because nothing exercised parity on
+# those four. The section comment claimed otherwise. Keep all twelve here so
+# the claim stays true by construction.
 # --------------------------------------------------------------------------
 
 
 _NEW_TOGGLES = [
+    ("w:b", "bold"),
+    ("w:i", "italic"),
     ("w:bCs", "cs_bold"),
     ("w:iCs", "cs_italic"),
+    ("w:caps", "caps"),
+    ("w:smallCaps", "small_caps"),
+    ("w:strike", "strike"),
+    ("w:vanish", "vanish"),
     ("w:emboss", "emboss"),
     ("w:imprint", "imprint"),
     ("w:outline", "outline"),
@@ -482,3 +494,75 @@ def test_dstrike_and_strike_are_independent() -> None:
     resolved = resolve_effective_formatting(p)
     assert resolved.strike is True
     assert resolved.double_strike is True
+
+
+# --------------------------------------------------------------------------
+# ST_OnOff spellings. `on` / `off` are the transitional-WML forms (ECMA-376
+# Part 4); Word-2003-era files and several converters emit them. Reading
+# `off` as anything but false *inverts* the property, so these are pinned
+# for every shape the resolver reads an ST_OnOff attribute in.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("tag", "field_name"), _NEW_TOGGLES)
+@pytest.mark.parametrize(("spelling", "expected"), [("off", False), ("on", True)])
+def test_toggle_reads_transitional_on_off_spellings(
+    tag: str, field_name: str, spelling: str, expected: bool
+) -> None:
+    doc = Document()
+    style_id = f"OnOff_{field_name}_{spelling}"
+    _add_paragraph_style(doc, style_id, rpr_children=[(tag, {"w:val": spelling})])
+    p = _styled_paragraph(doc, style_id)
+
+    assert getattr(resolve_effective_formatting(p), field_name) is expected
+
+
+@pytest.mark.parametrize(("spelling", "expected"), [("off", False), ("on", True)])
+def test_dstrike_reads_transitional_on_off_spellings(spelling: str, expected: bool) -> None:
+    """``dstrike`` is not a toggle but reads the same attribute type."""
+    doc = Document()
+    _add_paragraph_style(
+        doc, f"Dstrike_{spelling}", rpr_children=[("w:dstrike", {"w:val": spelling})]
+    )
+    p = _styled_paragraph(doc, f"Dstrike_{spelling}")
+
+    assert resolve_effective_formatting(p).double_strike is expected
+
+
+@pytest.mark.parametrize(
+    ("tag", "field_name"),
+    [
+        ("w:keepNext", "keep_with_next"),
+        ("w:keepLines", "keep_lines"),
+        ("w:pageBreakBefore", "page_break_before"),
+        ("w:contextualSpacing", "contextual_spacing"),
+    ],
+)
+@pytest.mark.parametrize(("spelling", "expected"), [("off", False), ("on", True)])
+def test_ppr_flags_read_transitional_on_off_spellings(
+    tag: str, field_name: str, spelling: str, expected: bool
+) -> None:
+    """The four ``w:pPr`` booleans. ``contextualSpacing`` feeds spacing arithmetic."""
+    doc = Document()
+    p = doc.add_paragraph("text")
+    ppr = p._p.get_or_add_pPr()
+    sub(ppr, tag, **{"w:val": spelling})
+
+    assert getattr(resolve_effective_formatting(p), field_name) is expected
+
+
+@pytest.mark.parametrize("spelling", ["0", "false", "off"])
+def test_every_false_spelling_agrees(spelling: str) -> None:
+    """The three ways of writing *off* must not disagree with each other."""
+    doc = Document()
+    _add_paragraph_style(doc, f"Off_{spelling}", rpr_children=[("w:b", {"w:val": spelling})])
+
+    assert resolve_effective_formatting(_styled_paragraph(doc, f"Off_{spelling}")).bold is False
+
+
+@pytest.mark.parametrize("spelling", ["1", "true", "on"])
+def test_every_true_spelling_agrees(spelling: str) -> None:
+    doc = Document()
+    _add_paragraph_style(doc, f"On_{spelling}", rpr_children=[("w:b", {"w:val": spelling})])
+
+    assert resolve_effective_formatting(_styled_paragraph(doc, f"On_{spelling}")).bold is True
