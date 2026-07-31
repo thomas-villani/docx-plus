@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from docx_plus.lint.models import Fix, FixOperation, Issue, Location
 from docx_plus.lint.registry import rule
+from docx_plus.lint.rules._common import document_adjacent, same_container
 from docx_plus.styles import list_styles
 
 if TYPE_CHECKING:
@@ -77,10 +78,17 @@ def heading_level_skip(ctx: LintContext) -> Iterator[Issue]:
     both valid repairs and they produce different documents.
     """
     previous: int | None = None
+    previous_paragraph: ResolvedParagraph | None = None
     for resolved in ctx.paragraphs:
         level = _heading_level(resolved)
         if level is None:
             continue
+        # An outline is a sequence within one container. A body Heading 1
+        # followed by a Heading 3 inside a table cell is not a skip — the
+        # two are not in the same outline at all.
+        if previous_paragraph is not None and not same_container(previous_paragraph, resolved):
+            previous = None
+        previous_paragraph = resolved
         if previous is not None and level > previous + 1:
             yield Issue(
                 message=(
@@ -122,6 +130,31 @@ def empty_heading(ctx: LintContext) -> Iterator[Issue]:
             )
 
 
+_AMBIGUOUS_INITIAL = re.compile(r"^[A-Z]\.$")
+"""``"J."`` — a capital and a period, with no bracket to disambiguate it.
+
+Far more often someone's initial than a list marker, so this shape alone
+does not make a finding. See :func:`_is_a_list_marker`."""
+
+
+def _is_a_list_marker(marker: str, index: int, markers: dict[int, re.Match[str]]) -> bool:
+    """Whether ``marker`` is a list item rather than a sentence-initial name.
+
+    Only the bare-capital-and-period shape is in doubt. It counts when a
+    neighbouring paragraph carries the letter before or after it in the
+    alphabet — ``"A."`` followed by ``"B."`` is a list; ``"J. Smith"``
+    standing alone is a person.
+    """
+    if not _AMBIGUOUS_INITIAL.match(marker):
+        return True
+    letter = marker[0]
+    neighbours = {markers[other].group(1) for other in (index - 1, index + 1) if other in markers}
+    return any(
+        _AMBIGUOUS_INITIAL.match(other) and abs(ord(other[0]) - ord(letter)) == 1
+        for other in neighbours
+    )
+
+
 @rule(
     id="manual-list",
     kind="structural",
@@ -143,12 +176,24 @@ def manual_list(ctx: LintContext) -> Iterator[Issue]:
     Report-only: the repair strips the typed marker and applies a real
     list, and which list — an existing definition, a new one, at which
     level — is a choice the paragraph does not contain.
+
+    One marker shape needs corroboration before it counts: a bare capital
+    letter and a period. ``"J. Smith reported the results"`` is an initial,
+    not a list item, and the rule is on by default at ``warning``, so
+    guessing wrong there is expensive. That shape is only reported when a
+    neighbouring paragraph carries the adjacent letter — which is what
+    makes it a list rather than a name. Bracketed forms (``(a)``, ``a)``)
+    and lowercase ``a.`` are unambiguous enough to stand alone.
     """
+    markers = {
+        resolved.index: match
+        for resolved in ctx.paragraphs
+        if not resolved.formatting.num_id  # 0 is the suppression sentinel
+        and (match := _TYPED_LIST_MARKER.match(resolved.text)) is not None
+    }
     for resolved in ctx.paragraphs:
-        if resolved.formatting.num_id:
-            continue  # genuinely numbered — 0 is the suppression sentinel
-        match = _TYPED_LIST_MARKER.match(resolved.text)
-        if match is not None:
+        match = markers.get(resolved.index)
+        if match is not None and _is_a_list_marker(match.group(1), resolved.index, markers):
             yield Issue(
                 message="Paragraph begins with a typed list marker but carries no numbering.",
                 location=Location(
@@ -271,6 +316,7 @@ def list_numbering_continuity(ctx: LintContext) -> Iterator[Issue]:
 
         if (
             previous is not None
+            and document_adjacent(previous, resolved)
             and previous.formatting.num_level == resolved.formatting.num_level
             and previous.formatting.num_id != num_id
         ):

@@ -16,6 +16,7 @@ import pytest
 from docx import Document
 from docx.shared import Pt
 
+from docx_plus.core.oxml import sub
 from docx_plus.lint import (
     Finding,
     Fix,
@@ -696,10 +697,40 @@ def test_report_only_rules_are_registered_and_stay_report_only(rule_id: str) -> 
     Pinned as a list rather than left implicit: a rule quietly gaining a fix
     is a decision about someone's document, and it should not happen by
     accident.
-    """
-    from docx_plus.lint import all_rules
 
-    assert rule_id in {r.id for r in all_rules()}
+    This used to assert only that the rule was *registered*, which it would
+    have passed unchanged if all eleven had grown fixes — while
+    ``ARCHITECTURE.md`` §7.15 claimed the list was pinned. It now asserts
+    the actual property, on a document built to make every one of them
+    fire.
+    """
+    from docx_plus.lint import all_rules, lint
+
+    registered = {r.id for r in all_rules()}
+    assert rule_id in registered
+
+    findings = lint(_report_only_document(), select=[rule_id])
+    assert findings, f"{rule_id} did not fire — the fixture no longer exercises it"
+    assert all(f.fix is None for f in findings), (
+        f"{rule_id} grew a fix. If that is deliberate, move it out of this "
+        f"list and say in its docstring what makes the repair unambiguous."
+    )
+
+
+def test_the_report_only_list_is_exactly_the_rules_without_fixes() -> None:
+    """No rule may be report-only *and* missing from the list above.
+
+    The parametrization pins each named rule. This pins the other
+    direction, so a new report-only rule cannot be added without being
+    declared here.
+    """
+    from docx_plus.lint import all_rules, lint
+
+    pinned = set(test_report_only_rules_are_registered_and_stay_report_only.pytestmark[0].args[1])
+    doc = _report_only_document()
+    fixable = {f.rule for f in lint(doc, select=[r.id for r in all_rules()]) if f.fix}
+
+    assert pinned.isdisjoint(fixable)
 
 
 def test_the_lint_package_doctests_pass() -> None:
@@ -737,3 +768,142 @@ def _suppress_numbering(paragraph: Any) -> None:
 
 def _point_numbering_at(paragraph: Any, num_id: int) -> None:
     _num_pr(paragraph, num_id)
+
+
+def _report_only_document() -> Document:
+    """One document that makes every report-only rule fire.
+
+    Deliberately a single fixture rather than eleven: the point of the test
+    it serves is that *no* rule in the list grew a fix, and a shared
+    document makes it obvious when one silently stops firing.
+    """
+    from docx.shared import Pt
+
+    doc = Document()
+
+    # heading-level-skip: 1 straight to 3.
+    doc.add_paragraph("Top", style="Heading 1")
+    doc.add_paragraph("Deep", style="Heading 3")
+    # empty-heading.
+    doc.add_paragraph("", style="Heading 2")
+    # manual-list: a typed marker, with a sibling so it is unambiguous.
+    doc.add_paragraph("1. First typed item")
+    doc.add_paragraph("2. Second typed item")
+    # indent-by-whitespace.
+    doc.add_paragraph("    indented by spaces")
+    # manual-heading-formatting: short, bold, not a heading style.
+    bold = doc.add_paragraph()
+    bold.add_run("Looks Like A Heading").bold = True
+    # mixed-run-formatting: two runs disagreeing on size.
+    mixed = doc.add_paragraph()
+    mixed.add_run("big").font.size = Pt(18)
+    mixed.add_run("small").font.size = Pt(9)
+    # font-outliers: one run in a font nothing else uses.
+    for _ in range(30):
+        doc.add_paragraph("ordinary body text")
+    odd = doc.add_paragraph().add_run("rare")
+    odd.font.name = "Papyrus"
+    odd.font.size = Pt(37)
+    # list-numbering-continuity: adjacent items, different lists, same level.
+    first = doc.add_paragraph("item one", style="List Number")
+    second = doc.add_paragraph("item two", style="List Number")
+    _num_pr(first, 40)
+    _num_pr(second, 41)
+    # caption-manual-numbering.
+    doc.add_paragraph("Figure 1: typed number", style="Caption")
+    # broken-cross-reference: a REF at a bookmark nobody defines.
+    _add_ref_field(doc.add_paragraph(), "NoSuchBookmark")
+    # duplicate-styles: two ids resolving identically, both applied.
+    for style_id in ("DupeA", "DupeB"):
+        style = sub(doc.styles.element, "w:style", **{"w:type": "paragraph", "w:styleId": style_id})
+        sub(style, "w:name", **{"w:val": style_id})
+        sub(sub(style, "w:rPr"), "w:sz", **{"w:val": "26"})
+        para = doc.add_paragraph("styled")
+        sub(sub(para._p, "w:pPr"), "w:pStyle", **{"w:val": style_id})
+
+    return doc
+
+
+def _add_ref_field(paragraph: Any, target: str) -> None:
+    """A complex REF field pointing at ``target``."""
+    from docx_plus.core.ns import qn
+
+    run = paragraph.add_run()
+    sub(run._r, "w:fldChar", **{"w:fldCharType": "begin"})
+    instr = paragraph.add_run()
+    instr_el = sub(instr._r, "w:instrText")
+    instr_el.text = rf" REF {target} \h "
+    instr_el.set(qn("xml:space"), "preserve")
+    end = paragraph.add_run()
+    sub(end._r, "w:fldChar", **{"w:fldCharType": "end"})
+
+
+# --------------------------------------------------------------------------
+# Ordering soundness. The "deletions descend" guarantee has to be keyed off
+# the indices the *operations* name, not off where the finding was reported.
+# --------------------------------------------------------------------------
+
+
+def test_deletion_order_follows_the_operations_not_the_finding_location() -> None:
+    """A finding can sit anywhere relative to what its fix deletes.
+
+    Sorting on `Finding.location` produced `[delete 6, delete 20]` here,
+    and once 6 is gone the old paragraph 20 sits at 19.
+    """
+    findings = [
+        _finding("far", paragraph=1, fix=_fix(_delete(20)), adds_content=True),
+        _finding("near", paragraph=5, fix=_fix(_delete(6)), adds_content=True),
+    ]
+
+    plan = plan_fixes(findings, allow_content=True)
+
+    assert [op.args["paragraph_index"] for op in plan.operations] == [20, 6]
+
+
+def test_a_multi_delete_fix_sorts_on_its_deepest_index() -> None:
+    findings = [
+        _finding("deep", paragraph=0, fix=_fix(_delete(31), _delete(30)), adds_content=True),
+        _finding("shallow", paragraph=0, fix=_fix(_delete(12)), adds_content=True),
+    ]
+
+    plan = plan_fixes(findings, allow_content=True)
+
+    assert [op.args["paragraph_index"] for op in plan.operations] == [31, 30, 12]
+
+
+def test_a_fix_that_deletes_and_also_edits_elsewhere_is_rejected() -> None:
+    """Such a fix belongs in both phases and is wrong in either.
+
+    `rule` is public, so a third-party rule getting this wrong would
+    otherwise produce a plan that quietly corrupts a document.
+    """
+    from docx_plus.lint import InvalidFixError
+
+    findings = [
+        _finding(
+            "mixed",
+            paragraph=0,
+            fix=_fix(_delete(50), _run_props(60, 0, "bold")),
+            adds_content=True,
+        )
+    ]
+
+    with pytest.raises(InvalidFixError, match="cannot also carry clear-run-properties"):
+        plan_fixes(findings, allow_content=True)
+
+
+def test_delete_style_still_orders_without_a_paragraph_index() -> None:
+    """`delete-style` names no paragraph, so it falls back to the location."""
+    findings = [
+        _finding(
+            "style",
+            style_id="Unused",
+            fix=_fix(FixOperation(op="delete-style", args={"style_id": "Unused"})),
+            adds_content=True,
+        ),
+        _finding("para", paragraph=4, fix=_fix(_delete(4)), adds_content=True),
+    ]
+
+    plan = plan_fixes(findings, allow_content=True)
+
+    assert set(_rules(plan.fixes)) == {"style", "para"}

@@ -58,6 +58,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nobody can repair do not fail that gate. `lint` gained `--profile` /
   `--no-profile` to match.
 
+- **`InvalidFixError`** — raised by `plan_fixes` when a rule emits a fix
+  that both deletes a paragraph and edits one elsewhere. Such a fix cannot
+  be ordered safely, and `rule` is public, so a third-party rule getting
+  it wrong would otherwise produce a plan that quietly corrupts a
+  document.
+
 - **`AUTO_COLOR`, `Layer`, and `StyleKind` are exported from
   `docx_plus.styles`.** `Layer` was already named in the public signature
   of `resolve_effective_formatting(stop_below=)` and `LintContext.resolve`
@@ -94,6 +100,60 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   resolved `contextual_spacing` flag, and which edges were suppressed.
 
 ### Fixed
+
+- **`docx-plus lint` died with an unhandled `UnicodeEncodeError`** on any
+  document holding a character the console encoding cannot represent.
+  `LintContext.excerpt` promised ASCII-only output and enforced nothing,
+  and on Windows Python encodes stdout as cp1252 whenever it is
+  redirected — so `docx-plus lint report.docx > report.txt` over a
+  document with CJK text or an emoji ended in a traceback rather than a
+  report. Non-ASCII now renders as a `\x`/`\u` escape, which keeps the
+  character visible instead of dropping it. The two tests guarding this
+  both used all-ASCII fixtures and could never have failed. The same
+  treatment is now applied to the bookmark name and field instruction
+  `broken-cross-reference` reports, which were raw and untruncated.
+
+- **`stray-empty-paragraph` planned to delete a table cell's only
+  paragraph.** It treated consecutive *sweep indices* as document
+  adjacency, but the sweep walks into table cells — so a body paragraph
+  followed by a table reads as `Before / '' / '' / After` where the two
+  empties are the sole paragraphs of two different cells. Removing one
+  leaves a `w:tc` with no block-level child, which Word must repair on
+  open. `heading-level-skip` and `list-numbering-continuity` compared
+  across the same boundary; all three now test real adjacency.
+
+- **The plan's "deletions run back to front" guarantee was unsound.** It
+  sorted on the *finding's* location rather than on the indices the
+  operations name, so a finding at paragraph 1 deleting paragraph 20,
+  planned beside one at paragraph 5 deleting paragraph 6, came out as
+  `[delete 6, delete 20]` — and once 6 is gone, the old 20 sits at 19. No
+  shipped rule produces that shape, but `plan_fixes` is public and takes
+  arbitrary findings. A fix that both deletes and edits elsewhere belongs
+  in both ordering phases and is wrong in either, so it now raises the new
+  `InvalidFixError` rather than producing a plan that corrupts.
+
+- **`manual-list` fired on sentence-initial initials.** `"J. Smith
+  reported the results"` reported `J.` as a typed list marker, at
+  `warning`, on by default. A bare capital and a period now needs a
+  neighbouring paragraph carrying the adjacent letter before it counts;
+  bracketed forms and lowercase markers are unchanged.
+
+- **`trailing-whitespace` did not recognise `w:fldSimple`.** The field
+  guard checked only the complex `w:fldChar` encoding, so a paragraph
+  ending in a simple `PAGE` field — whose text `Paragraph.text` does not
+  report at all — looked like it ended in a bare space, and the rule
+  planned to delete it.
+
+- **`space-before-punctuation` was language-blind.** French typography
+  *requires* a space before `;`, `:`, `!` and `?`, so the rule reported
+  correct French as a defect and its fix would have stripped the spaces
+  the language demands. The rule's kind is `consistency` — the document
+  supplies the target — and the document did supply it, in
+  `ResolvedFormatting.lang`, which the rule never consulted.
+
+- **`--no-profile` silently swallowed an explicit `--profile`**, including
+  a path that does not exist, so a typo'd profile looked like a clean run.
+  The two are now a mutually exclusive group.
 
 - **`w:val="off"` was read as *true* for every toggle, `dstrike`, and the
   four `w:pPr` flags** — inverting the property rather than failing to

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from docx_plus.bookmarks import read_bookmarks
 from docx_plus.core.oxml import xpath
 from docx_plus.fields import read_fields
-from docx_plus.lint.models import Issue, Location
+from docx_plus.lint.models import Issue, Location, render_for_report
 from docx_plus.lint.registry import rule
 
 if TYPE_CHECKING:
@@ -37,6 +37,10 @@ _TYPED_CAPTION = re.compile(
 )
 
 _CAPTION_STYLES = frozenset({"Caption", "TableCaption", "FigureCaption"})
+
+_TARGET_LIMIT = 40
+"""How much of a bookmark name to quote inside a message. Shorter than an
+excerpt's 60 because the name sits mid-sentence."""
 
 
 @rule(
@@ -78,13 +82,17 @@ def broken_cross_reference(ctx: LintContext) -> Iterator[Issue]:
             continue
 
         yield Issue(
+            # Both the target and the instruction are arbitrary document
+            # text: a bookmark name can hold anything, and the report goes
+            # to a console that may not be UTF-8.
             message=(
-                f"{found.keyword} field points at bookmark {target!r}, which is "
+                f"{found.keyword} field points at bookmark "
+                f'"{render_for_report(target, _TARGET_LIMIT)}", which is '
                 f"not defined anywhere in the document."
             ),
             location=Location(
                 paragraph_index=sweep_index.get(found.paragraph_index),
-                excerpt=found.instruction,
+                excerpt=render_for_report(found.instruction),
             ),
             observed=target,
             expected="a defined bookmark",
