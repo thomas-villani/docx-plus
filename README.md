@@ -67,7 +67,7 @@ Requires Python 3.10+. The only dependencies are `python-docx` and `lxml`.
 
 | | Capability | Module |
 |---|---|---|
-| **Styles** | Resolve the effective formatting of any paragraph / run / cell through the full six-layer cascade, with per-field provenance. Create, modify, and remap styles; materialise any of **107** latent Word built-ins. | [`styles/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#2-the-cascade-resolver) |
+| **Styles** | Resolve the effective formatting of any paragraph / run / cell through the full eight-layer cascade, with per-field provenance. Create, modify, and remap styles; materialise any of **107** latent Word built-ins. | [`styles/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#2-the-cascade-resolver) |
 | **Content controls** | Text, dropdown, date, and checkbox controls via `FormBuilder`; read and write their values; round-trip through save / reopen. | [`controls/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#6-content-controls) |
 | **Comments** | Anchored comments with the body-side range markers python-docx omits — so Word's "show in document" actually works. Plus threading (reply / resolve / reopen), durable ids, and author presence. | [`comments/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#76-anchored-comments) |
 | **Tracked changes** | Mark runs as insertions or deletions, read every revision with author / timestamp / text, accept or reject them, toggle track-changes mode. | [`revisions/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#711-tracked-changes) |
@@ -79,7 +79,7 @@ Requires Python 3.10+. The only dependencies are `python-docx` and `lxml`.
 | **Notes** | Footnotes and endnotes over the separate `footnotes.xml` / `endnotes.xml` parts; insert and edit in place. | [`notes/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#79-footnotes-and-endnotes) |
 | **Publishing** | Table of Contents, figure / table captions via `SEQ`, Table of Figures. | [`publishing/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#710-publishing) |
 | **Protection** | Form-fill, read-only, comments-only, or tracked-changes enforcement at the document level. | [`protection/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#7-fields-and-protection) |
-| **Lint** | Audit a document for direct formatting fighting the styles, skipped outline levels, hand-typed lists, and whitespace used as layout — then describe the repair as an ordered, serializable plan. Read-only. | [`lint/`](https://thomas-villani.github.io/docx-plus/reference/lint/) |
+| **Lint** | Audit a document for direct formatting fighting the styles, skipped outline levels, hand-typed lists, and whitespace used as layout — then describe the repair as an ordered, serializable plan. Read-only. | [`lint/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#715-linting-and-the-fix-plan) |
 | **CLI** | `docx-plus inspect / restyle / controls / comments / lint / plan / skill` — the library from a shell. | [`cli/`](https://thomas-villani.github.io/docx-plus/cli/) |
 
 ## Quickstart
@@ -285,8 +285,8 @@ Full docs are published at
 
 ## Project status
 
-**v0.5.0**, released 2026-07-27 — beta, and shipping. 1,266 tests,
-95% coverage, `mypy --strict` clean with zero ignores. CI runs Python
+**v0.5.0**, released 2026-07-27 — beta, and shipping. 2,043 tests,
+96% coverage, `mypy --strict` clean with zero ignores. CI runs Python
 3.10–3.13 on Linux plus a Windows job, and a lower-bound dependency job
 pinned to `python-docx==1.0.0` / `lxml==4.9.0`.
 

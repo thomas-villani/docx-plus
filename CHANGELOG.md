@@ -99,6 +99,171 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Alongside those two it reports `declared_before` / `declared_after`, the
   resolved `contextual_spacing` flag, and which edges were suppressed.
 
+- **Community health files** — `CONTRIBUTING.md`, `SECURITY.md`,
+  `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), YAML issue forms for
+  bug reports and feature requests, and a pull request template. The
+  contributing guide records the release process and the
+  verify-against-Word expectation that had until now been folklore; the
+  security policy is explicit that `protect_document` is an editing
+  convention and **not** a security boundary, and that the realistic
+  XML/ZIP attack surface belongs to `lxml` and `python-docx` upstream.
+- **`Changelog` project URL** — PyPI renders it as a sidebar link.
+  `CHANGELOG.md` and `CONTRIBUTING.md` now ship in the sdist.
+
+- **`lint/` — the document linter.** A new *composing* layer: like `cli/`
+  it sits above the capability modules and reads across them, adding no
+  OOXML knowledge of its own. `lint(doc)` audits a document and returns
+  `Finding`s; nothing is modified, and applying fixes is deliberately not
+  in this release.
+  Rules divide into three **kinds**, which is what keeps an opinionated
+  feature inside a lean library. A `consistency` rule reports that a value
+  fights the document's *own* applied styles — the document supplies the
+  target, so no opinion is imposed. A `structural` rule reports an
+  objective defect. A `policy` rule compares against a target *you*
+  supply, and none ship enabled, which a test enforces.
+  Ten rules to start: `double-space`, `trailing-whitespace`,
+  `space-before-punctuation`, `indent-by-whitespace`,
+  `stray-empty-paragraph`, `heading-level-skip`, `empty-heading`,
+  `manual-list`, `redundant-direct-formatting`, and `mixed-run-formatting`.
+  The last two are where resolving OOXML beats asking Word: `w:rStyle`,
+  numbering-level `rPr`, and table-style conditional formatting are all
+  invisible behind an effective value, and `FormattingSource` names the
+  exact layer. `manual-list` is only possible at all because numbering now
+  resolves through the style chain.
+  Rules register by decorator, so adding one is a single function.
+  Selection is by rule id **or tag**, where naming a tag also enables that
+  cluster's off-by-default rules; an unknown selector raises rather than
+  silently matching nothing, since "no rules ran" and "no findings" look
+  identical otherwise.
+- **`resolve_effective_formatting(..., stop_below=Layer)`** — resolve with
+  a cascade layer, and everything above it, excluded. This answers a
+  question provenance cannot: provenance names the layer that *won*, not
+  the value that would have surfaced in its absence. Resolving a run with
+  `stop_below="directRun"` gives exactly what it would render as if its
+  own `<w:rPr>` were deleted — character style and all.
+  `style_id` / `style_name` are identity rather than formatting, so they
+  are reported wherever the walk stops. The two numbering layers gate
+  separately, which is what the `styleNumbering` / `numbering` split was
+  for: `stop_below="numbering"` reports the list a paragraph's *style*
+  would give it, ignoring its own `w:numPr`.
+- **`iter_resolved_paragraphs(..., include_baseline=True)`** — populates
+  `.baseline` on each `ResolvedParagraph` and `ResolvedRun` with that
+  target resolved one layer down (`directParagraph` / `directRun`
+  respectively), sharing the sweep's cache. Off by default, since it
+  roughly doubles the resolve work.
+- **`style-drift`** — a lint rule for paragraph-level direct formatting
+  that deviates from the applied style. The counterpart to
+  `redundant-direct-formatting`: the same comparison against the same
+  baseline, split because the two imply opposite actions. It is the
+  sibling COM linter's central rule and the clearest case for resolving
+  OOXML instead: a two-layer compare sees a numbered paragraph's
+  level-supplied indent as drift, because it cannot tell which layer
+  produced the effective value.
+- **`LintContext.resolve()`** — an escape hatch for a rule needing a slice
+  of the cascade the sweep did not precompute. Not cache-shared, and
+  documented as such.
+- **`fields.read_fields`** — the read half of `fields/`, which until now
+  could only write. A complex field is a *run sequence* delimited by
+  `w:fldChar` markers, with its instruction split across however many
+  `w:instrText` elements Word chose, so reading one back is a walk rather
+  than an xpath. `FieldInfo` splits the instruction into `keyword`,
+  `operands`, and `switches`; nested fields (which Word writes for `TOC`
+  and `IF`) read as one field under the outer keyword.
+- **`ResolvedFormatting.lang`** — the `w:lang` Latin-script language tag,
+  resolved through the cascade like everything else. Only `w:val` is
+  surfaced; `w:eastAsia` and `w:bidi` are separate properties for separate
+  scripts, and collapsing three languages into one field would misreport
+  which one a proofing tool uses.
+- **`broken-cross-reference`, `caption-manual-numbering`, and
+  `mixed-language`** — the last three rules of the v0.6 table.
+  `broken-cross-reference` is the catalogue's only `error`: a `REF` to a
+  missing bookmark renders as *Error! Reference source not found.* the
+  moment fields recalculate, and until then shows the stale cached result,
+  which is how it goes unnoticed. Both field rules read the instruction
+  rather than that result. `mixed-language` compares against the
+  document's own majority tag, so there is nothing to configure.
+- **`styles.find_unused_styles`** — the read companion to `delete_style`:
+  which definitions could be removed without breaking a reference. Usage
+  is a **closure**, not a single pass, since a style referenced only by
+  another unused style is itself unused. An unused `w:link` pair collapses
+  to its paragraph half, because `Heading 1 Char` exists only because
+  `Heading 1` does.
+- **`StyleInfo.is_builtin`** — whether a style came from the template or
+  was authored in the document, read from `w:customStyle` (ECMA-376
+  17.7.4.9). Chosen over the known-built-ins table because that table does
+  not cover the table-style gallery, which is most of what a stock
+  template ships.
+- **`duplicate-styles` and `unused-styles`** — the first rules whose
+  subject is a style definition rather than a paragraph, so their findings
+  carry a `style_id` and (for `unused-styles`) no position at all.
+  `duplicate-styles` compares each paragraph's **baseline**, so two styles
+  reaching the same formatting by different `basedOn` routes still match
+  and the author's direct overrides do not confuse it.
+- **Four more lint rules.** `direct-numbering-override` (a paragraph's own
+  `w:numPr` fighting the list its style supplies — the rule `stop_below`
+  was needed for, and it downgrades `numId=0` to `info` since the opt-out
+  sentinel is the one legitimate override); `list-numbering-continuity`
+  (the "three separate 1. lists" footgun — adjacent items at one level
+  belonging to different `numId`s); `manual-heading-formatting` (a bold or
+  enlarged short line standing in for a heading, so it is missing from the
+  navigation pane and every generated TOC); and `font-outliers` (off by
+  default — thinly-populated font/size combinations against the
+  document's dominant set). `manual-heading-formatting` and
+  `font-outliers` compare against the *document's own* body size and
+  dominant font rather than a fixed threshold, which is what keeps them
+  consistency judgements rather than house opinions.
+- **`docx-plus lint`** — the CLI over it. `--rule` / `--exclude` take an
+  id or a tag and repeat, `--list-rules` prints the catalogue without
+  needing a document, `--json` emits the full finding shape, and
+  `--no-tables` skips table cells. It exits **`1` when it finds
+  something**, so it works as a CI gate; a genuine failure is still
+  distinguishable by its `error:` line on stderr.
+- **`styles.iter_resolved_paragraphs`** — a document-wide cascade sweep,
+  resolving every paragraph and run against one shared cache and yielding
+  lazily in document order. `resolve_effective_formatting` answers "what
+  does *this* paragraph render as", rebuilding the theme, the styles part,
+  and each `basedOn` chain on every call; asking it about a whole document
+  re-does that work per target, and profiling put `load_theme` alone at
+  39% of per-call cost. Sharing those lookups is **~5x faster per
+  target** (0.61 ms → 0.13 ms on a 1500-paragraph document), which is what
+  makes whole-document analysis practical.
+  Results come back as `ResolvedParagraph` (paragraph, index, formatting,
+  runs, `table_depth`) and `ResolvedRun`. The walk uses python-docx's
+  `iter_inner_content`, so paragraphs and tables stay interleaved in
+  document order — `doc.paragraphs` drops the tables and `doc.tables`
+  drops the ordering. Nested tables are descended, and a merged cell is
+  visited **once** rather than once per grid column it spans, which a
+  naive `row.cells` walk gets wrong. `include_runs=False`,
+  `include_tables=False`, and `include_provenance=True` tune the cost.
+  Headers, footers, and notes are out of scope for now; only the main
+  document body is swept.
+
+### Changed
+
+- **README rewritten for new users.** It opened with a fifteen-bullet
+  feature list and its only install instructions were "Install
+  (development)" — clone the repo and `uv sync`. Six versions have been
+  on PyPI since v0.1.0 and `pip install docx-plus` appeared nowhere,
+  which is the one thing a reader arriving from the package page needs.
+  It now leads with the problem the library solves, a runnable example,
+  and the install command; the feature list is a capability table
+  linked into the architecture docs; and the quickstart keeps the five
+  most-used surfaces rather than reprinting all twelve. Repo-relative
+  links are absolute GitHub URLs so they resolve on PyPI too.
+- **Stale version claims corrected.** The capability list was headed
+  "v0.1 through v0.4" and `docs/index.md` stopped its roadmap table at
+  v0.4, so v0.5's `tables/` and `numbering/` were invisible outside the
+  collapsed build-history block. The "What's next" section still
+  described v0.2 in the present tense.
+- **Package metadata** — keywords expanded from six to fifteen to cover
+  the differentiating surfaces (content controls, tracked changes,
+  footnotes, bookmarks), and five classifiers added
+  (`Environment :: Console`, `Topic :: Text Processing :: Markup :: XML`,
+  and others).
+- **Docs site** — `repo_url` / `edit_uri` set, so Material renders the
+  GitHub link and per-page "edit" actions; changelog and contributing
+  guide added to the nav.
+
 ### Fixed
 
 - **`docx-plus lint` died with an unhandled `UnicodeEncodeError`** on any
@@ -419,175 +584,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   `tests/test_cascade_word_verified.py` carries the measurements as a
   parametrised table so the rule cannot drift back.
-
-### Added
-
-- **Community health files** — `CONTRIBUTING.md`, `SECURITY.md`,
-  `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), YAML issue forms for
-  bug reports and feature requests, and a pull request template. The
-  contributing guide records the release process and the
-  verify-against-Word expectation that had until now been folklore; the
-  security policy is explicit that `protect_document` is an editing
-  convention and **not** a security boundary, and that the realistic
-  XML/ZIP attack surface belongs to `lxml` and `python-docx` upstream.
-- **`Changelog` project URL** — PyPI renders it as a sidebar link.
-  `CHANGELOG.md` and `CONTRIBUTING.md` now ship in the sdist.
-
-### Changed
-
-- **README rewritten for new users.** It opened with a fifteen-bullet
-  feature list and its only install instructions were "Install
-  (development)" — clone the repo and `uv sync`. Six versions have been
-  on PyPI since v0.1.0 and `pip install docx-plus` appeared nowhere,
-  which is the one thing a reader arriving from the package page needs.
-  It now leads with the problem the library solves, a runnable example,
-  and the install command; the feature list is a capability table
-  linked into the architecture docs; and the quickstart keeps the five
-  most-used surfaces rather than reprinting all twelve. Repo-relative
-  links are absolute GitHub URLs so they resolve on PyPI too.
-- **Stale version claims corrected.** The capability list was headed
-  "v0.1 through v0.4" and `docs/index.md` stopped its roadmap table at
-  v0.4, so v0.5's `tables/` and `numbering/` were invisible outside the
-  collapsed build-history block. The "What's next" section still
-  described v0.2 in the present tense.
-- **Package metadata** — keywords expanded from six to fifteen to cover
-  the differentiating surfaces (content controls, tracked changes,
-  footnotes, bookmarks), and five classifiers added
-  (`Environment :: Console`, `Topic :: Text Processing :: Markup :: XML`,
-  and others).
-- **Docs site** — `repo_url` / `edit_uri` set, so Material renders the
-  GitHub link and per-page "edit" actions; changelog and contributing
-  guide added to the nav.
-
-- **`lint/` — the document linter.** A new *composing* layer: like `cli/`
-  it sits above the capability modules and reads across them, adding no
-  OOXML knowledge of its own. `lint(doc)` audits a document and returns
-  `Finding`s; nothing is modified, and applying fixes is deliberately not
-  in this release.
-  Rules divide into three **kinds**, which is what keeps an opinionated
-  feature inside a lean library. A `consistency` rule reports that a value
-  fights the document's *own* applied styles — the document supplies the
-  target, so no opinion is imposed. A `structural` rule reports an
-  objective defect. A `policy` rule compares against a target *you*
-  supply, and none ship enabled, which a test enforces.
-  Nine rules to start: `double-space`, `trailing-whitespace`,
-  `space-before-punctuation`, `indent-by-whitespace`,
-  `stray-empty-paragraph`, `heading-level-skip`, `empty-heading`,
-  `manual-list`, `redundant-direct-formatting`, and `mixed-run-formatting`.
-  The last two are where resolving OOXML beats asking Word: `w:rStyle`,
-  numbering-level `rPr`, and table-style conditional formatting are all
-  invisible behind an effective value, and `FormattingSource` names the
-  exact layer. `manual-list` is only possible at all because numbering now
-  resolves through the style chain.
-  Rules register by decorator, so adding one is a single function.
-  Selection is by rule id **or tag**, where naming a tag also enables that
-  cluster's off-by-default rules; an unknown selector raises rather than
-  silently matching nothing, since "no rules ran" and "no findings" look
-  identical otherwise.
-- **`resolve_effective_formatting(..., stop_below=Layer)`** — resolve with
-  a cascade layer, and everything above it, excluded. This answers a
-  question provenance cannot: provenance names the layer that *won*, not
-  the value that would have surfaced in its absence. Resolving a run with
-  `stop_below="directRun"` gives exactly what it would render as if its
-  own `<w:rPr>` were deleted — character style and all.
-  `style_id` / `style_name` are identity rather than formatting, so they
-  are reported wherever the walk stops. The two numbering layers gate
-  separately, which is what the `styleNumbering` / `numbering` split was
-  for: `stop_below="numbering"` reports the list a paragraph's *style*
-  would give it, ignoring its own `w:numPr`.
-- **`iter_resolved_paragraphs(..., include_baseline=True)`** — populates
-  `.baseline` on each `ResolvedParagraph` and `ResolvedRun` with that
-  target resolved one layer down (`directParagraph` / `directRun`
-  respectively), sharing the sweep's cache. Off by default, since it
-  roughly doubles the resolve work.
-- **`style-drift`** — a lint rule for paragraph-level direct formatting
-  that deviates from the applied style. The counterpart to
-  `redundant-direct-formatting`: the same comparison against the same
-  baseline, split because the two imply opposite actions. It is the
-  sibling COM linter's central rule and the clearest case for resolving
-  OOXML instead: a two-layer compare sees a numbered paragraph's
-  level-supplied indent as drift, because it cannot tell which layer
-  produced the effective value.
-- **`LintContext.resolve()`** — an escape hatch for a rule needing a slice
-  of the cascade the sweep did not precompute. Not cache-shared, and
-  documented as such.
-- **`fields.read_fields`** — the read half of `fields/`, which until now
-  could only write. A complex field is a *run sequence* delimited by
-  `w:fldChar` markers, with its instruction split across however many
-  `w:instrText` elements Word chose, so reading one back is a walk rather
-  than an xpath. `FieldInfo` splits the instruction into `keyword`,
-  `operands`, and `switches`; nested fields (which Word writes for `TOC`
-  and `IF`) read as one field under the outer keyword.
-- **`ResolvedFormatting.lang`** — the `w:lang` Latin-script language tag,
-  resolved through the cascade like everything else. Only `w:val` is
-  surfaced; `w:eastAsia` and `w:bidi` are separate properties for separate
-  scripts, and collapsing three languages into one field would misreport
-  which one a proofing tool uses.
-- **`broken-cross-reference`, `caption-manual-numbering`, and
-  `mixed-language`** — the last three rules of the v0.6 table.
-  `broken-cross-reference` is the catalogue's only `error`: a `REF` to a
-  missing bookmark renders as *Error! Reference source not found.* the
-  moment fields recalculate, and until then shows the stale cached result,
-  which is how it goes unnoticed. Both field rules read the instruction
-  rather than that result. `mixed-language` compares against the
-  document's own majority tag, so there is nothing to configure.
-- **`styles.find_unused_styles`** — the read companion to `delete_style`:
-  which definitions could be removed without breaking a reference. Usage
-  is a **closure**, not a single pass, since a style referenced only by
-  another unused style is itself unused. An unused `w:link` pair collapses
-  to its paragraph half, because `Heading 1 Char` exists only because
-  `Heading 1` does.
-- **`StyleInfo.is_builtin`** — whether a style came from the template or
-  was authored in the document, read from `w:customStyle` (ECMA-376
-  17.7.4.9). Chosen over the known-built-ins table because that table does
-  not cover the table-style gallery, which is most of what a stock
-  template ships.
-- **`duplicate-styles` and `unused-styles`** — the first rules whose
-  subject is a style definition rather than a paragraph, so their findings
-  carry a `style_id` and (for `unused-styles`) no position at all.
-  `duplicate-styles` compares each paragraph's **baseline**, so two styles
-  reaching the same formatting by different `basedOn` routes still match
-  and the author's direct overrides do not confuse it.
-- **Four more lint rules.** `direct-numbering-override` (a paragraph's own
-  `w:numPr` fighting the list its style supplies — the rule `stop_below`
-  was needed for, and it downgrades `numId=0` to `info` since the opt-out
-  sentinel is the one legitimate override); `list-numbering-continuity`
-  (the "three separate 1. lists" footgun — adjacent items at one level
-  belonging to different `numId`s); `manual-heading-formatting` (a bold or
-  enlarged short line standing in for a heading, so it is missing from the
-  navigation pane and every generated TOC); and `font-outliers` (off by
-  default — thinly-populated font/size combinations against the
-  document's dominant set). `manual-heading-formatting` and
-  `font-outliers` compare against the *document's own* body size and
-  dominant font rather than a fixed threshold, which is what keeps them
-  consistency judgements rather than house opinions.
-- **`docx-plus lint`** — the CLI over it. `--rule` / `--exclude` take an
-  id or a tag and repeat, `--list-rules` prints the catalogue without
-  needing a document, `--json` emits the full finding shape, and
-  `--no-tables` skips table cells. It exits **`1` when it finds
-  something**, so it works as a CI gate; a genuine failure is still
-  distinguishable by its `error:` line on stderr.
-- **`styles.iter_resolved_paragraphs`** — a document-wide cascade sweep,
-  resolving every paragraph and run against one shared cache and yielding
-  lazily in document order. `resolve_effective_formatting` answers "what
-  does *this* paragraph render as", rebuilding the theme, the styles part,
-  and each `basedOn` chain on every call; asking it about a whole document
-  re-does that work per target, and profiling put `load_theme` alone at
-  39% of per-call cost. Sharing those lookups is **~5x faster per
-  target** (0.61 ms → 0.13 ms on a 1500-paragraph document), which is what
-  makes whole-document analysis practical.
-  Results come back as `ResolvedParagraph` (paragraph, index, formatting,
-  runs, `table_depth`) and `ResolvedRun`. The walk uses python-docx's
-  `iter_inner_content`, so paragraphs and tables stay interleaved in
-  document order — `doc.paragraphs` drops the tables and `doc.tables`
-  drops the ordering. Nested tables are descended, and a merged cell is
-  visited **once** rather than once per grid column it spans, which a
-  naive `row.cells` walk gets wrong. `include_runs=False`,
-  `include_tables=False`, and `include_provenance=True` tune the cost.
-  Headers, footers, and notes are out of scope for now; only the main
-  document body is swept.
-
-### Fixed
 
 - **A run inside a bold `Heading 1` resolved `bold=False`.** Word writes a
   paragraph style and its `w:link` character partner with identical

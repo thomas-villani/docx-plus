@@ -116,7 +116,13 @@ for the algorithm walkthrough.
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `resolve_effective_formatting(target, *, include_provenance=False, table_context=None)` | function | The headline API — walks six cascade layers, returns `ResolvedFormatting`. `table_context` overrides the auto-derived cell position for conditional table-style branches. A paragraph whose `w:pStyle` is absent, dangling, or of the wrong `w:type` resolves through the **default paragraph style**, which is what `style_id` then reports |
+| `resolve_effective_formatting(target, *, include_provenance=False, table_context=None, stop_below=None)` | function | The headline API — walks the eight cascade layers, returns `ResolvedFormatting`. `table_context` overrides the auto-derived cell position for conditional table-style branches. `stop_below` (v0.6) resolves the target as if that layer and everything above it were absent — the baseline "what would this look like without its own direct formatting?" question the linter is built on. A paragraph whose `w:pStyle` is absent, dangling, or of the wrong `w:type` resolves through the **default paragraph style**, which is what `style_id` then reports |
+| `Layer` | type alias | v0.6. The eight cascade layers in order: `docDefaults`, `tableStyle`, `paragraphStyle`, `styleNumbering`, `numbering`, `directParagraph`, `runStyle`, `directRun`. What `stop_below` accepts and `FormattingSource.layer` reports |
+| `StyleKind` | type alias | `Literal["paragraph", "character", "table", "numbering"]` — the `w:type` of a `w:style`. A style reference only resolves to a style of the type it demands |
+| `AUTO_COLOR` | str | v0.6. `"auto"` — what `color_rgb` holds for Word's *Automatic*. The one value of that field which is not `RRGGBB` hex, so `color_rgb is not None` does **not** imply a parseable hex value. Automatic is a colour Word applies, not the absence of one: it overrides whatever a lower layer set. `modify_style` accepts it, so a resolved value round-trips |
+| `iter_resolved_paragraphs(doc, *, include_provenance=False, include_runs=True, include_tables=True, include_baseline=False)` | function | v0.6. The document-wide sweep — every paragraph and run resolved against **one shared cache**, in document order, yielding lazily. Identical results to calling `resolve_effective_formatting` per target, but the theme, styles part and every `basedOn` chain are read once. Body only: headers, footers, notes and comments are not swept |
+| `ResolvedParagraph` | dataclass (frozen) | v0.6. `paragraph`, `index`, `formatting`, `runs`, `table_depth`, optional `baseline`; `in_table` and `text` properties. `runs` includes runs inside a `<w:hyperlink>`, which `Paragraph.runs` omits, so `runs` and `text` cover the same content |
+| `ResolvedRun` | dataclass (frozen) | v0.6. `run`, `index`, `formatting`, optional `baseline` (the same run with `stop_below="directRun"`) |
 | `resolve_paragraph_spacing(paragraph)` | function | The vertical space Word actually leaves around a paragraph, after `<w:contextualSpacing>` and Word's space-after/space-before arithmetic. Returns `ParagraphSpacing` |
 | `ParagraphSpacing` | dataclass (frozen) | `space_above` / `space_below` (the applied gaps, in twips), `declared_before` / `declared_after`, `contextual_spacing`, `before_suppressed` / `after_suppressed`. One paragraph's `space_below` equals the next one's `space_above` |
 | `ResolvedFormatting` | dataclass (frozen) | 35 formatting fields + `partial` + optional `provenance`. SPEC §4. All twelve ECMA-376 17.7.3 toggles are surfaced (`bold`, `italic`, `cs_bold`, `cs_italic`, `caps`, `small_caps`, `strike`, `vanish`, `emboss`, `imprint`, `outline`, `shadow`). `spacing_before` / `spacing_after` are what the cascade *declares*; `contextual_spacing` carries the flag, and `resolve_paragraph_spacing` applies it |
@@ -142,7 +148,8 @@ Style creation, modification, application, removal, and reconciliation.
 | `StyleProxy` | class | Lightweight live wrapper around a `w:style` element |
 | `StyleProxy.modify(**properties)` | method | Delegate to `modify_style` |
 | `StyleProxy.delete(*, force=False)` | method | Delegate to `delete_style` |
-| `StyleInfo` | dataclass | Returned by `list_styles`: `style_id`, `name`, `style_type`, `based_on`, `is_default`, `is_latent` |
+| `StyleInfo` | dataclass | Returned by `list_styles`: `style_id`, `name`, `style_type`, `based_on`, `is_default`, `is_latent`, `is_builtin` (v0.6 — a style Word ships rather than one the author created) |
+| `find_unused_styles(doc)` | function | v0.6. Author-created styles defined but referenced nowhere — by a paragraph, a run, a table, a `basedOn` chain, or a numbering definition. The public API behind the `unused-styles` lint rule. Built-ins are excluded: Word defines a hundred latent styles a document is not obliged to use |
 | `StyleExistsError` | exception | `create_style` on duplicate ID |
 | `StyleNotFoundError` | exception | Referenced ID not defined |
 | `StyleInUseError` | exception | `delete_style` without `force=True` on referenced style |
@@ -165,7 +172,7 @@ do not yet take them as kwargs — they are read-only.)
 
 ### `docx_plus.styles.theme`
 
-Read-only theme color resolution. Theme writing is a v0.2 goal.
+Read-only theme color resolution. Theme writing is on the backlog — see `ROADMAP.md`.
 
 | Symbol | Kind | Notes |
 |---|---|---|

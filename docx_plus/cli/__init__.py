@@ -73,9 +73,23 @@ def main(argv: list[str] | None = None) -> int:
         return int(func(args))
     except DocxPlusError as exc:
         # CliError and every typed library error land here.
-        kind = "error" if isinstance(exc, CliError) else f"{type(exc).__name__}"
-        print(f"error: {exc}" if isinstance(exc, CliError) else f"{kind}: {exc}", file=sys.stderr)
+        kind = "error" if isinstance(exc, CliError) else type(exc).__name__
+        print(f"{kind}: {_message(exc)}", file=sys.stderr)
         return 1
+
+
+def _message(exc: DocxPlusError) -> str:
+    """The exception's text, without ``KeyError``'s repr quoting.
+
+    Several typed errors dual-inherit ``KeyError`` so that ordinary
+    ``except KeyError:`` still catches them, and ``str()`` on a ``KeyError``
+    returns ``repr(args[0])`` — so ``UnknownRuleError`` printed its message
+    wrapped in quotes while every other error printed bare. Reaching for
+    ``args[0]`` restores the intended text.
+    """
+    if isinstance(exc, KeyError) and len(exc.args) == 1 and isinstance(exc.args[0], str):
+        return exc.args[0]
+    return str(exc)
 
 
 __all__ = ["build_parser", "main"]

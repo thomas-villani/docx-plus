@@ -79,10 +79,13 @@ from docx_plus.revisions import (
     accept_all_revisions, reject_all_revisions,
 )
 
+# Each of these consumes the revision, so they are alternatives for one
+# id, not a sequence — calling both raises RevisionNotFoundError.
 accept_revision(doc, rev_id)   # keep the edit; RevisionNotFoundError (KeyError) if absent
-reject_revision(doc, rev_id)   # restore pre-edit state
+reject_revision(doc, other_id)  # restore pre-edit state
+
 accept_all_revisions(doc)      # idempotent; resolves everything
-reject_all_revisions(doc)
+reject_all_revisions(doc)      # ...so this one now finds nothing left
 ```
 
 - **Insertion**: accept = keep the text (unwrap); reject = drop it.

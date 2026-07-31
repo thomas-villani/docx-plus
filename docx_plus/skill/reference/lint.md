@@ -199,8 +199,8 @@ overrides severities.
 ```python
 from docx_plus.lint import Profile, lint
 
-lint(doc, profile="house-style.json")          # a path
-lint(doc, profile={"rules": {...}})            # an inline mapping
+lint(doc, profile="house-style.json")                       # a path
+lint(doc, profile={"rules": {"double-space": {"enabled": False}}})  # inline
 lint(doc, profile=Profile.discover("report.docx"))
 ```
 

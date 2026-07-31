@@ -77,7 +77,12 @@ Shading is a *cell* property; contrasting text on top of it is ordinary
 python-docx run formatting:
 
 ```python
-run = table.cell(0, 0).paragraphs[0].runs[0]
+from docx.shared import RGBColor
+
+# A fresh cell holds an empty paragraph and no runs, so add one rather
+# than indexing into `.runs` — `paragraphs[0].runs[0]` is an IndexError
+# until something has written text.
+run = table.cell(0, 0).paragraphs[0].add_run("Header")
 run.bold = True
 run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
 ```

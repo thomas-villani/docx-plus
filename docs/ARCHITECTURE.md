@@ -1,11 +1,13 @@
 # docx_plus — Architecture
 
 Present-tense reference for how `docx_plus` is laid out and why. This
-document describes what currently exists at the end of v0.4 (Phase 6,
-the v0.2 cycle: comments, layout, bookmarks / cross-references,
-footnotes / endnotes; the v0.3 work: tracked changes plus the
-`docx-plus` CLI; and the v0.4 work: threaded comments). The contract
-that constrains it is `SPEC.md`;
+document describes what currently exists at the end of the v0.6 cycle:
+Phase 6 and the v0.2 work (comments, layout, bookmarks /
+cross-references, footnotes / endnotes), v0.3 (tracked changes and the
+`docx-plus` CLI), v0.4 (threaded comments), v0.5 (table formatting,
+custom numbering, the packaged agent skill), and v0.6 (the cascade
+corrections measured against live Word, the document sweep, and the
+`lint/` composing layer). The contract that constrains it is `SPEC.md`;
 the meta-guidance on how it was built and how to extend it is
 `IMPLEMENTATION.md`. Read this when you need to understand the
 library's shape; read those when you need to decide what to add or how.
@@ -20,8 +22,11 @@ who wants more than the README before reading source.
 ```
 docx_plus/
 ├── __init__.py              # top-level re-exports (DocxPlusError, __version__)
+├── py.typed                 # PEP 561 marker — the package ships its own types
 ├── core/                    # foundation primitives — every capability depends on these
-│   ├── __init__.py          # DocxPlusError (base of all typed errors) + re-exports
+│   ├── __init__.py          # re-exports the public surface
+│   ├── errors.py            # DocxPlusError — the base of every typed error
+│   ├── borders.py           # Border, border_attrs — shared by page, table, cell borders
 │   ├── ns.py                # W, W14, W15, R, MC, A, XML constants + NSMAP / BUILD_NSMAP + qn()
 │   ├── oxml.py              # el(), sub(), xpath(), remove(),
 │   │                        # build_complex_field, insert_before_first_anchor
@@ -35,6 +40,7 @@ docx_plus/
 │   ├── modify.py            # create_style, modify_style, apply_style, delete_style,
 │   │                        # ensure_style, find_matching_style, remap_styles, list_styles,
 │   │                        # StyleProxy, StyleInfo, _BUILTIN_STYLES table
+│   ├── sweep.py             # iter_resolved_paragraphs, ResolvedParagraph, ResolvedRun — v0.6
 │   └── theme.py             # ThemeColors, load_theme, resolve_theme_color,
 │                            # apply_theme_tint, apply_theme_shade, apply_lum_mod, apply_lum_off
 ├── controls/                # content controls (SDTs)
@@ -43,10 +49,11 @@ docx_plus/
 │   └── read.py              # ControlValue, read_controls, set_control_value, clear_control,
 │                            # ControlNotFoundError, DuplicateTagError, ValueNotInListError,
 │                            # ControlTypeError
-├── fields/                  # complex field insertion + update flag
+├── fields/                  # complex field insertion, reads, update flag
 │   ├── __init__.py          # re-exports the public surface
 │   ├── simple.py            # add_page_number_field, add_date_field, add_field,
 │   │                        # PageFieldName Literal
+│   ├── read.py              # read_fields, FieldInstance — v0.6
 │   └── update.py            # mark_fields_dirty
 ├── protection/              # document-level protection enforcement
 │   ├── __init__.py          # re-exports the public surface
@@ -60,6 +67,8 @@ docx_plus/
 │   ├── threads.py           # reply_to_comment, resolve_comment, reopen_comment,
 │   │                        # read_threads, CommentThread — v0.4
 │   ├── _extended.py         # commentsExtended.xml thread graph (internal) — v0.4
+│   ├── _ids.py              # commentsIds.xml durable ids (internal) — v0.5
+│   ├── people.py            # people.xml author presence — v0.5
 │   └── registry.py          # CommentIdRegistry
 ├── layout/                  # page-layout extras — v0.2
 │   ├── __init__.py          # re-exports the public surface
@@ -101,7 +110,8 @@ docx_plus/
 │   ├── __init__.py          # re-exports the public surface
 │   ├── toc.py               # add_toc
 │   ├── captions.py          # add_caption
-│   └── figures.py           # add_table_of_figures
+│   ├── figures.py           # add_table_of_figures
+│   └── _validate.py         # shared caption/label validation (internal)
 ├── tables/                  # table borders, shading, merging — v0.5
 │   ├── __init__.py          # re-exports the public surface
 │   ├── borders.py           # set_table_borders, set_cell_borders
@@ -123,6 +133,7 @@ docx_plus/
 │       ├── typography.py    # double-space, trailing-whitespace, ...
 │       ├── structure.py     # heading-level-skip, manual-list, ...
 │       ├── styles.py        # unused-styles, duplicate-styles
+│       ├── _common.py       # container adjacency, the one `paragraph._p` reach
 │       └── references.py    # broken-cross-reference, caption-manual-numbering
 ├── cli/                     # docx-plus console entry point — v0.3
 │   ├── __init__.py          # build_parser, main (console_scripts entry point)
@@ -148,6 +159,7 @@ docx_plus/
 │   ├── table_formatting.py, custom_numbering.py   # v0.5 demos
 │   └── lint_document.py                # v0.6 demo
 └── _testing/                # internal test helpers (not public API)
+    ├── __init__.py
     └── ooxml_asserts.py     # assert_ids_unique, assert_style_defined,
                              # count_controls, assert_protected, assert_field_dirty
 ```
@@ -368,7 +380,7 @@ values returned with the flag off are bit-identical to those with it on.
 
 `FormattingSource` records:
 
-- `layer` — which of the six cascade layers contributed the value
+- `layer` — which of the eight cascade layers contributed the value
 - `style_id` — for `*Style` layers, the lowest style in the basedOn chain
   that actually set the property (not the leaf style, the *resolving*
   style)
@@ -1110,7 +1122,7 @@ library: `build_parser()` registers one subparser per subcommand, and
 success, `1` for a handled `DocxPlusError` (printed to stderr), and `2`
 when no command is given.
 
-Five subcommands, four of them wrapping one tested library function
+Seven subcommands, six of them wrapping one tested library function
 each:
 
 - `inspect` — dump effective per-paragraph formatting
@@ -1119,12 +1131,21 @@ each:
 - `controls` — list / set / clear content-control values
   (`controls`).
 - `comments` — list / resolve / reopen comment threads (`comments`).
+- `lint` — report formatting defects (`lint.lint`). v0.6.
+- `plan` — describe the repair without applying it (`lint.plan_fixes`).
+  v0.6.
 - `skill` — locate, read, or install the packaged agent skill (v0.5).
 
 Read commands take `--json`; mutating commands require `-o/--output`
 (or an explicit `--in-place`) so the input is never overwritten by
 accident. Shared load/save plumbing and the `CliError` type live in
-`cli/_io.py`.
+`cli/_io.py`, along with the `--rule` / `--exclude` / `--no-tables` /
+`--profile` options `lint` and `plan` share.
+
+`lint` and `plan` overload exit `1` as "I found something", which is what
+lets either gate a CI step directly. Both are read-only, so there is
+nothing to overwrite and the mutating-command convention does not apply
+to them.
 
 The CLI is the **one** layer that legitimately imports across
 capabilities — it composes `styles/` and `controls/` by design — and is
@@ -1140,7 +1161,7 @@ linking only to GitHub blob URLs — broken for anyone who had
 **That move needed no build configuration at all.** Hatchling's
 `packages = ["docx_plus"]` already sweeps non-`.py` files — the reason
 `py.typed` ships — and the sdist `include` already lists `docx_plus/`.
-Verified by building a wheel and unzipping it: all ten Markdown files
+Verified by building a wheel and unzipping it: all eleven Markdown files
 present, then installed into a clean venv with no source tree and
 driven through the CLI from there.
 
@@ -1600,8 +1621,9 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **1278 tests** at the v0.5.0 release
-  (1266 pass; 12 LibreOffice round-trips skip without `soffice`).
+  I/O beyond reading fixtures. **2055 tests** at the end of the v0.6
+  cycle (2043 pass; 12 LibreOffice round-trips skip without `soffice`),
+  at 96% coverage against a 90% gate.
   Of these, 631 were collected at v0.2.0: v0.1's surface (319 tests)
   plus the v0.2 cycle — `core/parts` (13), `comments/` (35),
   `layout/` (47), `bookmarks/` + cross-refs (26), `notes/` (34),

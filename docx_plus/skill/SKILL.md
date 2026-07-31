@@ -102,7 +102,7 @@ copy-pasteable guide to that module's public API.
 | Anchored review comments that "show in document" correctly; reply threads; resolve / reopen | `comments`        | `reference/comments.md`     |
 | Track changes: mark insertions / deletions, read revisions, accept / reject | `revisions`       | `reference/revisions.md`    |
 | Audit someone else's document before editing it: direct formatting fighting the styles, skipped outline levels, typed lists, whitespace as layout — and describe the repair | `lint`            | `reference/lint.md`         |
-| Drive the library from a shell / CI: inspect formatting, remap styles, edit control values, triage comments, lint | `cli` (`docx-plus`) | `reference/cli.md`          |
+| Drive the library from a shell / CI: inspect formatting, remap styles, edit control values, triage comments, lint, plan a repair, install this skill | `cli` (`docx-plus`) | `reference/cli.md`          |
 
 ## Two patterns worth memorizing
 
@@ -161,8 +161,8 @@ doc.save("out.docx")
   turn the findings into an ordered, serializable repair description
   (`plan_fixes`). Both are pure reads: nothing here writes.
 - `reference/cli.md` — the `docx-plus` console command (`inspect` / `restyle` /
-  `controls` / `comments` / `lint` / `plan`) for driving the library from a
-  shell or CI.
+  `controls` / `comments` / `lint` / `plan` / `skill`) for driving the library
+  from a shell or CI.
 
 For exhaustive signatures and the error taxonomy, the rendered docs are at
 <https://thomas-villani.github.io/docx-plus/> and the in-repo index is

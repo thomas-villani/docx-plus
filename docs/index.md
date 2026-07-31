@@ -34,7 +34,7 @@ Requires Python 3.10+. The only dependencies are `python-docx` and
 
 | Capability | Detail |
 |---|---|
-| **[Style cascade](ARCHITECTURE.md#2-the-cascade-resolver)** | Effective formatting for any paragraph / run / cell through the full six-layer cascade, with per-field provenance. Create, modify, and remap styles; materialise any of 107 latent Word built-ins. |
+| **[Style cascade](ARCHITECTURE.md#2-the-cascade-resolver)** | Effective formatting for any paragraph / run / cell through the full eight-layer cascade, with per-field provenance. Create, modify, and remap styles; materialise any of 107 latent Word built-ins. |
 | **[Content controls](ARCHITECTURE.md#6-content-controls)** | Text / dropdown / date / checkbox controls via `FormBuilder`; round-trip read and write of values. |
 | **[Comments](ARCHITECTURE.md#76-anchored-comments)** | Anchored comments with the body-side range markers python-docx skips, so "show in document" works. Threading — reply / resolve / reopen (v0.4) — plus durable ids and author presence (v0.5). |
 | **[Tracked changes](ARCHITECTURE.md#711-tracked-changes)** | Mark runs as insertions / deletions, read revisions with author and timestamp, accept / reject, toggle track-changes mode (v0.3). |
@@ -246,7 +246,7 @@ See [`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
 
 ## Project status
 
-**v0.5.0** — beta, and shipping. 1,266 tests, 95% coverage, `mypy
+**v0.5.0** — beta, and shipping. 2,043 tests, 96% coverage, `mypy
 --strict` clean with zero ignores. CI runs Python 3.10–3.13 on Linux
 plus a Windows job, and a lower-bound dependency job pinned to
 `python-docx==1.0.0` / `lxml==4.9.0`.

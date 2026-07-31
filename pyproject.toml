@@ -1,7 +1,7 @@
 [project]
 name = "docx_plus"
 version = "0.5.0"
-description = "OOXML-level extensions for python-docx: style cascade, content controls, comments, tracked changes, fields, tables, numbering, and publishing."
+description = "OOXML-level extensions for python-docx: style cascade, content controls, comments, tracked changes, fields, tables, numbering, publishing, and a document linter."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -22,6 +22,9 @@ keywords = [
     "bookmarks",
     "table-of-contents",
     "document-automation",
+    "lint",
+    "linter",
+    "document-quality",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -39,6 +42,7 @@ classifiers = [
     "Topic :: Office/Business",
     "Topic :: Office/Business :: Office Suites",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
     "Topic :: Text Processing :: Markup :: XML",
     "Typing :: Typed",
 ]

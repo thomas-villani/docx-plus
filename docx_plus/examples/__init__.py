@@ -24,4 +24,14 @@ Modules:
   endnotes (v0.2).
 - :mod:`docx_plus.examples.publishing_layout` — TOC + captions + Table
   of Figures (v0.2 expansion).
+- :mod:`docx_plus.examples.track_changes` — mark insertions and deletions,
+  read them back, accept / reject (v0.3).
+- :mod:`docx_plus.examples.threaded_comments` — reply threads, resolve and
+  reopen (v0.4).
+- :mod:`docx_plus.examples.table_formatting` — borders, shading, merging,
+  and reading direct table formatting back (v0.5).
+- :mod:`docx_plus.examples.custom_numbering` — bullet, numbered, and
+  multilevel list definitions (v0.5).
+- :mod:`docx_plus.examples.lint_document` — audit a document, then print
+  the repair the linter would plan (v0.6).
 """

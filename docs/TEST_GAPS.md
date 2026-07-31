@@ -2,8 +2,9 @@
 
 > **Status (2026-05-20):** The per-item audit below was snapshotted at
 > end-of-Phase-5 (v0.1) and has **not** been re-run against the v0.2 suite.
-> Treat its stats as historical: the current suite is **717 tests across 34
-> files** (pytest, mypy `--strict`, ruff `check` all green). The v0.1 and
+> Treat its stats as historical: the suite is now **2,043 tests** (12
+> further LibreOffice round-trips skip without `soffice`) at 96% coverage,
+> with mypy `--strict` and ruff `check` green. The v0.1 and
 > v0.2 cycles did not formally close the IMPORTANT gaps catalogued here —
 > later test growth narrowed several, but they remain the priority backlog
 > for a v0.3 re-audit. The original "realistic target before Phase 4"
