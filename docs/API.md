@@ -114,7 +114,7 @@ for the algorithm walkthrough.
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `resolve_effective_formatting(target, *, include_provenance=False, table_context=None)` | function | The headline API — walks six cascade layers, returns `ResolvedFormatting`. `table_context` overrides the auto-derived cell position for conditional table-style branches |
+| `resolve_effective_formatting(target, *, include_provenance=False, table_context=None)` | function | The headline API — walks six cascade layers, returns `ResolvedFormatting`. `table_context` overrides the auto-derived cell position for conditional table-style branches. A paragraph whose `w:pStyle` is absent, dangling, or of the wrong `w:type` resolves through the **default paragraph style**, which is what `style_id` then reports |
 | `resolve_paragraph_spacing(paragraph)` | function | The vertical space Word actually leaves around a paragraph, after `<w:contextualSpacing>` and Word's space-after/space-before arithmetic. Returns `ParagraphSpacing` |
 | `ParagraphSpacing` | dataclass (frozen) | `space_above` / `space_below` (the applied gaps, in twips), `declared_before` / `declared_after`, `contextual_spacing`, `before_suppressed` / `after_suppressed`. One paragraph's `space_below` equals the next one's `space_above` |
 | `ResolvedFormatting` | dataclass (frozen) | 35 formatting fields + `partial` + optional `provenance`. SPEC §4. All twelve ECMA-376 17.7.3 toggles are surfaced (`bold`, `italic`, `cs_bold`, `cs_italic`, `caps`, `small_caps`, `strike`, `vanish`, `emboss`, `imprint`, `outline`, `shadow`). `spacing_before` / `spacing_after` are what the cascade *declares*; `contextual_spacing` carries the flag, and `resolve_paragraph_spacing` applies it |

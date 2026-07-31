@@ -26,6 +26,30 @@ several incompatible readings and this library previously shipped one of
 the wrong ones. `tests/test_cascade_word_verified.py` holds the
 measurements.
 
+## A paragraph with no style still has one
+
+Most paragraphs carry no `w:pStyle`, and they are not unstyled — Word gives
+them the **default paragraph style**, so `resolve_effective_formatting`
+reports it as their `style_id` and applies everything it declares.
+
+- It is chosen as the **last** `w:type="paragraph"` style whose `w:default`
+  is on, falling back to the style whose id is `Normal`.
+- It substitutes whenever `w:pStyle` fails to resolve — absent, dangling,
+  or naming a style of the wrong type. A `w:pStyle` pointing at a style the
+  document never defines is reported as the *default* style, not as the
+  name it wrote.
+- It sits at the paragraph-style layer, so it **beats the table style** —
+  a `Normal` declaring 20pt wins over a table style declaring 36pt.
+- It is an ordinary toggle *level*: a bold `Normal` plus a bold character
+  style cancel.
+
+The default *character* and *table* styles are not the same story — they
+never apply to anything. Only `w:pStyle` has a fallback.
+
+A style reference also has to match the style's `w:type`: `w:rStyle` naming
+a paragraph style, or `w:basedOn` crossing between the two, contributes
+nothing. Measurements: `tests/test_default_styles_word_verified.py`.
+
 ## Conditional table formatting is gated, not positional
 
 A table style's `firstRow` / `firstCol` / banding branches do not apply

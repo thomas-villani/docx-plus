@@ -18,6 +18,51 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The default paragraph style was never applied, so a paragraph with no
+  `w:pStyle` resolved to `docDefaults` alone.** That is most paragraphs in
+  most documents: everything `Normal` declares — its font, its size, its
+  spacing — was silently dropped, and `style_id` came back `None` where
+  Word reports `Normal`. Measured against live Word:
+
+    - The default style is the **last** `w:style w:type="paragraph"` whose
+      `w:default` is on (`1` / `true` / `on`), falling back to the style
+      whose id is literally `Normal`. Declaration order is the tie-break,
+      measured both ways round.
+    - It substitutes whenever `w:pStyle` fails to resolve — **absent,
+      dangling, or naming a style of the wrong `w:type`** — and then acts
+      as an entirely ordinary paragraph style: it is the reported
+      `style_id` / `style_name`, it supplies numbering, and it counts as
+      one of the toggle rule's *levels*, so a bold `Normal` and a bold
+      character style cancel.
+    - It sits at the **paragraph-style layer**, which is what the
+      measurement pinned down: a `Normal` declaring 20pt beats a table
+      style declaring 36pt, and beats the table style's `w:tblStylePr`
+      branches too. Collapsing it into `docDefaults` would have matched
+      every other reading and got this one wrong.
+    - The other two `w:default="1"` styles are **non-events**:
+      `DefaultParagraphFont` never reaches a run and `TableNormal` never
+      reaches a table naming no style. Only `w:pStyle` has a fallback.
+
+  A `w:pStyle` naming an undefined style now reports the default style
+  rather than the name it wrote — Word renders it that way, and code
+  keying off `style_id` was matching a style the document does not have.
+
+- **Style references were followed without checking `w:type`.** Word
+  resolves a reference only to a style of the type it demands, and ignores
+  it otherwise. The resolver followed every one: a `w:rStyle` naming a
+  paragraph style, a `w:tblStyle` naming a paragraph style, and a
+  `w:basedOn` crossing between paragraph and character styles all
+  contributed formatting Word never applies. A cross-type `w:basedOn` now
+  ends the chain — the style itself still applies, it just inherits
+  nothing through the dead link.
+
+- **A table cell resolved as `docDefaults` plus the table style and
+  nothing else.** The cell cascade now ends with the default paragraph
+  style, which is what a bare paragraph in the cell picks up and what Word
+  reports for an untouched cell — so a cell in a styled table reports the
+  default style's size beating the table style's, rather than the table
+  style's alone.
+
 - **`<w:contextualSpacing>` was ignored completely, so every list
   paragraph in a stock-template document got the wrong spacing.** Fourteen
   of Word's built-in styles carry the flag — `ListParagraph`, `Title` and

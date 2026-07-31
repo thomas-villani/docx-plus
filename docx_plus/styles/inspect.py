@@ -187,6 +187,34 @@ _TOGGLE_RPR: dict[str, str] = {
 # :class:`ResolvedFormatting.double_strike`.
 
 
+StyleKind = Literal["paragraph", "character", "table", "numbering"]
+"""The ``w:type`` of a ``w:style``, which every reference to it must match."""
+
+_DEFAULT_STYLE_KIND: StyleKind = "paragraph"
+"""``w:type`` is optional; ECMA-376 17.7.4.17 makes a style without one a
+paragraph style."""
+
+_FALLBACK_STYLE_ID = "Normal"
+"""Used only when no paragraph style claims ``w:default``. Word still applied
+the style called ``Normal`` in that case and applied nothing when no such style
+existed, so this reproduces both — though it may equally be Word repairing the
+document on load rather than a cascade rule."""
+
+_ON_OFF_TRUE = frozenset({"1", "true", "on"})
+
+
+def _on_off(value: str | None, *, absent: bool = False) -> bool:
+    """Read an ECMA-376 ST_OnOff attribute. A present-but-empty value is on."""
+    if value is None:
+        return absent
+    return value in _ON_OFF_TRUE
+
+
+def _style_kind(style_el: etree._Element) -> str:
+    """The ``w:type`` of a ``w:style``, defaulting to ``paragraph``."""
+    return style_el.get(qn("w:type")) or _DEFAULT_STYLE_KIND
+
+
 Layer = Literal[
     "docDefaults",
     "tableStyle",
@@ -409,6 +437,20 @@ def resolve_effective_formatting(
         StyleCascadeError: If the basedOn chain has a cycle or exceeds Word's
             depth limit of 11.
         ValueError: If ``stop_below`` is not one of the :data:`Layer` names.
+
+    Note:
+        A paragraph carrying no ``w:pStyle`` is **not** unstyled: Word
+        gives it the document's default paragraph style, and so does this.
+        The same fallback covers a ``w:pStyle`` that dangles or names a
+        style of the wrong ``w:type`` — Word treats those as no reference
+        at all rather than as an empty style. ``style_id`` therefore
+        reports the style Word actually applies, which for a dangling
+        reference is not the id written in the XML.
+
+        That layer sits above the table style, so a default style
+        declaring a property beats a table style declaring it. The default
+        *character* and *table* styles have no equivalent: neither is ever
+        applied. See SPEC "Default styles".
 
     Note:
         A paragraph whose ``w:numPr`` references a numbering id that
@@ -897,38 +939,80 @@ class _ResolverCache:
     styles_root: etree._Element
     theme: ThemeColors | None
     _styles: dict[str, etree._Element | None] = field(default_factory=dict)
-    _chains: dict[str, list[tuple[str, etree._Element]]] = field(default_factory=dict)
+    _chains: dict[tuple[str, StyleKind], list[tuple[str, etree._Element]]] = field(
+        default_factory=dict
+    )
     _names: dict[str, str | None] = field(default_factory=dict)
     _abstract_nums: dict[int, etree._Element | None] = field(default_factory=dict)
     _numbering_root: etree._Element | None = None
     _numbering_read: bool = False
     _doc_defaults: tuple[etree._Element | None, etree._Element | None] | None = None
+    _default_paragraph_style: str | None = None
+    _default_paragraph_style_read: bool = False
 
     @classmethod
     def for_document(cls, doc: Document) -> _ResolverCache:
         """Build a cache over ``doc``, parsing the theme once."""
         return cls(doc=doc, styles_root=doc.styles.element, theme=load_theme(doc))
 
-    def style(self, style_id: str) -> etree._Element | None:
-        """The ``w:style`` element for ``style_id``, or None if undefined."""
+    def style(self, style_id: str, kind: StyleKind | None = None) -> etree._Element | None:
+        """The ``w:style`` for ``style_id``, or None if undefined or mistyped.
+
+        ``kind`` is the type the *reference* demands. Word ignores a
+        reference that names a style of another type — see
+        :func:`_style_kind` — so passing it here is what makes a
+        ``w:rStyle`` pointing at a paragraph style resolve to nothing.
+        """
         if style_id not in self._styles:
             matches = xpath(self.styles_root, "./w:style[@w:styleId=$sid]", sid=style_id)
             self._styles[style_id] = matches[0] if matches else None
-        return self._styles[style_id]
+        style_el = self._styles[style_id]
+        if style_el is None or kind is None:
+            return style_el
+        return style_el if _style_kind(style_el) == kind else None
 
-    def chain(self, leaf_style_id: str) -> list[tuple[str, etree._Element]]:
+    def chain(self, leaf_style_id: str, kind: StyleKind) -> list[tuple[str, etree._Element]]:
         """The basedOn chain from ``leaf_style_id``, leaf-first.
+
+        ``kind`` bounds the whole chain, not just its leaf: a ``w:basedOn``
+        naming a style of another type is a dead link rather than an
+        inheritance edge, so the chain stops there.
 
         A cycle or over-deep chain raises out of here every time rather
         than being memoized — the failure is a property of the styles
         part, so re-raising costs nothing and keeps the cache holding
         only well-formed results.
         """
-        cached = self._chains.get(leaf_style_id)
+        cached = self._chains.get((leaf_style_id, kind))
         if cached is None:
-            cached = _collect_style_chain(self, leaf_style_id)
-            self._chains[leaf_style_id] = cached
+            cached = _collect_style_chain(self, leaf_style_id, kind)
+            self._chains[(leaf_style_id, kind)] = cached
         return cached
+
+    def default_paragraph_style_id(self) -> str | None:
+        """The style a paragraph falls back to when its ``w:pStyle`` does not resolve.
+
+        The **last** ``w:style w:type="paragraph"`` whose ``w:default`` is
+        on. Declaration order is the tie-break Word actually uses, measured
+        both ways round. Failing that, the style whose id is literally
+        ``Normal``; failing that, ``None`` and the paragraph gets
+        ``docDefaults`` alone.
+        """
+        if not self._default_paragraph_style_read:
+            self._default_paragraph_style_read = True
+            chosen: str | None = None
+            for style_el in self.styles_root.findall(qn("w:style")):
+                if _style_kind(style_el) != "paragraph":
+                    continue
+                if not _on_off(style_el.get(qn("w:default"))):
+                    continue
+                style_id = style_el.get(qn("w:styleId"))
+                if style_id is not None:
+                    chosen = style_id
+            if chosen is None and self.style(_FALLBACK_STYLE_ID, "paragraph") is not None:
+                chosen = _FALLBACK_STYLE_ID
+            self._default_paragraph_style = chosen
+        return self._default_paragraph_style
 
     def style_name(self, style_id: str) -> str | None:
         """The ``w:name`` of ``style_id`` as Word displays it."""
@@ -1008,7 +1092,7 @@ def _apply_paragraph_cascade(
     # ``stop_below`` says — they name the style rather than describing
     # formatting, and a caller resolving beneath the paragraph style still
     # needs to know which style that was.
-    p_style_id = _paragraph_style_id(p_element)
+    p_style_id = _effective_paragraph_style_id(cache, p_element)
     if p_style_id is not None:
         acc.set(
             "style_id",
@@ -1023,7 +1107,7 @@ def _apply_paragraph_cascade(
                 FormattingSource(layer="paragraphStyle", style_id=p_style_id, chain_depth=0),
             )
         if _includes(stop_below, "paragraphStyle"):
-            _apply_style_chain(acc, cache, p_style_id, "paragraphStyle")
+            _apply_style_chain(acc, cache, p_style_id, "paragraphStyle", "paragraph")
 
     # Layer 4: numbering — the paragraph's own w:numPr, or the nearest one
     # its style chain supplies. The latter is how Word's stock List Bullet /
@@ -1046,14 +1130,33 @@ def _apply_paragraph_cascade(
         # Run-level rStyle reference (character style applied to one run).
         # Per ECMA-376 17.3.2.29 this is a style layer that sits BELOW direct
         # run formatting — direct rPr on the run must override it.
+        # A w:rStyle naming a style that is missing, or is not a character
+        # style, contributes nothing — and unlike w:pStyle it falls back to
+        # no style at all. Word never applies the default *character* style.
         run_style_id = _run_style_id(run_element)
         if run_style_id is not None and _includes(stop_below, "runStyle"):
-            _apply_style_chain(acc, cache, run_style_id, "runStyle")
+            _apply_style_chain(acc, cache, run_style_id, "runStyle", "character")
 
         # Layer 6: direct run formatting (highest precedence for the run).
         run_rpr = run_element.find(qn("w:rPr"))
         if run_rpr is not None and _includes(stop_below, "directRun"):
             _apply_rpr(acc, run_rpr, FormattingSource(layer="directRun"))
+
+
+def _effective_paragraph_style_id(cache: _ResolverCache, p_element: etree._Element) -> str | None:
+    """The style id that actually governs ``p_element``.
+
+    Its own ``w:pStyle`` when that names a real paragraph style; otherwise
+    the document's default paragraph style. A ``w:pStyle`` that dangles, or
+    names a style of the wrong ``w:type``, is not a *missing* style — Word
+    treats it as no reference at all and falls back exactly as it would for
+    a paragraph carrying no ``w:pStyle``, reporting the default style as the
+    paragraph's own.
+    """
+    declared = _paragraph_style_id(p_element)
+    if declared is not None and cache.style(declared, "paragraph") is not None:
+        return declared
+    return cache.default_paragraph_style_id()
 
 
 def _apply_cell_cascade(
@@ -1063,7 +1166,14 @@ def _apply_cell_cascade(
     table_context: TableContext | None = None,
     stop_below: Layer | None = None,
 ) -> None:
-    """Resolve formatting for a table cell — table style chain only, for now.
+    """Resolve formatting for a table cell: docDefaults, table style, default style.
+
+    A cell has no ``w:pStyle`` of its own, so the paragraph layer here is
+    the document's default paragraph style — what a bare paragraph dropped
+    into the cell would pick up, and what Word reports when asked about an
+    untouched cell. That layer sits *above* the table style, so a default
+    style declaring a size beats the table style's, exactly as it does for
+    a paragraph.
 
     Skips the numbering layer entirely (unlike
     :func:`_apply_paragraph_cascade`): cells carry no paragraph-level
@@ -1074,6 +1184,17 @@ def _apply_cell_cascade(
     table_element = _enclosing_table(tc_element)
     if table_element is not None and _includes(stop_below, "tableStyle"):
         _apply_table_style_chain(acc, cache, table_element, table_context=table_context)
+
+    default_style_id = cache.default_paragraph_style_id()
+    if default_style_id is None:
+        return
+    source = FormattingSource(layer="paragraphStyle", style_id=default_style_id, chain_depth=0)
+    acc.set("style_id", default_style_id, source)
+    style_name = cache.style_name(default_style_id)
+    if style_name is not None:
+        acc.set("style_name", style_name, source)
+    if _includes(stop_below, "paragraphStyle"):
+        _apply_style_chain(acc, cache, default_style_id, "paragraphStyle", "paragraph")
 
 
 # --------------------------------------------------------------------------
@@ -1097,6 +1218,7 @@ def _apply_style_chain(
     cache: _ResolverCache,
     leaf_style_id: str,
     layer: Layer,
+    kind: StyleKind,
 ) -> None:
     """Walk the basedOn chain and apply each style's pPr/rPr ancestors-first.
 
@@ -1104,7 +1226,7 @@ def _apply_style_chain(
     its parent's ``<w:b/>`` overrides rather than cancels — inheritance is not
     a hierarchy boundary.
     """
-    chain = cache.chain(leaf_style_id)
+    chain = cache.chain(leaf_style_id, kind)
     with acc.toggle_level_scope():
         # Apply in reverse: deepest ancestor first so leaf (most specific) wins.
         for depth, (style_id, style_el) in enumerate(reversed(chain)):
@@ -1119,9 +1241,15 @@ def _apply_style_chain(
 
 
 def _collect_style_chain(
-    cache: _ResolverCache, leaf_style_id: str
+    cache: _ResolverCache, leaf_style_id: str, kind: StyleKind
 ) -> list[tuple[str, etree._Element]]:
-    """Return [(id, element), ...] from leaf to root, with cycle/depth checks."""
+    """Return [(id, element), ...] from leaf to root, with cycle/depth checks.
+
+    Every link is type-checked against ``kind``: a ``w:basedOn`` pointing at
+    a style of another type ends the chain, and so does a leaf of the wrong
+    type (giving an empty chain). Measured — a paragraph style based on a
+    character style inherits nothing from it.
+    """
     chain: list[tuple[str, etree._Element]] = []
     visited: set[str] = set()
     current_id: str | None = leaf_style_id
@@ -1137,7 +1265,7 @@ def _collect_style_chain(
             raise StyleCascadeError(
                 f"basedOn chain exceeds depth {_MAX_STYLE_CHAIN_DEPTH}: {chain_ids}"
             )
-        style_el = cache.style(current_id)
+        style_el = cache.style(current_id, kind)
         if style_el is None:
             break
         chain.append((current_id, style_el))
@@ -1174,7 +1302,10 @@ def _apply_table_style_chain(
     if style_id is None:
         return
 
-    chain = cache.chain(style_id)
+    # No fallback to the default *table* style: measured, ``TableNormal``
+    # never reaches a table that names no style, nor one whose ``w:tblStyle``
+    # dangles or points at a style of another type.
+    chain = cache.chain(style_id, "table")
     matching = _matching_conditional_types(table_context) if table_context is not None else set()
 
     # The chain and its conditional branches are all one toggle level: a
@@ -1320,7 +1451,7 @@ def _table_style_chain(
     style_id = tbl_style.get(qn("w:val"))
     if style_id is None:
         return []
-    return cache.chain(style_id)
+    return cache.chain(style_id, "table")
 
 
 def _read_band_size(
@@ -1478,7 +1609,7 @@ def _style_chain_num_pr(
     num_id_source: FormattingSource | None = None
     ilvl_source: FormattingSource | None = None
 
-    for depth, (style_id, style_el) in enumerate(cache.chain(leaf_style_id)):
+    for depth, (style_id, style_el) in enumerate(cache.chain(leaf_style_id, "paragraph")):
         num_pr = style_el.find(f"./{qn('w:pPr')}/{qn('w:numPr')}")
         if num_pr is None:
             continue

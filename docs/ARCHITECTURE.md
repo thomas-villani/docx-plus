@@ -165,10 +165,11 @@ The cascade is walked at `inspect.py:253-317`
    formatting"; the precedence order deliberately differs from the one
    ECMA-376 17.7.6.5 lists, because Word's does.
 3. **Paragraph style chain** — the style named by `w:pStyle` plus every
-   `w:basedOn` ancestor. Walked by `_collect_style_chain` at
-   `inspect.py:376-399`, then applied root-to-leaf so the most-specific
-   style wins. Cycle detection and depth limit (11, per Word) live in
-   that one function.
+   `w:basedOn` ancestor. Walked by `_collect_style_chain`, then applied
+   root-to-leaf so the most-specific style wins. Cycle detection and depth
+   limit (11, per Word) live in that one function. When `w:pStyle` does
+   not resolve, `_effective_paragraph_style_id` substitutes the **default
+   paragraph style** — see below.
 4. **Numbering** — if `w:pPr/w:numPr` is present, the corresponding
    `w:abstractNum/w:lvl` from `numbering.xml` is applied. See
    `_apply_numbering` at `inspect.py:425-466`. If the numbering part is
@@ -183,6 +184,44 @@ style's `w:link` partner (`Heading1` / `Heading1Char`) is a UI affordance
 for applying that style's character half to a selection; Word never
 consults it when rendering runs inside the paragraph. `Heading1` carries
 its own `<w:b/>`, which is where heading bold comes from.
+
+### The default paragraph style is layer 3, not a second base
+
+Most paragraphs in a real document carry no `w:pStyle` at all, and Word
+gives them the default paragraph style — so this is the layer that decides
+what an ordinary paragraph looks like. `_ResolverCache.default_paragraph_style_id`
+picks it: the **last** `w:type="paragraph"` style whose `w:default` is on,
+else the style whose id is `Normal`, else nothing.
+
+It substitutes whenever `w:pStyle` fails to resolve — absent, dangling, or
+naming a style of the wrong type — and then behaves as a completely
+ordinary paragraph style: it is the reported `style_id`, it supplies
+numbering, and it counts as one of the toggle rule's *levels* (a bold
+`Normal` and a bold character style cancel).
+
+Its position matters more than its existence. Sitting it under
+`docDefaults` would be simpler and would match nearly every measurement,
+but it would lose the one case that pins it down: a `Normal` declaring
+20pt against a table style declaring 36pt renders at **20pt**. The default
+style beats the table style, base and `w:tblStylePr` branches alike, so it
+has to be layer 3. `_apply_cell_cascade` therefore ends with it too — a
+cell is otherwise just `docDefaults` plus a table style, which is not what
+Word reports for an untouched cell.
+
+The other two `w:default="1"` styles do nothing at all:
+`DefaultParagraphFont` never reaches a run and `TableNormal` never reaches
+a table. Only `w:pStyle` has a fallback.
+
+### Style references are typed
+
+`cache.style(style_id, kind)` and `cache.chain(style_id, kind)` take the
+type the *reference* demands, and return nothing when the style is of
+another type. This is why `w:rStyle` naming a paragraph style contributes
+nothing, and why a `w:basedOn` crossing types ends the chain rather than
+extending it. Without it the resolver happily followed all of them.
+
+Both rules were settled against live Word —
+`tests/test_default_styles_word_verified.py`.
 
 ### Toggle properties
 

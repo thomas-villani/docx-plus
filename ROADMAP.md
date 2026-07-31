@@ -243,13 +243,44 @@ correctly and uselessly is a rule nobody runs twice.
   overrides, so the answer had to come out of Word's layout — PDF export,
   paragraph baselines measured.
 
-  Still measured only by inference, and next in line: the cell cascade
-  (`_apply_cell_cascade` is docDefaults plus the table style and nothing
-  else). One structural question stayed unmeasured: whether a **continuous
+  One structural question stayed unmeasured: whether a **continuous
   section break** between two same-style contextual paragraphs breaks the
   suppression. Word turned the probe's break into a page break twice; the
   resolver treats the pair as adjacent, which is what sibling adjacency
   implies.
+
+- **The default paragraph style was never applied at all**, which is most
+  paragraphs in most documents — anything without a `w:pStyle` resolved to
+  `docDefaults` and reported no style. Going after the cell cascade turned
+  this up instead: the cell cascade *was* incomplete, but only as one
+  symptom of a missing layer.
+
+  The measurement that mattered was the one that placed it. Sitting the
+  default under `docDefaults` matches nearly every reading, and gets one
+  case wrong: a `Normal` declaring 20pt against a table style declaring
+  36pt renders at 20pt, so the default style beats the table style and has
+  to be the paragraph-style layer. Selection is by declaration order (last
+  `w:default` wins), measured both ways round, with a fallback to the id
+  `Normal`. The two other `w:default="1"` styles turned out to be
+  non-events — `DefaultParagraphFont` and `TableNormal` never apply.
+
+  The same probes turned up a second, unrelated divergence: **style
+  references were followed without checking `w:type`**. Word ignores a
+  `w:rStyle` naming a paragraph style and severs a `w:basedOn` that
+  crosses types; the resolver followed all of them. 95 of 96 reads now
+  agree — the one is cosmetic, Word's COM naming a `Normal` style in a
+  document that has none. See `tests/test_default_styles_word_verified.py`.
+
+  Method note: COM was a perfectly good oracle here, unlike the theme and
+  spacing rounds. The question is which style *won*, and `Range.Font` plus
+  `Range.Style` answer exactly that. One probe was confounded and had to be
+  rebuilt — reusing `List Number`'s `numId` to test style-supplied
+  numbering failed because its `abstractNum` carries a `w:styleLink`
+  binding it to that style, so even the control went unnumbered.
+
+  Next in line, and still resting on inference: nothing in the run and
+  paragraph cascade. `w:tcPr` / `w:trPr` / `w:tblPrEx` cell-level
+  properties remain unresolved by design (they carry no `rPr` / `pPr`).
 - **Paragraph-mark `rPr` is not a run baseline.** It formats the pilcrow.
   The old paragraph-level baseline folded it in, so a run matching it
   looked redundant when deleting the property would have changed the
