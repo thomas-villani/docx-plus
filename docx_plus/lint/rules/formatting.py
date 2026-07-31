@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from docx_plus.lint.models import Issue, Location
+from docx_plus.lint.models import Fix, FixOperation, Issue, Location
 from docx_plus.lint.registry import rule
 
 if TYPE_CHECKING:
@@ -179,6 +179,24 @@ def redundant_direct_formatting(ctx: LintContext) -> Iterator[Issue]:
                     f"{_label(p)}={getattr(resolved_run.formatting, p)!r}" for p in redundant
                 ),
                 expected="inherited from the style",
+                # The only fix in the catalogue that is provably render-safe,
+                # and it is provable for the same reason the finding exists:
+                # the rule found these properties precisely by checking that
+                # the value surfacing without them is the one already there.
+                fix=Fix(
+                    summary=f"Delete the run's direct {names}; the style supplies the same value.",
+                    safety="safe",
+                    operations=(
+                        FixOperation(
+                            op="clear-run-properties",
+                            args={
+                                "paragraph_index": resolved.index,
+                                "run_index": resolved_run.index,
+                                "properties": list(redundant),
+                            },
+                        ),
+                    ),
+                ),
             )
 
 
@@ -241,6 +259,21 @@ def style_drift(ctx: LintContext) -> Iterator[Issue]:
             ),
             observed=", ".join(f"{_label(p)}={getattr(resolved.formatting, p)!r}" for p in drifted),
             expected=", ".join(f"{_label(p)}={getattr(baseline, p)!r}" for p in drifted),
+            # ``review``, not ``safe``: the whole point of the finding is
+            # that the direct value differs from the style's, so clearing it
+            # changes the rendering. That may be exactly right — it is what
+            # makes the document follow its styles again — but it is a
+            # judgement, and the old value is in ``observed`` either way.
+            fix=Fix(
+                summary=f"Clear the paragraph's direct {names} so {style} applies.",
+                safety="review",
+                operations=(
+                    FixOperation(
+                        op="clear-paragraph-properties",
+                        args={"paragraph_index": resolved.index, "properties": list(drifted)},
+                    ),
+                ),
+            ),
         )
 
 
@@ -264,6 +297,10 @@ def mixed_run_formatting(ctx: LintContext) -> Iterator[Issue]:
     because Word returns an "undefined" sentinel for a paragraph whose runs
     disagree and cannot say which run is the outlier. Sweeping the runs
     ourselves means we can name them.
+
+    It carries no fix all the same, for a different reason: naming the
+    outlier is not the same as knowing which value is the right one. A
+    paragraph split evenly between two fonts has no minority to correct.
     """
     for resolved in ctx.paragraphs:
         if len(resolved.runs) < 2:
@@ -317,6 +354,12 @@ def font_outliers(ctx: LintContext) -> Iterator[Issue]:
     Off by default. The thresholds are a judgement about what counts as
     marginal, and a document that genuinely mixes fonts by design would
     report every one of them.
+
+    Report-only. The obvious fix — write the dominant font and size onto
+    the run — is the wrong shape: it replaces one direct override with
+    another, leaving the document exactly as style-blind as it was. What
+    these runs actually need is a style, and picking one is the restyle
+    planner's job rather than a rule's.
     """
     combinations = Counter(
         (r.formatting.font_name, r.formatting.font_size)
@@ -421,4 +464,18 @@ def mixed_language(ctx: LintContext) -> Iterator[Issue]:
                 ),
                 observed=language,
                 expected=dominant,
+                fix=Fix(
+                    summary=f"Retag the run as {dominant}.",
+                    safety="review",
+                    operations=(
+                        FixOperation(
+                            op="set-run-language",
+                            args={
+                                "paragraph_index": resolved.index,
+                                "run_index": resolved_run.index,
+                                "lang": dominant,
+                            },
+                        ),
+                    ),
+                ),
             )

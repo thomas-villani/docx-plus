@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from docx_plus.cli._io import dump_json, load_document
+from docx_plus.cli._io import add_lint_options, dump_json, load_document, resolve_profile
 from docx_plus.lint import all_rules, lint
 
 if TYPE_CHECKING:
@@ -37,29 +37,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
     )
     parser.add_argument("file", nargs="?", help="path to the .docx file to audit")
-    parser.add_argument(
-        "--rule",
-        dest="select",
-        action="append",
-        metavar="ID|TAG",
-        help=(
-            "only run this rule id or tag (repeatable). Naming a tag also enables "
-            "that cluster's off-by-default rules."
-        ),
-    )
-    parser.add_argument(
-        "--exclude",
-        dest="exclude",
-        action="append",
-        metavar="ID|TAG",
-        help="skip this rule id or tag (repeatable); applied last",
-    )
-    parser.add_argument(
-        "--no-tables",
-        dest="include_tables",
-        action="store_false",
-        help="skip paragraphs inside table cells",
-    )
+    add_lint_options(parser)
     parser.add_argument(
         "--list-rules",
         action="store_true",
@@ -178,6 +156,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
         select=args.select,
         exclude=args.exclude,
         include_tables=args.include_tables,
+        profile=resolve_profile(args),
     )
 
     if args.as_json:

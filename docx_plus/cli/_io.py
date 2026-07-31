@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from docx import Document
 
 from docx_plus.core import DocxPlusError
+from docx_plus.lint import DEFAULT_PROFILE_NAME, Profile
 
 if TYPE_CHECKING:
     import argparse
@@ -85,3 +86,67 @@ def save_document(doc: DocumentObj, path: Path) -> None:
 def dump_json(obj: Any) -> None:
     """Print ``obj`` as indented JSON, stringifying non-JSON types (datetimes)."""
     print(json.dumps(obj, indent=2, default=str))
+
+
+def add_lint_options(parser: argparse.ArgumentParser) -> None:
+    """Add the rule-selection and profile options ``lint`` and ``plan`` share.
+
+    Both commands answer the same question about the same document — one
+    reports it, the other says what a repair would do — so they take the
+    same selectors. Splitting the definitions would let the two drift.
+    """
+    parser.add_argument(
+        "--rule",
+        dest="select",
+        action="append",
+        metavar="ID|TAG",
+        help=(
+            "only run this rule id or tag (repeatable). Naming a tag also enables "
+            "that cluster's off-by-default rules."
+        ),
+    )
+    parser.add_argument(
+        "--exclude",
+        dest="exclude",
+        action="append",
+        metavar="ID|TAG",
+        help="skip this rule id or tag (repeatable); applied last",
+    )
+    parser.add_argument(
+        "--no-tables",
+        dest="include_tables",
+        action="store_false",
+        help="skip paragraphs inside table cells",
+    )
+    parser.add_argument(
+        "--profile",
+        metavar="PATH",
+        help=(
+            f"lint profile to apply. Without this, {DEFAULT_PROFILE_NAME} is "
+            f"looked for beside the document and upwards."
+        ),
+    )
+    parser.add_argument(
+        "--no-profile",
+        action="store_true",
+        help="ignore any profile, including a discovered one",
+    )
+
+
+def resolve_profile(args: argparse.Namespace) -> Profile:
+    """Load the profile a lint-family command should run under.
+
+    Explicit ``--profile`` wins; otherwise the checked-in profile beside the
+    document (or above it) applies, the way every other linter behaves. A
+    named path that does not exist is an error rather than a silent fall
+    back to discovery — asking for a specific profile and quietly getting a
+    different one is the worst of both.
+    """
+    if args.no_profile:
+        return Profile()
+    if args.profile:
+        path = Path(args.profile).expanduser()
+        if not path.is_file():
+            raise CliError(f"{path} not found")
+        return Profile.load(path)
+    return Profile.discover(Path(args.file).expanduser())

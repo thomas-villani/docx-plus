@@ -14,7 +14,7 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from docx_plus.lint.models import Issue, Location
+from docx_plus.lint.models import Fix, FixOperation, Issue, Location
 from docx_plus.lint.registry import rule
 from docx_plus.styles import list_styles
 
@@ -72,6 +72,9 @@ def heading_level_skip(ctx: LintContext) -> Iterator[Issue]:
 
     A skipped level breaks the document's navigation pane, its table of
     contents, and every accessibility tool that reads the outline.
+
+    Report-only: promoting this heading and demoting the one above it are
+    both valid repairs and they produce different documents.
     """
     previous: int | None = None
     for resolved in ctx.paragraphs:
@@ -102,7 +105,12 @@ def heading_level_skip(ctx: LintContext) -> Iterator[Issue]:
     tags={"structure", "headings"},
 )
 def empty_heading(ctx: LintContext) -> Iterator[Issue]:
-    """Flag heading paragraphs that carry no text."""
+    """Flag heading paragraphs that carry no text.
+
+    Report-only: an empty heading is either a stray paragraph to delete or
+    a section whose title never got typed, and the document cannot say
+    which.
+    """
     for resolved in ctx.paragraphs:
         if _heading_level(resolved) is None:
             continue
@@ -131,6 +139,10 @@ def manual_list(ctx: LintContext) -> Iterator[Issue]:
     Only reachable because ``num_id`` now resolves through the style chain:
     a paragraph styled ``List Bullet`` reports its style's numbering, so a
     genuinely numbered item no longer looks hand-typed.
+
+    Report-only: the repair strips the typed marker and applies a real
+    list, and which list — an existing definition, a new one, at which
+    level — is a choice the paragraph does not contain.
     """
     for resolved in ctx.paragraphs:
         if resolved.formatting.num_id:
@@ -203,6 +215,21 @@ def direct_numbering_override(ctx: LintContext) -> Iterator[Issue]:
             # legitimate reason to override: it is the only way to take a
             # single paragraph out of a style's list.
             severity="info" if suppressed else None,
+            # ...which is also why the suppressed case carries no fix. The
+            # repair would put the paragraph back in the list, undoing
+            # something someone did deliberately. Reporting it is enough.
+            fix=None
+            if suppressed
+            else Fix(
+                summary=f"Drop the direct numbering so the style's list {from_style} applies.",
+                safety="review",
+                operations=(
+                    FixOperation(
+                        op="clear-paragraph-numbering",
+                        args={"paragraph_index": resolved.index},
+                    ),
+                ),
+            ),
         )
 
 
@@ -228,6 +255,12 @@ def list_numbering_continuity(ctx: LintContext) -> Iterator[Issue]:
     Reachable only because ``num_id`` resolves through the style chain: a
     correctly-styled ``List Number`` paragraph reports the list its style
     supplies rather than nothing at all.
+
+    Report-only. Pointing the run of items at one list is the repair, but
+    the two lists have their own definitions — glyphs, indents, start
+    values — so whichever survives changes how the other half looks. And
+    where the numbering comes from a style, the honest repair is to the
+    style rather than to these paragraphs.
     """
     previous: ResolvedParagraph | None = None
     for resolved in ctx.paragraphs:
@@ -286,6 +319,9 @@ def manual_heading_formatting(ctx: LintContext) -> Iterator[Issue]:
     it is not a body paragraph dressed up as a heading. The template's
     ``Caption`` style is bold, so without this the rule reports every
     caption in the document.
+
+    Report-only: applying a heading style needs a *level*, and the fact
+    that a line is bold says nothing about how deep it sits.
     """
     body_size = _dominant_body_size(ctx)
     default_style = _default_paragraph_style(ctx)

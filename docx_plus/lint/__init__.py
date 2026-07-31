@@ -20,20 +20,32 @@ So `docx_plus` reports that forty paragraphs resolve identically under
 three different style ids; it does not assert that this is wrong. What to
 do about it stays the author's call.
 
+Nothing here writes. :func:`lint` reports, and :func:`plan_fixes` turns
+findings into an ordered, serializable description of what a repair pass
+*would* change — deliberately stopping short of applying it, so the fix
+model is designed and reviewed while no code path can corrupt a document.
+
 Example:
     >>> from docx import Document
-    >>> from docx_plus.lint import lint
+    >>> from docx_plus.lint import lint, plan_fixes
     >>> doc = Document()
     >>> _ = doc.add_paragraph("Spaced  out .")
     >>> for finding in lint(doc):
     ...     print(finding.rule)
     double-space
     space-before-punctuation
+    >>> plan = plan_fixes(lint(doc))
+    >>> print(len(plan.fixes), "edits,", len(plan.conflicts), "conflicts")
+    2 edits, 0 conflicts
 """
 
 from docx_plus.lint.engine import lint
 from docx_plus.lint.models import (
     Finding,
+    Fix,
+    FixOp,
+    FixOperation,
+    FixSafety,
     Issue,
     LintContext,
     Location,
@@ -41,19 +53,38 @@ from docx_plus.lint.models import (
     RuleKind,
     Severity,
 )
+from docx_plus.lint.plan import FixConflict, FixPlan, PlannedFix, plan_fixes
+from docx_plus.lint.profile import (
+    DEFAULT_PROFILE_NAME,
+    InvalidProfileError,
+    Profile,
+    RuleSettings,
+)
 from docx_plus.lint.registry import UnknownRuleError, all_rules, rule, select_rules
 
 __all__ = [
+    "DEFAULT_PROFILE_NAME",
     "Finding",
+    "Fix",
+    "FixConflict",
+    "FixOp",
+    "FixOperation",
+    "FixPlan",
+    "FixSafety",
+    "InvalidProfileError",
     "Issue",
     "LintContext",
     "Location",
+    "PlannedFix",
+    "Profile",
     "Rule",
     "RuleKind",
+    "RuleSettings",
     "Severity",
     "UnknownRuleError",
     "all_rules",
     "lint",
+    "plan_fixes",
     "rule",
     "select_rules",
 ]

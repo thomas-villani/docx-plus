@@ -15,6 +15,7 @@ usage: docx-plus [-h] [--version] <command> ...
   controls  list, set, or clear content-control values
   comments  list comment threads, or resolve / reopen them
   lint      audit a document for formatting defects
+  plan      show the edits that would repair a document
   skill     locate, read, or install the packaged agent skill
 ```
 
@@ -35,9 +36,9 @@ Exit codes: `0` on success, `1` for a handled error (bad path, missing output,
 un-coercible value, unknown control tag, unknown comment id), `2` for a usage
 error or when no command is given.
 
-`lint` overloads `1` deliberately: a successful audit that *found something*
-also exits `1`, so the command works as a CI gate. A genuine failure is still
-distinguishable — it prints an `error:` line to stderr and no findings.
+`lint` and `plan` overload `1` deliberately: a successful run that *found
+something* also exits `1`, so both work as CI gates. A genuine failure is
+still distinguishable — it prints an `error:` line to stderr and no findings.
 
 ## `inspect`
 
@@ -216,10 +217,81 @@ and it is worth understanding before you act on output:
   enabled, because the library has no opinion about your house style.
 
 `--json` emits the full finding shape — rule, kind, severity, message,
-location, observed / expected — for piping into `jq` or a report.
+location, observed / expected, `fixable`, `adds_content` — for piping into
+`jq` or a report.
 
 `--no-tables` skips paragraphs inside table cells. Headers, footers,
 footnotes, endnotes, and comments are not audited at all yet.
+
+**Profiles.** `--profile PATH` applies a
+[lint profile](reference/lint.md#profiles) — per-rule enable / disable and
+severity overrides. Without it, `docx-plus-lint.json` is looked for beside
+the document and upwards, so a repository can check its conventions in;
+`--no-profile` ignores both. `lint` and `plan` take the same options.
+
+## `plan`
+
+Show what repairing a document would change, wrapping
+[`plan_fixes`](reference/lint.md#fixes-and-the-plan). Also read-only —
+**this release applies nothing.** The command exists to make the repair
+inspectable before anything can perform it.
+
+```console
+$ docx-plus plan report.docx
+3 edit(s), in the order they would be applied:
+
+1. [check] paragraph 0  double-space
+     Collapse 1 run of spaces to a single space.
+     - replace-paragraph-text paragraph_index=0 spans=[9-11->' ']
+2. [safe ] paragraph 4, run 0  redundant-direct-formatting
+     Delete the run's direct size; the style supplies the same value.
+     - clear-run-properties paragraph_index=4 run_index=0 properties=font_size
+3. [check] paragraph 5  style-drift
+     Clear the paragraph's direct space after so Normal applies.
+     - clear-paragraph-properties paragraph_index=5 properties=spacing_after
+
+2 finding(s) with no known repair:
+     1  heading-level-skip
+     1  manual-list
+
+3 to apply, 0 withheld, 0 dropped, 2 unfixable.
+```
+
+The four possible sections are the four things that can happen to a finding:
+it becomes an edit, it is withheld for changing content, it loses a
+collision with another edit, or nobody knows how to fix it. Every finding
+lands in exactly one, so the report accounts for the whole audit rather than
+listing only the good news.
+
+The bracketed mark is the fix's **safety class**: `safe` means the document
+renders identically afterwards and only the XML gets tidier, `check` means
+the rendering or text changes deliberately, and `DROP` means something is
+removed that cannot be reconstructed.
+
+**The content gate.** An edit that deletes a paragraph or a style definition
+changes what the document *contains*, not how it looks, so it is withheld
+and reported separately:
+
+```console
+$ docx-plus plan report.docx --rule stray-empty-paragraph
+No edits.
+
+1 withheld - these change what the document contains:
+  paragraph 6  stray-empty-paragraph
+    Delete 1 empty paragraph, keeping one.
+  (re-run with --allow-content to include them)
+
+0 to apply, 1 withheld, 0 dropped, 0 unfixable.
+```
+
+`--allow-content` includes them. `--json` emits the whole plan
+— every operation with its arguments — so it can be stored, reviewed, or
+diffed between runs. `--rule`, `--exclude`, `--no-tables`, `--profile`, and
+`--no-profile` work exactly as they do for `lint`.
+
+Exit code `1` when the plan holds any edit, applied or withheld, so `plan`
+gates a pipeline on "is there anything a repair pass would do". Findings
+nobody can repair do not fail that gate.
 
 ## `skill`
 

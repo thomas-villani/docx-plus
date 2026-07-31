@@ -60,6 +60,9 @@ def broken_cross_reference(ctx: LintContext) -> Iterator[Issue]:
     point. Both halves are already covered:
     :func:`~docx_plus.fields.read_fields` gives the reference and
     :func:`~docx_plus.bookmarks.read_bookmarks` gives the targets.
+
+    Report-only, and unusually clearly so: the bookmark this field wanted
+    is gone, and nothing left in the document says what it pointed at.
     """
     defined = {bookmark.name for bookmark in read_bookmarks(ctx.doc)}
     sweep_index = _sweep_index_by_body_index(ctx)
@@ -108,6 +111,12 @@ def caption_manual_numbering(ctx: LintContext) -> Iterator[Issue]:
     text beginning "Table 2" is as likely to be prose about table 2. The
     style resolves through the cascade, so a caption style reached via
     ``basedOn`` still counts.
+
+    Report-only. Swapping typed text for a ``SEQ`` field replaces content
+    with a field whose result is whatever Word computes next time, and the
+    number it lands on depends on every other caption in the document —
+    including the ones this rule is also reporting. That is a whole-document
+    renumbering, not a per-paragraph edit.
     """
     sweep_index = _sweep_index_by_body_index(ctx)
     numbered = {

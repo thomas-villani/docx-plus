@@ -10,9 +10,9 @@ into the sweep plus an excerpt.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from docx_plus.styles import resolve_effective_formatting
 
@@ -46,6 +46,122 @@ layer honest about opinions.
 
 
 _SEVERITY_RANK: dict[str, int] = {"error": 0, "warning": 1, "info": 2}
+
+
+FixSafety = Literal["safe", "review", "destructive"]
+"""How much trust applying a fix asks for.
+
+Orthogonal to :attr:`Finding.adds_content`, which is about *what* changes
+(content or only formatting); this is about *how recoverable* the change is.
+
+- ``safe`` — the document renders identically afterwards. Only the XML gets
+  tidier: a property is deleted from a run and the same value arrives from
+  the style instead. This is the class ``redundant-direct-formatting``
+  produces, and it is provable rather than asserted — the rule found the
+  property precisely by comparing against the value that would surface
+  without it.
+- ``review`` — the rendering or the text changes, deliberately. The old
+  value is in the finding's ``observed``, so the change is reversible by
+  hand.
+- ``destructive`` — something is removed that the document cannot
+  reconstruct: a style definition and everything it declared, a paragraph
+  and its formatting.
+"""
+
+
+FixOp = Literal[
+    "clear-run-properties",
+    "clear-paragraph-properties",
+    "clear-paragraph-numbering",
+    "set-run-language",
+    "replace-paragraph-text",
+    "delete-paragraph",
+    "delete-style",
+]
+"""The closed vocabulary a fix is expressed in.
+
+Deliberately a **fixed set of named operations** rather than arbitrary
+callables. A plan has to survive being written to JSON, read by a human,
+and applied by a different process than the one that built it, and none of
+that works if an edit is a Python object holding a bound method.
+
+Each op and its ``args``:
+
+``clear-run-properties``
+    ``{"paragraph_index": int, "run_index": int, "properties": [str, ...]}``
+    — delete the named direct properties from the run's ``w:rPr``.
+``clear-paragraph-properties``
+    ``{"paragraph_index": int, "properties": [str, ...]}`` — the same for a
+    paragraph's ``w:pPr``.
+``clear-paragraph-numbering``
+    ``{"paragraph_index": int}`` — delete the paragraph's direct
+    ``w:numPr``, so the list its style supplies applies again.
+``set-run-language``
+    ``{"paragraph_index": int, "run_index": int, "lang": str}``.
+``replace-paragraph-text``
+    ``{"paragraph_index": int, "spans": [{"start": int, "end": int,
+    "replacement": str}, ...]}`` — half-open character spans into the
+    paragraph's text, all measured against the **original** text, so the
+    order they are applied in does not matter and two rules' spans can be
+    checked for overlap.
+``delete-paragraph``
+    ``{"paragraph_index": int}``.
+``delete-style``
+    ``{"style_id": str}``.
+
+Property names are :class:`~docx_plus.styles.ResolvedFormatting` field
+names — the vocabulary the finding already reported in, so a plan reads in
+the same terms as the report that produced it.
+"""
+
+
+@dataclass(frozen=True)
+class FixOperation:
+    """One named edit, with JSON-serializable arguments.
+
+    Attributes:
+        op: Which operation, from the :data:`FixOp` vocabulary.
+        args: Its arguments. Restricted to JSON types so a plan round-trips
+            through a file.
+    """
+
+    op: FixOp
+    args: Mapping[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        """The serializable record for this operation."""
+        return {"op": self.op, "args": dict(self.args)}
+
+
+@dataclass(frozen=True)
+class Fix:
+    """What a rule would do about the thing it found.
+
+    A fix is **described, never executed**, in this release: ``lint`` and
+    :func:`~docx_plus.lint.plan_fixes` are both pure reads. Describing it
+    first is the point — the fix model gets designed and reviewed while
+    nothing can yet corrupt a document.
+
+    Attributes:
+        summary: One line, in the document's terms: what would change.
+        safety: See :data:`FixSafety`.
+        operations: The edits, **in the order they must be applied**. A rule
+            supplying more than one is asserting that order matters — a run
+            of empty paragraphs is deleted back to front so the earlier
+            indices stay valid.
+    """
+
+    summary: str
+    safety: FixSafety
+    operations: tuple[FixOperation, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """The serializable record for this fix."""
+        return {
+            "summary": self.summary,
+            "safety": self.safety,
+            "operations": [op.to_dict() for op in self.operations],
+        }
 
 
 @dataclass(frozen=True)
@@ -101,9 +217,13 @@ class Issue:
             meaningful.
         severity: Overrides the rule's default severity for this one
             finding, for rules whose seriousness depends on what they found.
-        fixable: Whether a fix is known.
+        fix: What would repair it, or ``None`` where no unambiguous repair
+            exists. There is no separate "fixable" flag to keep in step:
+            a finding is fixable exactly when it carries a fix.
         adds_content: Whether the eventual fix would insert or delete
-            content rather than only change formatting.
+            content rather than only change formatting. Set independently of
+            :attr:`fix`, so a rule can say "repairing this would change what
+            the document says" while leaving the repair itself unmodelled.
     """
 
     message: str
@@ -111,7 +231,7 @@ class Issue:
     observed: str | None = None
     expected: str | None = None
     severity: Severity | None = None
-    fixable: bool = False
+    fix: Fix | None = None
     adds_content: bool = False
 
 
@@ -129,12 +249,13 @@ class Finding:
         expected: The value the rule would have expected, where that is
             meaningful. ``None`` for rules that report a shape rather than a
             mismatch.
-        fixable: Whether a fix is known. Always ``False`` in v0.6 — the
-            plan/apply half is v0.7 — but part of the shape now so rules do
-            not have to be rewritten to gain one.
-        adds_content: Whether the eventual fix would insert or delete
-            content rather than only change formatting. Such fixes are
-            withheld unless a caller opts in.
+        fix: What would repair it, or ``None`` where no unambiguous repair
+            exists — which is most of the outline and reference rules, since
+            "the outline skips a level" does not say whether to promote the
+            heading or demote the one above it.
+        adds_content: Whether the fix would insert or delete content rather
+            than only change formatting. :func:`~docx_plus.lint.plan_fixes`
+            withholds those unless a caller opts in.
     """
 
     rule: str
@@ -144,8 +265,13 @@ class Finding:
     location: Location = field(default_factory=Location)
     observed: str | None = None
     expected: str | None = None
-    fixable: bool = False
+    fix: Fix | None = None
     adds_content: bool = False
+
+    @property
+    def fixable(self) -> bool:
+        """Whether a repair is known — exactly whether :attr:`fix` is set."""
+        return self.fix is not None
 
     @property
     def sort_key(self) -> tuple[int, int, int]:
@@ -263,6 +389,10 @@ class Rule:
 __all__ = [
     "CheckFn",
     "Finding",
+    "Fix",
+    "FixOp",
+    "FixOperation",
+    "FixSafety",
     "Issue",
     "LintContext",
     "Location",

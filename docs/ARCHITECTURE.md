@@ -1490,8 +1490,11 @@ behind a `docx-plus skill` command.
 
 v0.6 is scoped to the **linter** — a new `lint/` composing layer that
 sits where `cli/` sits, above the capability modules, reporting findings
-over the style cascade and producing an inspectable fix plan. The cycle
-is non-mutating; applying that plan is v0.7.
+over the style cascade and producing an inspectable fix plan. Both halves
+have now landed: twenty rules behind `docx-plus lint`, and
+`plan_fixes(findings) -> FixPlan` behind `docx-plus plan`. The cycle is
+non-mutating throughout — a plan is a serializable description of edits
+and nothing applies one; that is v0.7.
 
 The authoritative roadmap for that cycle and for everything on the
 backlog — bounded items and dependency-gated ones (the cell-formatting
