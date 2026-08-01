@@ -7,7 +7,7 @@ single controls.
 
 The five typed errors are all dual-base (`DocxPlusError` plus a stdlib
 exception) so callers can match either contract — see
-[`ARCHITECTURE.md` §9](../ARCHITECTURE.md#9-error-hierarchy).
+[the error hierarchy](../concepts/invariants.md#error-hierarchy).
 
 ::: docx_plus.controls.read
     options:

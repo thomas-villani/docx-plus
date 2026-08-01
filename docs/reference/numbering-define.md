@@ -10,7 +10,7 @@ at one. Paragraphs reference the instance, never the abstract definition
 — which is what makes [restarting](numbering-apply.md) possible.
 
 Architecture walkthrough:
-[`ARCHITECTURE.md` §7.13](../ARCHITECTURE.md#713-custom-numbering).
+[Custom numbering](../concepts/numbering.md).
 
 !!! tip "Size the hanging indent to the number"
 

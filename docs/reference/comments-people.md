@@ -37,7 +37,7 @@ ref-counted across every surviving comment. `clear_author_presence` is
 the explicit escape hatch.
 
 Architecture walkthrough:
-[`ARCHITECTURE.md` §7.6.2](../ARCHITECTURE.md#762-durable-comment-ids-and-author-presence).
+[Durable ids and author presence](../concepts/comments.md#durable-ids-and-author-presence).
 
 ::: docx_plus.comments.people
     options:

@@ -6,7 +6,7 @@ caption names instead of paragraph outline levels — the
 `caption_type` must match the value passed to
 [`docx_plus.publishing.add_caption`](publishing-captions.md).
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.10](../ARCHITECTURE.md#710-publishing).
+Architecture walkthrough: [Publishing](../concepts/publishing.md).
 
 ::: docx_plus.publishing.figures
     options:

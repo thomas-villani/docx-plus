@@ -7,7 +7,7 @@ first use via `core.get_or_create_part`). `edit_footnote` / `edit_endnote`
 replace the body text of an existing note in place; reserved ids (`-1`
 separator, `0` continuation-separator) are not editable.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.9](../ARCHITECTURE.md#79-footnotes-and-endnotes).
+Architecture walkthrough: [Footnotes and endnotes](../concepts/notes.md).
 
 ::: docx_plus.notes.write
     options:

@@ -7,7 +7,7 @@ module fills the gap, validating names against Word's rules
 (`[A-Za-z_][A-Za-z0-9_]{0,39}`) so silently broken cross-references
 become impossible.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.8](../ARCHITECTURE.md#78-bookmarks-and-cross-references).
+Architecture walkthrough: [Bookmarks and cross-references](../concepts/bookmarks.md).
 
 ::: docx_plus.bookmarks.anchor
     options:

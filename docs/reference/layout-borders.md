@@ -8,7 +8,7 @@ default, matching Word's UI, or `"text"`). All four sides default to
 `None`; passing all-None removes the element rather than emitting an
 empty container.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.7](../ARCHITECTURE.md#77-layout).
+Architecture walkthrough: [Layout](../concepts/layout.md).
 
 ::: docx_plus.layout.borders
     options:

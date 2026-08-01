@@ -4,6 +4,34 @@ All notable changes to `docx_plus` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The documentation was split into a guides layer and a concepts layer.**
+  `docs/ARCHITECTURE.md` had grown to 1,692 lines and was doing double
+  duty: it held the design rationale *and* was the only place a user could
+  read about a capability, so every "how do I…" link in the README and the
+  landing page pointed into a deep anchor of one enormous page. There was
+  no task-oriented layer at all, and the nav was a flat list of 55
+  generated reference pages.
+
+  It is now three layers. `docs/getting-started.md` covers install, a first
+  script, and the seven conventions that apply across every module — units,
+  style ids vs. names, toggle tri-states, shared id registries, and the
+  `mark_fields_dirty` call whose absence is the single most common defect.
+  `docs/guides/` is twelve task-first pages, one per capability, each
+  ending in links to the reasoning and the signatures. `docs/concepts/` is
+  the old architecture material, split into eighteen pages that map onto
+  the guides one-for-one; nothing in it was rewritten, only re-homed and
+  re-linked.
+
+  `docs/ARCHITECTURE.md` remains as a section-by-section redirect table, so
+  external deep links land on a map rather than a 404. Every in-repo link
+  that pointed into it — `docs/API.md`, all 26 affected `reference/` pages,
+  the README, `CONTRIBUTING.md` — now points at the new page. The nav is
+  grouped, and `mkdocs build --strict` is clean with no unresolved anchors.
+
 ## [0.6.0] - 2026-07-31
 
 The linter cycle. `lint(doc)` audits a document and `plan_fixes(findings)`

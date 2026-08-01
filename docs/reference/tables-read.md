@@ -26,7 +26,7 @@ Note that `space` on a returned `Border` is always `0` — see
 [`tables.borders`](tables-borders.md) for why the writers pin it.
 
 Architecture walkthrough:
-[`ARCHITECTURE.md` §7.14](../ARCHITECTURE.md#714-table-formatting).
+[Table formatting](../concepts/tables.md).
 
 ::: docx_plus.tables.read
     options:

@@ -7,7 +7,7 @@ schema-strict child ordering in `<w:sectPr>` and supports the four
 ECMA-376 17.6.8 attributes: `countBy`, `restart`, `start`, and
 `distance`.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.7](../ARCHITECTURE.md#77-layout).
+Architecture walkthrough: [Layout](../concepts/layout.md).
 
 ::: docx_plus.layout.line_numbering
     options:
