@@ -4,7 +4,19 @@ All notable changes to `docx_plus` are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-07-31
+
+The linter cycle. `lint(doc)` audits a document and `plan_fixes(findings)`
+describes the repair; **nothing in this release applies a plan** — that is
+v0.7. Underneath it, the cascade resolver was driven against live Word and
+corrected in five areas that no amount of reading ECMA-376 would have
+settled.
+
+**Breaking:** `Layer.linkedCharStyle` is gone — a paragraph style's `w:link`
+partner is not a cascade layer, and Word never consults it to render a run.
+Callers naming it in `stop_below=` or matching on `FormattingSource.layer`
+must drop it. See the toggle-cascade entry under *Fixed*, which also changes
+what several documents resolve to.
 
 ### Added
 
@@ -1385,7 +1397,8 @@ first-class API, anchored comments, footnotes / endnotes, bookmarks
 and cross-references, table cell shading / borders, theme writing,
 password-protected forms, content-control binding to Custom XML Parts.
 
-[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/thomas-villani/docx-plus/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/thomas-villani/docx-plus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thomas-villani/docx-plus/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thomas-villani/docx-plus/compare/v0.2.1...v0.3.0

@@ -8,16 +8,17 @@ things `python-docx` can't. Every item below either fills a documented
 `python-docx` gap or rounds out a surface already started here. Ideas that
 don't fit that charter are routed to sibling projects, not absorbed.
 
-## Current state — v0.5.0 released
+## Current state — v0.6.0 released
 
 Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
-(2026-07-26), `v0.5.0` (2026-07-27). Shipped capability modules:
+(2026-07-26), `v0.5.0` (2026-07-27), `v0.6.0` (2026-07-31). Shipped
+capability modules:
 
 | Module | Surface |
 |---|---|
-| `styles/` | Cascade inspection (`ResolvedFormatting`, all 12 toggles, theme fonts + colors, conditional table styles), modification, remapping |
+| `styles/` | Cascade inspection (`ResolvedFormatting`, all 12 toggles, theme fonts + colors, conditional table styles), modification, remapping; document-wide sweep, `stop_below` baselines, resolved paragraph spacing, unused-style closure (v0.6) |
 | `controls/` | Content controls — `FormBuilder`, read / set / clear values |
-| `fields/` | Simple + complex fields, `mark_fields_dirty` |
+| `fields/` | Simple + complex fields, `mark_fields_dirty`, `read_fields` (v0.6) |
 | `protection/` | `protect_document` |
 | `comments/` | Anchored comments — add / edit / delete / clear, over runs, paragraphs, run ranges; threads — reply, resolve / reopen, nested read (v0.4); durable ids + author presence (v0.5) |
 | `layout/` | Columns, mid-document section breaks, even/odd headers, line numbering, page borders |
@@ -27,19 +28,14 @@ Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
 | `tables/` | Table / cell borders, table / row / cell shading, merge + unmerge, `w:hMerge` normalization, direct-formatting read (v0.5) |
 | `numbering/` | Custom list definitions — define / apply / restart / read; bullet + numbered presets (v0.5) |
 | `revisions/` | Tracked changes — mark insertions / deletions, read revisions, accept / reject, track-changes toggle (v0.3) |
-| `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4), `skill` (path / list / show / install the packaged agent skill) (v0.5) |
+| `lint/` | Document linter — 20 rules over the resolved cascade, profiles, and `plan_fixes` (v0.6). Reports and plans; applies nothing |
+| `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4), `skill` (path / list / show / install the packaged agent skill) (v0.5), `lint` + `plan` (v0.6) |
 
-Suite at the v0.5.0 release: 1278 tests (1266 pass, 12
-LibreOffice-skipped), 95% coverage; `mypy --strict`, `ruff`, and
+Suite at the v0.6.0 release: 2055 tests (2043 pass, 12
+LibreOffice-skipped), 96% coverage; `mypy --strict`, `ruff`, and
 `mkdocs build --strict` all clean.
 
-Post-release, on `docs/public-facing-polish`: community health files
-(`CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue forms,
-PR template), a README rewritten for arrivals from PyPI, corrected
-version claims, expanded package metadata, and the social preview card.
-No library API change.
-
-## v0.6 — planned: the linter (`lint/`)
+## v0.6 — shipped: the linter (`lint/`)
 
 The flagship for the cycle, and the first surface here that is a *tool*
 rather than a capability. Cleaning up formatting after the content is
@@ -482,8 +478,9 @@ left open and three more found while writing them:
 - `docx_plus/examples/lint_document.py` — every other capability ships
   a runnable example; this one did not.
 
-Still outstanding: the version re-stamp (`API.md`, `SKILLS.md`, README,
-`docs/index.md`), which by definition follows the bump.
+The version re-stamp (`API.md`, `SKILLS.md`, README, `docs/index.md`)
+was done ahead of the bump rather than after it, which is the first
+cycle that has not left those four lagging a release behind.
 
 ### Review — done, and what it deferred
 

@@ -27,7 +27,7 @@ uv add docx-plus
 ```
 
 Requires Python 3.10+. The only dependencies are `python-docx` and
-`lxml`. Current release: **v0.5.0**, published 2026-07-27 on
+`lxml`. Current release: **v0.6.0**, published 2026-07-31 on
 [PyPI](https://pypi.org/project/docx-plus/).
 
 ## Capabilities
@@ -246,7 +246,7 @@ See [`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
 
 ## Project status
 
-**v0.5.0** — beta, and shipping. 2,043 tests, 96% coverage, `mypy
+**v0.6.0** — beta, and shipping. 2,043 tests, 96% coverage, `mypy
 --strict` clean with zero ignores. CI runs Python 3.10–3.13 on Linux
 plus a Windows job, and a lower-bound dependency job pinned to
 `python-docx==1.0.0` / `lxml==4.9.0`.
@@ -262,6 +262,7 @@ on minor versions and are called out in the
 | v0.3.0 | Tracked changes (`revisions/`) and the `docx-plus` CLI (`inspect`, `restyle`, `controls`) |
 | v0.4.0 | Threaded comments over `commentsExtended.xml`, and `docx-plus comments` |
 | v0.5.0 | Table formatting (`tables/`), custom numbering (`numbering/`), comment durable ids and author presence, the agent skill in the wheel behind `docx-plus skill` |
+| v0.6.0 | The linter (`lint/`) — 20 rules, profiles, `plan_fixes`, and `docx-plus lint` / `plan`; the cascade resolver corrected against live Word; the document-wide sweep, `stop_below` baselines, `read_fields` |
 
 [`ROADMAP.md`](https://github.com/thomas-villani/docx-plus/blob/main/ROADMAP.md)
 is the live record of what is shipped, backlogged, and deliberately

@@ -51,3 +51,6 @@ docs/_build/
 # Reference artifacts (extracted from docx-skill-files.zip for inspection)
 .skill-ref/
 docx-skill-files.zip
+
+# Personal notes/todo
+todo.md

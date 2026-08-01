@@ -285,7 +285,7 @@ Full docs are published at
 
 ## Project status
 
-**v0.5.0**, released 2026-07-27 — beta, and shipping. 2,043 tests,
+**v0.6.0**, released 2026-07-31 — beta, and shipping. 2,043 tests,
 96% coverage, `mypy --strict` clean with zero ignores. CI runs Python
 3.10–3.13 on Linux plus a Windows job, and a lower-bound dependency job
 pinned to `python-docx==1.0.0` / `lxml==4.9.0`.
@@ -317,6 +317,11 @@ demand reorders the list.
   (`numbering/`), comment durable ids and author presence
   (`commentsIds.xml` / `people.xml`), and the agent skill shipping in
   the wheel behind `docx-plus skill`.
+- **v0.6.0** — the document linter (`lint/`) with 20 rules, profiles,
+  and `plan_fixes`; `docx-plus lint` / `plan`; the cascade resolver
+  corrected against live Word (toggles, conditional table formatting,
+  theme colours, paragraph spacing, the default paragraph style); the
+  document-wide sweep, `stop_below` baselines, and `read_fields`.
 
 </details>
 

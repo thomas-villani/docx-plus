@@ -53,7 +53,7 @@ body:
     id: docx-plus-version
     attributes:
       label: docx_plus version
-      placeholder: "0.5.0"
+      placeholder: "0.6.0"
     validations:
       required: true
 

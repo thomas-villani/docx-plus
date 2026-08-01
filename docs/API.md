@@ -33,7 +33,7 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Public surface at v0.5.0
+## Public surface at v0.6.0
 
 v0.1's six phases, the initial v0.2 cycle (comments, layout, bookmarks
 / cross-references, footnotes / endnotes), the v0.2 in-place
@@ -42,10 +42,11 @@ page borders, conditional table-style formatting, publishing module),
 the v0.3 cycle (tracked changes, the `docx-plus` CLI), the v0.4
 cycle (threaded comments with resolve / reopen), and the v0.5 cycle
 (table formatting, custom numbering, comment durable ids and author
-presence, the packaged agent skill) are all complete.
-The v0.6 lint layer (`lint`, `plan_fixes`, and the `lint` / `plan` CLI
-commands) is in the tree and documented below; it ships with the next
-release. Fourteen runnable example scripts in
+presence, the packaged agent skill), and the v0.6 cycle (the `lint`
+layer — `lint`, `plan_fixes`, and the `lint` / `plan` CLI commands —
+plus the cascade corrections, the document sweep, `stop_below`
+baselines, and `read_fields`) are all complete.
+Fourteen runnable example scripts in
 `docx_plus/examples/` demonstrate the surface: `inspect_document.py`,
 `restyle_existing.py`, `build_form.py`, `populate_form.py`,
 `add_comments.py`, `threaded_comments.py`, `multi_column_layout.py`,
@@ -59,7 +60,7 @@ want to see the library in motion before reading the index.
 | Symbol | Kind | Notes |
 |---|---|---|
 | `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §9](ARCHITECTURE.md#9-error-hierarchy) |
-| `__version__` | str | `"0.5.0"` |
+| `__version__` | str | `"0.6.0"` |
 
 ### `docx_plus.core`
 
