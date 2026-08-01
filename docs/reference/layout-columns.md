@@ -7,7 +7,7 @@ module's single `set_columns` helper fills the gap, supporting equal
 columns, unequal columns via the `widths` argument, and the optional
 vertical separator line (`w:sep="1"`).
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.7](../ARCHITECTURE.md#77-layout).
+Architecture walkthrough: [Layout](../concepts/layout.md).
 
 ::: docx_plus.layout.columns
     options:

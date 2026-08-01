@@ -34,7 +34,7 @@ resolves to `Figure 1`, not to the description. Anything added with
 For an anchor the reader never sees, mint a hidden name with
 [`BookmarkNameRegistry.next_ref_name`](bookmarks-registry.md).
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.10](../ARCHITECTURE.md#710-publishing).
+Architecture walkthrough: [Publishing](../concepts/publishing.md).
 
 ::: docx_plus.publishing.captions
     options:

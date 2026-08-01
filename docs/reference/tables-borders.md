@@ -18,7 +18,7 @@ an empty container behind.
     between every table edge and its text.
 
 Architecture walkthrough:
-[`ARCHITECTURE.md` §7.14](../ARCHITECTURE.md#714-table-formatting).
+[Table formatting](../concepts/tables.md).
 
 ::: docx_plus.tables.borders
     options:

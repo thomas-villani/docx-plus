@@ -11,7 +11,7 @@ carrying a `<w:startOverride>`, giving an independent counter that looks
 identical.
 
 Architecture walkthrough:
-[`ARCHITECTURE.md` §7.13](../ARCHITECTURE.md#713-custom-numbering).
+[Custom numbering](../concepts/numbering.md).
 
 ::: docx_plus.numbering.apply
     options:

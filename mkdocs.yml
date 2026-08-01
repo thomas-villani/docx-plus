@@ -15,8 +15,9 @@ theme:
     repo: fontawesome/brands/github
   features:
     - navigation.sections
-    - navigation.expand
+    - navigation.indexes
     - navigation.top
+    - navigation.tracking
     - content.code.copy
     - content.action.edit
     - search.highlight
@@ -37,12 +38,47 @@ theme:
 
 nav:
   - Home: index.md
-  - Architecture: ARCHITECTURE.md
-  - API Index: API.md
+  - Getting started: getting-started.md
+  - Guides:
+      - guides/index.md
+      - Styles and the cascade: guides/styles.md
+      - Forms and protection: guides/forms.md
+      - Comments: guides/comments.md
+      - Tracked changes: guides/revisions.md
+      - Fields: guides/fields.md
+      - Publishing: guides/publishing.md
+      - Footnotes and endnotes: guides/notes.md
+      - Bookmarks and cross-references: guides/bookmarks.md
+      - Page layout: guides/layout.md
+      - Lists and numbering: guides/numbering.md
+      - Tables: guides/tables.md
+      - Linting: guides/linting.md
+  - Concepts:
+      - concepts/index.md
+      - Package layout: concepts/package-layout.md
+      - The cascade resolver: concepts/cascade.md
+      - "Styles: remapping and built-ins": concepts/styles.md
+      - Schema-strict insertion: concepts/schema-order.md
+      - Separate OOXML parts: concepts/parts.md
+      - Content controls: concepts/controls.md
+      - Fields and protection: concepts/fields.md
+      - Anchored comments: concepts/comments.md
+      - Layout: concepts/layout.md
+      - Bookmarks and cross-references: concepts/bookmarks.md
+      - Footnotes and endnotes: concepts/notes.md
+      - Publishing: concepts/publishing.md
+      - Tracked changes: concepts/revisions.md
+      - Custom numbering: concepts/numbering.md
+      - Table formatting: concepts/tables.md
+      - Linting and the fix plan: concepts/lint.md
+      - The CLI: concepts/cli.md
+      - Invariants, errors, and testing: concepts/invariants.md
+      - Moved: ARCHITECTURE.md
   - CLI: cli.md
   - Agent Skill: SKILLS.md
   - Changelog: https://github.com/thomas-villani/docx-plus/blob/main/CHANGELOG.md
   - Contributing: https://github.com/thomas-villani/docx-plus/blob/main/CONTRIBUTING.md
+  - API Index: API.md
   - Reference:
       - docx_plus.core.errors: reference/core-errors.md
       - docx_plus.core.ns: reference/core-ns.md
@@ -118,6 +154,7 @@ markdown_extensions:
   - admonition
   - attr_list
   - def_list
+  - md_in_html
   - tables
   - toc:
       permalink: true

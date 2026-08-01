@@ -11,7 +11,7 @@ Internal `XmlPart` subclasses for footnote and endnote content types are
 registered with `PartFactory.part_type_for` at import time so existing
 documents round-trip with parsed `.element` rather than raw blobs.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.5](../ARCHITECTURE.md#75-separate-ooxml-parts).
+Architecture walkthrough: [Separate OOXML parts](../concepts/parts.md).
 
 ::: docx_plus.core.parts
     options:

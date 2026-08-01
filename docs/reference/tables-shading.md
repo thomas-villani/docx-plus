@@ -18,7 +18,7 @@ what [`Shading`](#docx_plus.tables.shading.Shading) defaults to.
     visited once rather than once per column.
 
 Architecture walkthrough:
-[`ARCHITECTURE.md` §7.14](../ARCHITECTURE.md#714-table-formatting).
+[Table formatting](../concepts/tables.md).
 
 ::: docx_plus.tables.shading
     options:

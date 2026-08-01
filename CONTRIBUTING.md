@@ -81,7 +81,9 @@ Capability modules (`styles/`, `controls/`, `fields/`, `comments/`,
 `numbering/`, `revisions/`, `protection/`) build on `core/` and are
 largely independent of each other. `cli/` is the one layer that
 legitimately imports across capabilities. See
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full breakdown.
+[`docs/concepts/`](docs/concepts/index.md) for the full breakdown —
+[package layout](docs/concepts/package-layout.md) has the directory tree,
+[invariants](docs/concepts/invariants.md) has the rules that keep it flat.
 
 **Public surface.** Each subpackage's `__init__.py` `__all__` is
 authoritative. If a symbol is not in `__all__`, it is not public.
@@ -162,8 +164,8 @@ trusted publishing.
 
 `CHANGELOG.md` is maintained by hand. After a release, re-stamp the
 prose docs (README, `docs/index.md`, `docs/API.md`,
-`docs/ARCHITECTURE.md`, `docs/SKILLS.md`) for the new version — these
-have historically lagged behind the bump.
+`docs/getting-started.md`, `docs/concepts/index.md`, `docs/SKILLS.md`)
+for the new version — these have historically lagged behind the bump.
 
 ## License
 

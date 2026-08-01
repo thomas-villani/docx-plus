@@ -6,7 +6,7 @@ Writes the three body-side OOXML elements python-docx skips
 marker run) plus the comment body in `comments.xml` (created on first
 use). `delete_comment` is the inverse and idempotent.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.6](../ARCHITECTURE.md#76-anchored-comments).
+Architecture walkthrough: [Anchored comments](../concepts/comments.md).
 
 ::: docx_plus.comments.anchor
     options:

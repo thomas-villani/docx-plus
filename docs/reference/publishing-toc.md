@@ -8,7 +8,7 @@ on next open; call
 [`docx_plus.fields.mark_fields_dirty`](fields-update.md) before
 saving so the recalculation actually fires.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7.10](../ARCHITECTURE.md#710-publishing).
+Architecture walkthrough: [Publishing](../concepts/publishing.md).
 
 ::: docx_plus.publishing.toc
     options:

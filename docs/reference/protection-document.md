@@ -9,7 +9,7 @@ Unpassworded (SPEC §1 non-goal). Password-protected forms (legacy hash
 algorithm) remain deferred — neither v0.1 nor the v0.2 cycle added them.
 
 `w:documentProtection` placement follows CT_Settings schema order
-(before `w:defaultTabStop`) — see [`ARCHITECTURE.md` §7](../ARCHITECTURE.md#7-fields-and-protection).
+(before `w:defaultTabStop`) — see [Fields and protection](../concepts/fields.md).
 
 ::: docx_plus.protection.document
     options:

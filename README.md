@@ -13,8 +13,9 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 [Documentation](https://thomas-villani.github.io/docx-plus/) ·
+[Getting started](https://thomas-villani.github.io/docx-plus/getting-started/) ·
+[Guides](https://thomas-villani.github.io/docx-plus/guides/) ·
 [API index](https://thomas-villani.github.io/docx-plus/API/) ·
-[Architecture](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/) ·
 [Changelog](https://github.com/thomas-villani/docx-plus/blob/main/CHANGELOG.md) ·
 [Roadmap](https://github.com/thomas-villani/docx-plus/blob/main/ROADMAP.md)
 
@@ -67,26 +68,27 @@ Requires Python 3.10+. The only dependencies are `python-docx` and `lxml`.
 
 | | Capability | Module |
 |---|---|---|
-| **Styles** | Resolve the effective formatting of any paragraph / run / cell through the full eight-layer cascade, with per-field provenance. Create, modify, and remap styles; materialise any of **107** latent Word built-ins. | [`styles/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#2-the-cascade-resolver) |
-| **Content controls** | Text, dropdown, date, and checkbox controls via `FormBuilder`; read and write their values; round-trip through save / reopen. | [`controls/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#6-content-controls) |
-| **Comments** | Anchored comments with the body-side range markers python-docx omits — so Word's "show in document" actually works. Plus threading (reply / resolve / reopen), durable ids, and author presence. | [`comments/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#76-anchored-comments) |
-| **Tracked changes** | Mark runs as insertions or deletions, read every revision with author / timestamp / text, accept or reject them, toggle track-changes mode. | [`revisions/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#711-tracked-changes) |
-| **Fields** | `PAGE` / `NUMPAGES` / `DATE` and generic complex fields; mark fields dirty so Word recalculates on open. | [`fields/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#7-fields-and-protection) |
-| **Tables** | Table / row / cell borders and shading, cell merging and unmerging, `w:hMerge` normalization, direct-formatting reads. | [`tables/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#714-table-formatting) |
-| **Numbering** | Custom bullet and multi-level numbered list definitions, applied and restarted per paragraph. | [`numbering/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#713-custom-numbering) |
-| **Layout** | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders. | [`layout/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#77-layout) |
-| **Bookmarks** | Paired body markers plus `REF` / `PAGEREF` cross-references. | [`bookmarks/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#78-bookmarks-and-cross-references) |
-| **Notes** | Footnotes and endnotes over the separate `footnotes.xml` / `endnotes.xml` parts; insert and edit in place. | [`notes/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#79-footnotes-and-endnotes) |
-| **Publishing** | Table of Contents, figure / table captions via `SEQ`, Table of Figures. | [`publishing/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#710-publishing) |
-| **Protection** | Form-fill, read-only, comments-only, or tracked-changes enforcement at the document level. | [`protection/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#7-fields-and-protection) |
-| **Lint** | Audit a document for direct formatting fighting the styles, skipped outline levels, hand-typed lists, and whitespace used as layout — then describe the repair as an ordered, serializable plan. Read-only. | [`lint/`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#715-linting-and-the-fix-plan) |
+| **Styles** | Resolve the effective formatting of any paragraph / run / cell through the full eight-layer cascade, with per-field provenance. Create, modify, and remap styles; materialise any of **107** latent Word built-ins. | [`styles/`](https://thomas-villani.github.io/docx-plus/guides/styles/) |
+| **Content controls** | Text, dropdown, date, and checkbox controls via `FormBuilder`; read and write their values; round-trip through save / reopen. | [`controls/`](https://thomas-villani.github.io/docx-plus/guides/forms/) |
+| **Comments** | Anchored comments with the body-side range markers python-docx omits — so Word's "show in document" actually works. Plus threading (reply / resolve / reopen), durable ids, and author presence. | [`comments/`](https://thomas-villani.github.io/docx-plus/guides/comments/) |
+| **Tracked changes** | Mark runs as insertions or deletions, read every revision with author / timestamp / text, accept or reject them, toggle track-changes mode. | [`revisions/`](https://thomas-villani.github.io/docx-plus/guides/revisions/) |
+| **Fields** | `PAGE` / `NUMPAGES` / `DATE` and generic complex fields; mark fields dirty so Word recalculates on open. | [`fields/`](https://thomas-villani.github.io/docx-plus/guides/fields/) |
+| **Tables** | Table / row / cell borders and shading, cell merging and unmerging, `w:hMerge` normalization, direct-formatting reads. | [`tables/`](https://thomas-villani.github.io/docx-plus/guides/tables/) |
+| **Numbering** | Custom bullet and multi-level numbered list definitions, applied and restarted per paragraph. | [`numbering/`](https://thomas-villani.github.io/docx-plus/guides/numbering/) |
+| **Layout** | Multi-column sections, mid-document section breaks, distinct even/odd headers, line numbering, page borders. | [`layout/`](https://thomas-villani.github.io/docx-plus/guides/layout/) |
+| **Bookmarks** | Paired body markers plus `REF` / `PAGEREF` cross-references. | [`bookmarks/`](https://thomas-villani.github.io/docx-plus/guides/bookmarks/) |
+| **Notes** | Footnotes and endnotes over the separate `footnotes.xml` / `endnotes.xml` parts; insert and edit in place. | [`notes/`](https://thomas-villani.github.io/docx-plus/guides/notes/) |
+| **Publishing** | Table of Contents, figure / table captions via `SEQ`, Table of Figures. | [`publishing/`](https://thomas-villani.github.io/docx-plus/guides/publishing/) |
+| **Protection** | Form-fill, read-only, comments-only, or tracked-changes enforcement at the document level. | [`protection/`](https://thomas-villani.github.io/docx-plus/guides/forms/#locking-the-document) |
+| **Lint** | Audit a document for direct formatting fighting the styles, skipped outline levels, hand-typed lists, and whitespace used as layout — then describe the repair as an ordered, serializable plan. Read-only. | [`lint/`](https://thomas-villani.github.io/docx-plus/guides/linting/) |
 | **CLI** | `docx-plus inspect / restyle / controls / comments / lint / plan / skill` — the library from a shell. | [`cli/`](https://thomas-villani.github.io/docx-plus/cli/) |
 
 ## Quickstart
 
-A few of the most-used surfaces. The
-[documentation](https://thomas-villani.github.io/docx-plus/) covers all of
-them, and every module has runnable examples under
+Four of the most-used surfaces, each with a link to its full guide. Every
+capability has one — see the
+[guides index](https://thomas-villani.github.io/docx-plus/guides/) — plus
+runnable examples under
 [`docx_plus/examples/`](https://github.com/thomas-villani/docx-plus/tree/main/docx_plus/examples).
 
 ### Styles: define once, apply everywhere
@@ -112,25 +114,12 @@ doc.save("out.docx")
 
 This is the Word-native workflow: define a style, apply it. Change the
 style later and every paragraph using it follows — unlike direct
-formatting, which you have to remember to update everywhere.
+formatting, which you have to remember to update everywhere. `ensure_style`
+materialises any of Word's **107** latent built-ins with defaults extracted
+from real Word-saved samples, and `remap_styles` reconciles documents
+authored elsewhere that call the same style `"Heading 1"`.
 
-Word's built-ins (`Heading1`–`Heading9`, `Title`, `Quote`, `TOC1`–`TOC9`,
-`FootnoteText`, …) are **latent**: defined by Word's defaults but absent
-from `styles.xml` until used. `ensure_style` materialises them
-idempotently, with defaults extracted from real Word-saved samples
-rather than guessed:
-
-```python
-ensure_style(doc, "Heading1")   # materialises if absent
-ensure_style(doc, "Heading1")   # ...no-op the second time
-ensure_style(doc, "TOC2")       # 107 built-ins known
-```
-
-For documents authored elsewhere, where a style may be named `"Heading 1"`
-with a space, `ensure_style(doc, "Heading1", match_existing=True)` finds
-the existing definition via case- and space-insensitive matching — or use
-[`remap_styles`](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/#4-style-remapping-phase-35)
-for document-wide normalisation.
+→ **[Styles guide](https://thomas-villani.github.io/docx-plus/guides/styles/)**
 
 ### Forms: build a fillable document
 
@@ -166,6 +155,10 @@ values = read_controls(Document("filled.docx"))
 print(values["full_name"].value)   # 'Ada Lovelace'
 ```
 
+→ **[Forms guide](https://thomas-villani.github.io/docx-plus/guides/forms/)**
+— including `protect_document(mode="forms")` to lock everything but the
+controls.
+
 ### Comments: anchored to the text they're about
 
 ```python
@@ -189,22 +182,7 @@ tuple for ranges. Unlike python-docx's `Comments.add_comment` — which
 writes only the part-side body — `docx_plus` writes the three body-side
 anchors, so the comment is attached to a real span of text.
 
-### Tracked changes: propose edits, then accept or reject
-
-```python
-from docx import Document
-from docx_plus.revisions import accept_revision, mark_insertion, read_revisions
-
-doc = Document()
-p = doc.add_paragraph("The report is ")
-mark_insertion(p.add_run("nearly "), author="Alice")
-p.add_run("complete.")
-
-for rev in read_revisions(doc):
-    print(rev.revision_type, rev.author, rev.text)   # 'insertion' 'Alice' 'nearly '
-
-accept_revision(doc, rev.revision_id)   # or reject_revision / accept_all_revisions
-```
+→ **[Comments guide](https://thomas-villani.github.io/docx-plus/guides/comments/)**
 
 ### Publishing: TOC, captions, Table of Figures
 
@@ -228,6 +206,27 @@ add_table_of_figures(doc.add_paragraph(), caption_type="Figure")
 mark_fields_dirty(doc)   # Word populates TOC / SEQ / ToF on open
 doc.save("paper.docx")
 ```
+
+That `mark_fields_dirty` call is not optional — every field the library
+writes (TOC, captions, cross-references, page numbers, dates) renders blank
+on disk until Word recalculates it.
+
+→ **[Publishing guide](https://thomas-villani.github.io/docx-plus/guides/publishing/)**
+
+### The rest
+
+Tracked changes, tables, numbering, layout, bookmarks, footnotes, and the
+linter each have their own guide:
+
+| | |
+|---|---|
+| [Tracked changes](https://thomas-villani.github.io/docx-plus/guides/revisions/) | Mark insertions / deletions, read revisions, accept or reject |
+| [Tables](https://thomas-villani.github.io/docx-plus/guides/tables/) | Borders, shading, merging, legacy `w:hMerge` normalization |
+| [Lists and numbering](https://thomas-villani.github.io/docx-plus/guides/numbering/) | Bullet and multi-level definitions, applied and restarted |
+| [Page layout](https://thomas-villani.github.io/docx-plus/guides/layout/) | Columns, mid-document section breaks, line numbers, page borders |
+| [Bookmarks](https://thomas-villani.github.io/docx-plus/guides/bookmarks/) | Paired markers plus `REF` / `PAGEREF` cross-references |
+| [Footnotes and endnotes](https://thomas-villani.github.io/docx-plus/guides/notes/) | Insert and edit in place over the separate parts |
+| [Linting](https://thomas-villani.github.io/docx-plus/guides/linting/) | Audit an inherited document, and describe the repair |
 
 ## Command line
 
@@ -272,13 +271,19 @@ Full docs are published at
 [MkDocs](https://www.mkdocs.org) and
 [mkdocstrings](https://mkdocstrings.github.io).
 
+- **[Getting started](https://thomas-villani.github.io/docx-plus/getting-started/)** —
+  install, your first script, and the seven conventions that apply across
+  every module. Start here.
+- **[Guides](https://thomas-villani.github.io/docx-plus/guides/)** — one
+  task-oriented page per capability: styles, forms, comments, tracked
+  changes, tables, publishing, linting, and the rest.
+- **[Concepts](https://thomas-villani.github.io/docx-plus/concepts/)** —
+  the cascade algorithm, schema-strict insertion, the parts model, the
+  error hierarchy, and the invariants the library maintains. Read this if
+  you want to know *why* the OOXML looks the way it does.
 - **[API index](https://thomas-villani.github.io/docx-plus/API/)** —
   hand-curated index of every public symbol, linked to the generated
   reference.
-- **[Architecture](https://thomas-villani.github.io/docx-plus/ARCHITECTURE/)** —
-  module layout, the cascade algorithm, schema-strict insertion, the
-  error hierarchy, and the invariants the library maintains. Read this
-  if you want to know *why* the OOXML looks the way it does.
 - **[CLI reference](https://thomas-villani.github.io/docx-plus/cli/)**.
 - **[Test gaps](https://thomas-villani.github.io/docx-plus/TEST_GAPS/)** —
   an honest accounting of where the suite has real holes.

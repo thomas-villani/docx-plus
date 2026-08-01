@@ -39,7 +39,7 @@ content appear and discarding it silently would lose data. Pass
 `discard_content=True` to choose.
 
 Architecture walkthrough:
-[`ARCHITECTURE.md` §7.14](../ARCHITECTURE.md#714-table-formatting).
+[Table formatting](../concepts/tables.md).
 
 ::: docx_plus.tables.merge
     options:

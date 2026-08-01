@@ -4,7 +4,7 @@ The cascade resolver. Walks the OOXML formatting layers and returns a
 fully-resolved [`ResolvedFormatting`][docx_plus.styles.inspect.ResolvedFormatting]
 plus optional per-field provenance.
 
-See [`ARCHITECTURE.md` §2](../ARCHITECTURE.md#2-the-cascade-resolver) for
+See [The cascade resolver](../concepts/cascade.md) for
 the algorithm walkthrough and the toggle semantics.
 
 ## Toggle properties do not override

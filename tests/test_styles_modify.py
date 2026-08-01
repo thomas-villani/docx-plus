@@ -656,10 +656,10 @@ def test_ensure_style_all_known_builtins_succeed() -> None:
 def test_builtin_styles_count_matches_documented_total() -> None:
     """Pin the count of `_BUILTIN_STYLES` so docs and code can't drift.
 
-    README, ARCHITECTURE.md §5, docs/index.md, and TEST_GAPS.md I6 all
-    cite the same number. If you add or remove an entry, update those
-    locations together (the ARCHITECTURE table has per-tier counts that
-    must also still sum to the total).
+    README, docs/concepts/styles.md, docs/index.md, docs/guides/styles.md,
+    and TEST_GAPS.md I6 all cite the same number. If you add or remove an
+    entry, update those locations together (the concepts/styles.md table
+    has per-tier counts that must also still sum to the total).
     """
     from docx_plus.styles.modify import _BUILTIN_STYLES
 

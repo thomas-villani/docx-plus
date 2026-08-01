@@ -1,5 +1,11 @@
 # docx_plus — API Reference
 
+!!! tip "Looking for how to *do* something?"
+    This page is an exhaustive symbol index, not a tutorial. The
+    [guides](guides/index.md) are the task-oriented layer — one page per
+    capability, with working code — and the [concepts](concepts/index.md)
+    explain why the OOXML behaves as it does.
+
 This file is the hand-curated index of every public symbol. The full
 reference (signatures, docstrings, source links) is built by
 [MkDocs](https://www.mkdocs.org) with the
@@ -59,7 +65,7 @@ want to see the library in motion before reading the index.
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `DocxPlusError` | exception | Root of every typed library error. See [`ARCHITECTURE.md` §9](ARCHITECTURE.md#9-error-hierarchy) |
+| `DocxPlusError` | exception | Root of every typed library error. See [the error hierarchy](concepts/invariants.md#error-hierarchy) |
 | `__version__` | str | `"0.6.0"` |
 
 ### `docx_plus.core`
@@ -112,7 +118,7 @@ The foundation primitives. Every capability module imports from here only.
 
 ### `docx_plus.styles` — inspection
 
-The cascade resolver. See [`ARCHITECTURE.md` §2](ARCHITECTURE.md#2-the-cascade-resolver)
+The cascade resolver. See [The cascade resolver](concepts/cascade.md)
 for the algorithm walkthrough.
 
 | Symbol | Kind | Notes |
@@ -143,7 +149,7 @@ Style creation, modification, application, removal, and reconciliation.
 | `apply_style(target, style_id)` | function | Apply by ID to `Paragraph | Run | _Cell`. Raises `StyleNotFoundError` |
 | `delete_style(doc, style_id, *, force=False)` | function | Remove. Raises `StyleInUseError` unless `force=True` (leaves dangling refs) |
 | `ensure_style(doc, style_id, *, match_existing=False, **defaults_if_creating)` | function | Idempotent. Materialises latent built-ins from `_BUILTIN_STYLES` if absent |
-| `find_matching_style(doc, target_id)` | function | Case/space-insensitive lookup against `w:styleId` and `w:name`. See [`ARCHITECTURE.md` §4](ARCHITECTURE.md#4-style-remapping-phase-35) |
+| `find_matching_style(doc, target_id)` | function | Case/space-insensitive lookup against `w:styleId` and `w:name`. See [Style remapping](concepts/styles.md#style-remapping) |
 | `remap_styles(doc, *, targets=None, mapping=None, create_missing=False)` | function | Bulk reconciliation via four-step fallback. Rewrites body refs only |
 | `list_styles(doc, *, style_type=None, include_latent=False)` | function | Enumerate. `include_latent=True` adds built-ins from `_BUILTIN_STYLES` |
 | `StyleProxy` | class | Lightweight live wrapper around a `w:style` element |
@@ -192,7 +198,7 @@ Read-only theme color resolution. Theme writing is on the backlog — see `ROADM
 ### `docx_plus.controls` — build side
 
 Build content controls (SDTs) and attach them inline to paragraphs.
-Architecture walkthrough in [`ARCHITECTURE.md` §6](ARCHITECTURE.md#6-content-controls).
+Architecture walkthrough in [Content controls](concepts/controls.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -225,7 +231,7 @@ Architecture walkthrough in [`ARCHITECTURE.md` §6](ARCHITECTURE.md#6-content-co
 
 Complex field insertion (PAGE / DATE / generic) and the
 "recalculate on open" flag. Architecture walkthrough in
-[`ARCHITECTURE.md` §7](ARCHITECTURE.md#7-fields-and-protection).
+[Fields and protection](concepts/fields.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -255,8 +261,8 @@ Anchored, threaded comments — the body-side range markers python-docx
 skips, the comment body in `comments.xml`, the thread graph in
 `commentsExtended.xml`, and — v0.5 — durable ids in `commentsIds.xml`
 plus author presence in `people.xml`. Architecture walkthroughs in
-[`ARCHITECTURE.md` §7.6](ARCHITECTURE.md#76-anchored-comments) and
-[§7.6.2](ARCHITECTURE.md#762-durable-comment-ids-and-author-presence).
+[Anchored comments](concepts/comments.md) and
+[Durable ids and author presence](concepts/comments.md#durable-ids-and-author-presence).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -286,7 +292,7 @@ plus author presence in `people.xml`. Architecture walkthroughs in
 
 Page-layout extras — columns, mid-document section breaks, doc-level
 distinct even/odd headers. Architecture walkthrough in
-[`ARCHITECTURE.md` §7.7](ARCHITECTURE.md#77-layout).
+[Layout](concepts/layout.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -304,7 +310,7 @@ distinct even/odd headers. Architecture walkthrough in
 
 Bookmarks and cross-references — paired body markers plus `REF` /
 `PAGEREF` complex fields. Architecture walkthrough in
-[`ARCHITECTURE.md` §7.8](ARCHITECTURE.md#78-bookmarks-and-cross-references).
+[Bookmarks and cross-references](concepts/bookmarks.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -327,7 +333,7 @@ Bookmarks and cross-references — paired body markers plus `REF` /
 
 Footnotes and endnotes — insert-only API for v0.2. Architecture
 walkthrough in
-[`ARCHITECTURE.md` §7.9](ARCHITECTURE.md#79-footnotes-and-endnotes).
+[Footnotes and endnotes](concepts/notes.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -351,7 +357,7 @@ no `CT_Lvl`, so it cannot express what a list *looks like*. OOXML splits
 a list into a `<w:abstractNum>` definition and a `<w:num>` instance;
 paragraphs reference the **instance**, and that indirection is what makes
 restarting possible. See
-[`ARCHITECTURE.md` §7.13](ARCHITECTURE.md#713-custom-numbering).
+[Custom numbering](concepts/numbering.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -377,7 +383,7 @@ Long-document publishing primitives — Table of Contents, captions,
 Table of Figures. Each helper emits a complex field; pair with
 `docx_plus.fields.mark_fields_dirty` so Word populates the result on
 next open. Architecture walkthrough in
-[`ARCHITECTURE.md` §7.10](ARCHITECTURE.md#710-publishing).
+[Publishing](concepts/publishing.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -391,7 +397,7 @@ Table **appearance** — the half python-docx omits. It models rows,
 columns, cells, widths, and a working `_Cell.merge`, but has no
 `CT_Border`, `CT_TblBorders`, `CT_TcBorders`, or `CT_Shd` class and
 registers none of those tags. New in v0.5. Architecture walkthrough in
-[`ARCHITECTURE.md` §7.14](ARCHITECTURE.md#714-table-formatting).
+[Table formatting](concepts/tables.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
@@ -526,7 +532,7 @@ needs them yet — see `TEST_GAPS.md` N1).
   `strike`, `vanish`). `True` writes the element with no `w:val`.
   `False` writes `w:val="false"`. `None` (in `modify_style`) removes the
   element so the inherited value resumes. See
-  [`ARCHITECTURE.md` §2](ARCHITECTURE.md#2-the-cascade-resolver).
+  [The cascade resolver](concepts/cascade.md).
 - **Identifiers.** Style IDs (`w:styleId`) — machine-readable, what
   every function takes. Style names (`w:name`) — human-readable, what
   Word's UI shows. The library accepts IDs everywhere; names are a

@@ -19,7 +19,7 @@ Note its `style` argument takes the style *name* as Word shows it
 this library, because that is what the field instruction accepts. An
 `int` is an outline level instead.
 
-Architecture walkthrough: [`ARCHITECTURE.md` §7](../ARCHITECTURE.md#7-fields-and-protection).
+Architecture walkthrough: [Fields and protection](../concepts/fields.md).
 
 ::: docx_plus.fields.simple
     options:

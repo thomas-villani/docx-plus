@@ -6,11 +6,11 @@ so cascade output round-trips back through the modifier without
 translation.
 
 Schema-strict child ordering for `w:style`, `w:pPr`, and `w:rPr` is
-enforced internally — see [`ARCHITECTURE.md` §3](../ARCHITECTURE.md#3-schema-strict-insertion).
+enforced internally — see [Schema-strict insertion](../concepts/schema-order.md).
 
 The Phase 3.5 remap surface — `find_matching_style`, `remap_styles`, and
 `ensure_style(match_existing=True)` — is documented in
-[`ARCHITECTURE.md` §4](../ARCHITECTURE.md#4-style-remapping-phase-35).
+[Style remapping](../concepts/styles.md#style-remapping).
 
 ::: docx_plus.styles.modify
     options:

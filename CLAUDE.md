@@ -53,7 +53,8 @@ Layered, one-way dependencies:
   excluded from coverage and the public API.
 
 Each subpackage's `__init__.py` `__all__` is the authoritative public surface
-for that module. `docs/ARCHITECTURE.md` has the full module-by-module breakdown.
+for that module. `docs/concepts/` has the full module-by-module breakdown
+(one page per topic), `docs/guides/` is the task-oriented layer above it.
 
 ## Conventions
 
@@ -92,5 +93,6 @@ uv run bump-my-version bump {major|minor|patch} --dry-run -v   # preview first; 
 
 Bumps `pyproject.toml` + `docx_plus/__init__.py`, commits, and tags `vX.Y.Z`.
 `CHANGELOG.md` is maintained by hand. After a release, re-stamp the prose docs
-(README, `docs/index.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `docs/SKILLS.md`)
+(README, `docs/index.md`, `docs/API.md`, `docs/getting-started.md`,
+`docs/concepts/index.md`, `docs/SKILLS.md`)
 for the new version — these have historically lagged behind the bump.
