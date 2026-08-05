@@ -746,7 +746,9 @@ Shipped:
 - `restyle` — style remapping (wraps `styles.remap_styles`);
   `--target` / `--map` / `--create-missing`.
 - `controls` — `list` / `set` / `clear` content-control values, coercing
-  the command-line string to the control's type.
+  the command-line string to the control's type. `set` / `clear` target by
+  `--tag` or `--control-id`, since Word writes most controls with an empty
+  `w:tag`.
 
 Read commands take `--json`; mutating commands require `-o/--output`
 (or an explicit `--in-place`) so the input is never overwritten by

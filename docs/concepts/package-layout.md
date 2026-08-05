@@ -27,9 +27,9 @@ docx_plus/
 ├── controls/                # content controls (SDTs)
 │   ├── __init__.py          # re-exports the public surface
 │   ├── builder.py           # FormBuilder, MissingNamespaceError, DropdownItem
-│   └── read.py              # ControlValue, read_controls, set_control_value, clear_control,
-│                            # ControlNotFoundError, DuplicateTagError, ValueNotInListError,
-│                            # ControlTypeError
+│   └── read.py              # ControlValue, list_controls, read_controls, set_control_value,
+│                            # clear_control, WRITABLE_TYPES, ControlNotFoundError,
+│                            # DuplicateTagError, ValueNotInListError, ControlTypeError
 ├── fields/                  # complex field insertion, reads, update flag
 │   ├── __init__.py          # re-exports the public surface
 │   ├── simple.py            # add_page_number_field, add_date_field, add_field,

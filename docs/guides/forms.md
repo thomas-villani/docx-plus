@@ -108,12 +108,12 @@ you can fill a form you never built.
 from datetime import datetime
 
 from docx import Document
-from docx_plus.controls import clear_control, read_controls, set_control_value
+from docx_plus.controls import clear_control, list_controls, set_control_value
 
 doc = Document("form.docx")
 
-for tag, ctrl in read_controls(doc).items():
-    print(tag, ctrl.control_type, repr(ctrl.value), ctrl.is_placeholder)
+for ctrl in list_controls(doc):
+    print(ctrl.tag, ctrl.control_type, repr(ctrl.value), ctrl.is_placeholder)
 
 set_control_value(doc, "full_name", "Ada Lovelace")           # text     -> str
 set_control_value(doc, "dept", "ENG")                         # dropdown -> str
@@ -125,20 +125,52 @@ clear_control(doc, "notes")      # back to the placeholder state
 doc.save("form_filled.docx")
 ```
 
-`read_controls(doc, *, by="tag")` returns a `dict[str, ControlValue]` — key
-by `"alias"` instead if you prefer. A `ControlValue` is a frozen dataclass
-with `tag`, `alias`, `control_type`, `value`, and `is_placeholder`.
-`control_type` is one of `"text"`, `"dropdown"`, `"combobox"`, `"date"`,
-`"checkbox"`.
+`list_controls(doc)` returns a `list[ControlValue]` in document order — every
+control, nothing keyed, nothing dropped. A `ControlValue` is a frozen dataclass
+with `tag`, `alias`, `control_type`, `value`, `is_placeholder`, `control_id`,
+`index`, and `location`. `control_type` is `"text"`, `"dropdown"`,
+`"combobox"`, `"date"`, or `"checkbox"` for the controls you can set a value
+on, and one of `"richtext"`, `"picture"`, `"group"`, `"repeating"`,
+`"repeatingitem"`, `"docpart"`, `"citation"`, `"bibliography"`, `"equation"`
+for the ones that hold block content instead.
+
+`read_controls(doc, *, by="tag")` is the keyed convenience on top of it,
+returning a `dict[str, ControlValue]` — key by `"alias"` instead if you prefer.
 
 For a closed dropdown, `set_control_value` accepts either the stored value
 or the visible display text; anything else raises `ValueNotInListError`.
 Comboboxes accept free-form input and never raise it.
 
-!!! note "Tags must be unique"
-    `read_controls` raises `DuplicateTagError` if two controls share a tag,
-    because the returned dict would be ambiguous. Repeating sections need
-    Custom XML Part data binding, which is on the backlog.
+!!! warning "Tags are neither required nor unique"
+    This is the one thing to know before pointing this API at a document Word
+    produced rather than one `FormBuilder` built.
+
+    A control inserted from Word's Developer ribbon is written with
+    `<w:tag w:val=""/>` unless the author opens the properties dialog and types
+    a tag. Most never do, so a real form usually has *one empty tag shared by
+    every control* — and sometimes no `w:tag` element at all.
+
+    `read_controls` can only report controls that have a usable key, so on
+    such a document it returns almost nothing. **Use `list_controls`**, and
+    address individual controls by `control_id` (the `w:id`, which is what
+    OOXML actually uses for identity):
+
+    ```python
+    for ctrl in list_controls(doc):
+        if ctrl.alias == "Client name":
+            set_control_value(doc, None, "Acme Corp", control_id=ctrl.control_id)
+    ```
+
+    `read_controls` still raises `DuplicateTagError` when two controls share a
+    *non-empty* key, and so do `set_control_value` / `clear_control` when a tag
+    matches more than one control — writing to an arbitrary match would leave
+    the others untouched while reporting success. `control_id` is the way past
+    it.
+
+!!! note "Controls outside the body"
+    Both read functions also walk headers, footers, footnotes, and endnotes,
+    reporting the story in `ControlValue.location` (`"body"`,
+    `"header:1:primary"`, `"footnotes"`, …).
 
 ## Locking the document
 
@@ -207,8 +239,8 @@ All subclass `DocxPlusError`, and most the noted builtin.
 
 | Error | Raised when |
 |---|---|
-| `ControlNotFoundError` (`KeyError`) | `set_control_value` / `clear_control` on an unknown tag |
-| `DuplicateTagError` (`ValueError`) | Two controls share a tag |
+| `ControlNotFoundError` (`KeyError`) | `set_control_value` / `clear_control` on an unknown tag or `control_id`, or with neither given |
+| `DuplicateTagError` (`ValueError`) | A tag doesn't identify exactly one control — two share a non-empty key on read, or a writer's tag matched several. An absent or empty tag is unkeyable rather than duplicate |
 | `ValueNotInListError` (`ValueError`) | A closed-dropdown value matches no item |
 | `ControlTypeError` (`TypeError`) | The value's type doesn't match the control type |
 | `MissingNamespaceError` | `add_checkbox` on a doc without `w14` declared |

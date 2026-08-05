@@ -100,14 +100,13 @@ on `FormBuilder`.
 
 ```python
 from docx import Document
-from docx_plus.controls import read_controls, set_control_value, clear_control
+from docx_plus.controls import list_controls, set_control_value, clear_control
 
 doc = Document("form.docx")
 
-# Read everything, keyed by tag (default) — or by="alias"
-controls = read_controls(doc)
-for tag, ctrl in controls.items():
-    print(tag, ctrl.control_type, repr(ctrl.value), ctrl.is_placeholder)
+# Read everything, document order, nothing dropped:
+for ctrl in list_controls(doc):
+    print(ctrl.tag, ctrl.control_id, ctrl.control_type, repr(ctrl.value), ctrl.location)
 
 # Set values — type-dispatched on the control:
 set_control_value(doc, "full_name", "Ada Lovelace")     # text -> str
@@ -122,18 +121,51 @@ clear_control(doc, "notes")
 doc.save("form_filled.docx")
 ```
 
-`read_controls(doc, *, by="tag") -> dict[str, ControlValue]`. A `ControlValue`
-is a frozen dataclass with fields `tag`, `alias`, `control_type`, `value`,
-`is_placeholder`. `control_type` is one of `"text"`, `"dropdown"`,
-`"combobox"`, `"date"`, `"checkbox"`.
+**On a Word-authored document, use `list_controls`, not `read_controls`.**
+`w:tag` is optional and non-unique in OOXML, and Word writes
+`<w:tag w:val=""/>` for any control the author did not explicitly tag — which
+is most of them. A real form typically has one empty tag shared by every
+control. `read_controls` can only report controls with a usable key, so it
+returns almost nothing there; `list_controls` reports all of them.
 
-`set_control_value(doc, tag, value)` — the accepted `value` type follows the
-control type (`str` for text, `str` for dropdown/combobox, `bool` for checkbox,
-`datetime` for date). For a closed dropdown, pass either the stored value or the
-visible display text; a value matching neither raises `ValueNotInListError`
-(comboboxes accept free-form and never raise this).
+`list_controls(doc) -> list[ControlValue]` — every `w:sdt`, in document order.
+`read_controls(doc, *, by="tag") -> dict[str, ControlValue]` is the keyed
+convenience for forms you built and tagged yourself; controls with an absent or
+empty key are omitted, and a repeated non-empty key raises `DuplicateTagError`.
 
-`clear_control(doc, tag)` — resets to the placeholder state.
+A `ControlValue` is a frozen dataclass with fields `tag` (`str | None` — `""`
+means a present-but-empty `w:tag`, `None` means no element), `alias`,
+`control_type`, `value`, `is_placeholder`, `control_id` (the `w:id`, OOXML's
+real identity field), `index`, and `location` (`"body"`,
+`"header:1:primary"`, `"footnotes"`, …; both read functions walk headers,
+footers, footnotes, and endnotes).
+
+`control_type` is one of `"text"`, `"dropdown"`, `"combobox"`, `"date"`,
+`"checkbox"` — the `WRITABLE_TYPES`, which have a scalar value — or one of
+`"richtext"`, `"picture"`, `"group"`, `"repeating"`, `"repeatingitem"`,
+`"docpart"`, `"citation"`, `"bibliography"`, `"equation"`, which hold
+block-level content and are read-only here. A `w:sdt` with no type marker is
+`"richtext"`: ECMA-376 makes rich text the default, so Word omits the marker.
+
+`set_control_value(doc, tag, value, *, control_id=None)` — the accepted `value`
+type follows the control type (`str` for text, `str` for dropdown/combobox,
+`bool` for checkbox, `datetime` for date). For a closed dropdown, pass either
+the stored value or the visible display text; a value matching neither raises
+`ValueNotInListError` (comboboxes accept free-form and never raise this). A
+non-writable control type raises `ControlTypeError`.
+
+A `tag` matching more than one control raises `DuplicateTagError` rather than
+writing to the first. Pass `control_id=` to target one unambiguously — it takes
+precedence, so `tag` may be `None`:
+
+```python
+for ctrl in list_controls(doc):
+    if ctrl.alias == "Client name":
+        set_control_value(doc, None, "Acme Corp", control_id=ctrl.control_id)
+```
+
+`clear_control(doc, tag, *, control_id=None)` — resets to the placeholder
+state, same selection rules.
 
 ## Protecting a form
 
