@@ -7,6 +7,7 @@ from docx_plus.controls.builder import (
     MissingNamespaceError,
 )
 from docx_plus.controls.read import (
+    WRITABLE_TYPES,
     ControlNotFoundError,
     ControlType,
     ControlTypeError,
@@ -14,11 +15,13 @@ from docx_plus.controls.read import (
     DuplicateTagError,
     ValueNotInListError,
     clear_control,
+    list_controls,
     read_controls,
     set_control_value,
 )
 
 __all__ = [
+    "WRITABLE_TYPES",
     "ControlNotFoundError",
     "ControlType",
     "ControlTypeError",
@@ -30,6 +33,7 @@ __all__ = [
     "MissingNamespaceError",
     "ValueNotInListError",
     "clear_control",
+    "list_controls",
     "read_controls",
     "set_control_value",
 ]

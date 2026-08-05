@@ -10,7 +10,7 @@ subcommand is a thin wrapper over one tested function. Built on stdlib
 
 **You usually don't need this from Python.** If you're already writing Python,
 call the underlying functions directly (`resolve_effective_formatting`,
-`remap_styles`, `read_controls` / `set_control_value` / `clear_control`,
+`remap_styles`, `list_controls` / `set_control_value` / `clear_control`,
 `read_threads` / `resolve_comment`, `lint` / `plan_fixes`). Reach for the CLI
 when the caller is a shell, CI step, or another non-Python tool.
 
@@ -72,10 +72,21 @@ docx-plus controls set form.docx --tag start --value 2026-06-15 -o filled.docx
 docx-plus controls clear filled.docx --tag name --in-place
 ```
 
-Wraps `read_controls` / `set_control_value` / `clear_control`. `set` reads the
+Wraps `list_controls` / `set_control_value` / `clear_control`. `set` reads the
 control's type and **coerces the command-line string**: `true/false/1/0/yes/no/on/off`
 for checkboxes, an ISO 8601 string for dates, plain text otherwise. An
 un-coercible value or unknown tag is a clean `error: ...` (exit 1).
+
+`list` reports every control — including the empty-tag ones Word writes by
+default, labelled `#INDEX` — with its `w:id` and story. Since a tag often
+identifies several controls (or none), `set` and `clear` take
+`--control-id N` as an alternative to `--tag`, and refuse a `--tag` that
+matches more than one control rather than writing to an arbitrary match:
+
+```bash
+docx-plus controls list contract.docx      # -> "#0: text alias='Client' id=11 = ..."
+docx-plus controls set contract.docx --control-id 11 --value "Acme Corp" -o out.docx
+```
 
 ## `comments` — list / resolve / reopen
 

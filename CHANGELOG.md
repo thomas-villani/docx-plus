@@ -6,7 +6,86 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`read_controls` no longer fails, or silently under-reports, on documents
+  Word produced.** The read side treated `w:tag` as a required, unique primary
+  key. OOXML makes it neither: a control inserted from Word's Developer ribbon
+  is written with `<w:tag w:val=""/>` unless the author opens the properties
+  dialog and types a tag. On a real eleven-control form — ten empty tags and
+  one with no `w:tag` element at all — this raised
+  `DuplicateTagError: duplicate tag ''` on the first collision and the whole
+  read failed.
+
+  Four distinct defects, reported together because they share that one wrong
+  assumption:
+
+  1. Empty tags collided, so `read_controls` raised on the common case.
+  2. A control with no `w:tag` element was **silently dropped** — no error,
+     just absent from the result.
+  3. A control with no type marker was **silently dropped**, and in OOXML the
+     absence of a marker *is* rich text (ECMA-376 §17.5.2 makes it the default
+     for that choice group), so this hid the control Word inserts most often.
+     `w:group`, `w15:repeatingSection`, `w:docPartObj`, `w:picture`,
+     `w:citation`, `w:bibliography`, and `w:equation` were invisible too.
+  4. `set_control_value` / `clear_control` resolved a repeated tag to the
+     **first match** and reported success, leaving the other matches untouched.
+
+  `by="alias"` had the same collision as (1), and aliases are UI labels that
+  repeat far more readily than tags. Separately, the traversal only walked
+  `doc.element.body`, so controls in headers, footers, footnotes, and endnotes
+  did not exist as far as this module was concerned.
+
+  The fix keeps the tidy-form path intact and adds an honest primitive
+  underneath it:
+
+  - **New `list_controls(doc) -> list[ControlValue]`** — every `w:sdt` in
+    document order, keying nothing, dropping nothing. This is now the function
+    to use on any document you did not build yourself, and what the CLI's
+    `controls list` calls.
+  - `read_controls` keeps its signature and its `DuplicateTagError` on a
+    genuinely repeated *non-empty* key. Controls whose key is absent or empty
+    are unkeyable rather than duplicate, so they are omitted — the behaviour
+    `by="alias"` already had — instead of crashing the read.
+  - `set_control_value` and `clear_control` raise `DuplicateTagError` when a
+    tag matches more than one control, and take a new `control_id=` keyword
+    (the `w:id`, OOXML's actual identity field) to target one unambiguously.
+    `tag` may be `None` when `control_id` is given.
+  - Both read functions walk the body, every section's explicitly-defined
+    headers and footers, and the footnote and endnote parts. The traversal
+    skips `is_linked_to_previous` slots, which also keeps the read
+    non-mutating: python-docx *creates* a header part on first access to an
+    undefined one.
+
+  Regression coverage now includes a fixture suite built from the SDT shapes
+  Word emits rather than only from `FormBuilder` output, which is what let
+  these through.
+
 ### Changed
+
+- **`ControlValue` gained four fields and `tag` became `str | None`.**
+  `tag` is now `None` when the control has no `w:tag` element and `""` when
+  the element is present but empty — previously both collapsed to `""`, and
+  the `None` case never reached the caller at all. New fields: `control_id`
+  (the `w:id`), `index` (position in `list_controls` order), and `location`
+  (`"body"`, `"header:S:WHICH"`, `"footer:S:WHICH"`, `"footnotes"`,
+  `"endnotes"`). All four are keyword-defaulted, so existing construction
+  still works.
+
+- **`ControlType` gained nine values** for the controls the read side now
+  reports but cannot set a scalar value on: `richtext`, `picture`, `group`,
+  `repeating`, `repeatingitem`, `docpart`, `citation`, `bibliography`,
+  `equation`. The new `WRITABLE_TYPES` frozenset is the five that remain
+  writable. `set_control_value` / `clear_control` on one of the new types
+  raises `ControlTypeError`; previously a marker-less SDT raised
+  `ControlNotFoundError`, which was a poor description — the control was
+  found, its type was wrong.
+
+- **`docx-plus controls`** — `list` now lists every control, showing each
+  one's `w:id` and (when not the body) its story; controls with no
+  tag/alias are labelled `#INDEX` rather than omitted. `set` and `clear`
+  take `--control-id N` as a mutually-exclusive alternative to `--tag`, and
+  refuse a `--tag` matching several controls instead of writing to the first.
 
 - **The documentation was split into a guides layer and a concepts layer.**
   `docs/ARCHITECTURE.md` had grown to 1,692 lines and was doing double

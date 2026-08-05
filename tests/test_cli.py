@@ -187,7 +187,10 @@ def test_controls_list_text(form_doc: Path, capsys: pytest.CaptureFixture[str]) 
     assert main(["controls", "list", str(form_doc)]) == 0
     out = capsys.readouterr().out
     assert "name: text" in out
-    assert "subscribed: checkbox = False" in out
+    # Each line carries the w:id, since that is what --control-id takes and a
+    # tag is not guaranteed to identify one control.
+    assert "subscribed: checkbox id=" in out
+    assert "= False" in out
 
 
 def test_controls_list_json(form_doc: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -202,9 +205,12 @@ def test_controls_list_json(form_doc: Path, capsys: pytest.CaptureFixture[str]) 
 def test_controls_list_by_alias(form_doc: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["controls", "list", str(form_doc), "--by", "alias"]) == 0
     out = capsys.readouterr().out
-    # Only the text control has an alias; the others are skipped.
+    # Only the text control has an alias. The rest are labelled #INDEX rather
+    # than dropped — a listing that hides controls is how the tag bug hid.
     assert "Full name:" in out
     assert "subscribed:" not in out
+    assert len(out.strip().splitlines()) == 4
+    assert "#3: checkbox" in out
 
 
 # --------------------------------------------------------------------------
@@ -298,6 +304,134 @@ def test_controls_set_bad_date(
     )
     assert code == 1
     assert "date value must be ISO 8601" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# controls set / clear — targeting a Word-authored form, where the tags are
+# empty and only w:id distinguishes one control from another.
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def untagged_form(tmp_path: Path) -> Path:
+    """Three plain-text controls sharing the empty tag Word writes by default."""
+    from lxml import etree
+
+    from docx_plus.core.ns import NSMAP
+
+    doc = Document()
+    for control_id in (11, 12, 13):
+        para = doc.add_paragraph()
+        para._p.append(
+            etree.fromstring(
+                f'<w:sdt xmlns:w="{NSMAP["w"]}">'
+                f'<w:sdtPr><w:tag w:val=""/><w:id w:val="{control_id}"/><w:text/></w:sdtPr>'
+                f"<w:sdtContent><w:r><w:t>before</w:t></w:r></w:sdtContent>"
+                f"</w:sdt>"
+            )
+        )
+    path = tmp_path / "untagged.docx"
+    doc.save(path)
+    return path
+
+
+def test_controls_list_survives_empty_tags(
+    untagged_form: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["controls", "list", str(untagged_form)]) == 0
+    out = capsys.readouterr().out
+    assert out.count("text id=") == 3
+    assert "#0: text id=11" in out
+
+
+def test_controls_set_ambiguous_tag_is_refused(
+    untagged_form: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "set.docx"
+    code = main(
+        ["controls", "set", str(untagged_form), "--tag", "", "--value", "x", "-o", str(out)]
+    )
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "matches 3 controls" in err
+    assert "--control-id" in err
+    assert not out.exists()
+
+
+def test_controls_set_by_control_id(untagged_form: Path, tmp_path: Path) -> None:
+    out = tmp_path / "set.docx"
+    code = main(
+        [
+            "controls",
+            "set",
+            str(untagged_form),
+            "--control-id",
+            "12",
+            "--value",
+            "x",
+            "-o",
+            str(out),
+        ]
+    )
+    assert code == 0
+    from docx_plus.controls import list_controls
+
+    assert [c.value for c in list_controls(Document(str(out)))] == ["before", "x", "before"]
+
+
+def test_controls_set_unknown_control_id(
+    untagged_form: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(
+        [
+            "controls",
+            "set",
+            str(untagged_form),
+            "--control-id",
+            "99",
+            "--value",
+            "x",
+            "-o",
+            str(tmp_path / "set.docx"),
+        ]
+    )
+    assert code == 1
+    assert "no control with id 99" in capsys.readouterr().err
+
+
+def test_controls_set_by_tag_when_control_has_no_id(tmp_path: Path) -> None:
+    """``w:id`` is optional, so the CLI must fall back to the tag selector."""
+    from lxml import etree
+
+    from docx_plus.core.ns import NSMAP
+
+    doc = Document()
+    doc.add_paragraph()._p.append(
+        etree.fromstring(
+            f'<w:sdt xmlns:w="{NSMAP["w"]}">'
+            f'<w:sdtPr><w:tag w:val="solo"/><w:text/></w:sdtPr>'
+            f"<w:sdtContent><w:r><w:t>before</w:t></w:r></w:sdtContent>"
+            f"</w:sdt>"
+        )
+    )
+    src = tmp_path / "no_id.docx"
+    doc.save(src)
+
+    out = tmp_path / "set.docx"
+    assert main(["controls", "set", str(src), "--tag", "solo", "--value", "x", "-o", str(out)]) == 0
+    from docx_plus.controls import list_controls
+
+    assert [c.value for c in list_controls(Document(str(out)))] == ["x"]
+
+
+def test_controls_set_requires_a_selector(
+    untagged_form: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit):
+        main(
+            ["controls", "set", str(untagged_form), "--value", "x", "-o", str(tmp_path / "s.docx")]
+        )
+    assert "--tag" in capsys.readouterr().err
 
 
 def test_controls_set_unknown_tag(

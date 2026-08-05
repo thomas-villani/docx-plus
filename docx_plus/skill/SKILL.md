@@ -137,8 +137,9 @@ doc.save("out.docx")
 ## Reference files
 
 - `reference/forms.md` — `FormBuilder` (text / dropdown / combobox / date /
-  checkbox), `read_controls` / `set_control_value` / `clear_control`, and
-  document protection.
+  checkbox), `list_controls` / `read_controls` / `set_control_value` /
+  `clear_control`, and document protection. Read the tag caveat there before
+  using `read_controls` on a document Word produced.
 - `reference/styles.md` — `resolve_effective_formatting` with provenance, plus
   `create_style` / `modify_style` / `apply_style` / `ensure_style` /
   `remap_styles` and read-only theme resolution.

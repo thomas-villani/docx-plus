@@ -292,12 +292,17 @@ def test_set_external_form_value(existing_form_docx_path: Path, tmp_path: Path) 
 
 
 # --------------------------------------------------------------------------
-# Skip rich-text SDTs gracefully.
+# Rich-text SDTs.
 # --------------------------------------------------------------------------
 
 
-def test_unrecognised_sdt_is_skipped(tmp_path: Path) -> None:
-    """Rich-text SDTs (no recognised type marker) must be silently skipped."""
+def test_marker_less_sdt_reads_as_richtext(tmp_path: Path) -> None:
+    """A ``w:sdt`` with no type marker is rich text, not an unknown element.
+
+    ECMA-376 makes rich text the default for the ``w:sdtPr`` choice group, so
+    Word omits the marker on the most common control it writes. Skipping these
+    hid them from every read.
+    """
     doc = Document()
     p = doc.add_paragraph()
     sdt = sub(p._p, "w:sdt")
@@ -305,7 +310,40 @@ def test_unrecognised_sdt_is_skipped(tmp_path: Path) -> None:
     sub(pr, "w:tag", **{"w:val": "rich"})
     sub(pr, "w:id", **{"w:val": "1"})
     # No type marker.
-    sub(sdt, "w:sdtContent")
+    content = sub(sdt, "w:sdtContent")
+    run = sub(content, "w:r")
+    sub(run, "w:t").text = "body copy"
 
     controls = read_controls(doc)
-    assert controls == {}
+    assert set(controls) == {"rich"}
+    assert controls["rich"].control_type == "richtext"
+    assert controls["rich"].value == "body copy"
+    assert controls["rich"].control_id == 1
+
+
+def test_richtext_rejects_set_and_clear() -> None:
+    """Rich text holds block content, so it has no scalar value to set."""
+    doc = Document()
+    p = doc.add_paragraph()
+    sdt = sub(p._p, "w:sdt")
+    pr = sub(sdt, "w:sdtPr")
+    sub(pr, "w:tag", **{"w:val": "rich"})
+    sub(sdt, "w:sdtContent")
+
+    with pytest.raises(ControlTypeError, match="richtext"):
+        set_control_value(doc, "rich", "nope")
+    with pytest.raises(ControlTypeError, match="richtext"):
+        clear_control(doc, "rich")
+
+
+def test_explicit_richtext_marker_is_recognised() -> None:
+    """Word may also write the marker explicitly; both spellings agree."""
+    doc = Document()
+    p = doc.add_paragraph()
+    sdt = sub(p._p, "w:sdt")
+    pr = sub(sdt, "w:sdtPr")
+    sub(pr, "w:tag", **{"w:val": "rich"})
+    sub(pr, "w:richText")
+    sub(sdt, "w:sdtContent")
+
+    assert read_controls(doc)["rich"].control_type == "richtext"

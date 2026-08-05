@@ -76,8 +76,8 @@ sentence) calls for it.
 | `MissingPartError` | `DocxPlusError` | `styles/inspect.py` | A referenced part is required but absent (currently unused — see [cascade layer 4](cascade.md#six-layers-low-to-high-precedence)) |
 | `ThemeError` | `DocxPlusError` | `styles/theme.py` | Structurally invalid theme input to the transform functions |
 | `MissingNamespaceError` | `DocxPlusError` | `controls/builder.py` | `FormBuilder` constructed against a doc whose root doesn't declare `w14` |
-| `ControlNotFoundError` | `DocxPlusError`, `KeyError` | `controls/read.py` | `set_control_value`/`clear_control` referenced a tag that doesn't exist |
-| `DuplicateTagError` | `DocxPlusError`, `ValueError` | `controls/read.py` | `read_controls` found two SDTs sharing a tag (v0.1 doesn't support repeating sections) |
+| `ControlNotFoundError` | `DocxPlusError`, `KeyError` | `controls/read.py` | `set_control_value`/`clear_control` referenced a tag or `control_id` that doesn't exist, or neither |
+| `DuplicateTagError` | `DocxPlusError`, `ValueError` | `controls/read.py` | A tag doesn't identify exactly one control: `read_controls` found two SDTs sharing a non-empty key, or a writer's tag matched several. An *absent or empty* tag is not a duplicate — it's unkeyable, so `read_controls` omits it and `list_controls` reports it |
 | `ValueNotInListError` | `DocxPlusError`, `ValueError` | `controls/read.py` | `set_control_value` against a dropdown got a value that matches no item (combobox is exempt — it accepts freeform) |
 | `ControlTypeError` | `DocxPlusError`, `TypeError` | `controls/read.py` | `set_control_value` got a value whose Python type doesn't match the control type (e.g. `str` to a checkbox) |
 | `InvalidDropdownItemError` | `DocxPlusError`, `TypeError` | `controls/builder.py` | A dropdown/combobox `items` entry that isn't a `str` or a `(display, value)` tuple |

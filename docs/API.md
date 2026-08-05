@@ -217,13 +217,15 @@ Architecture walkthrough in [Content controls](concepts/controls.md).
 
 | Symbol | Kind | Notes |
 |---|---|---|
-| `read_controls(doc, *, by="tag")` | function | Returns `dict[str, ControlValue]` keyed by tag (default) or alias |
-| `set_control_value(doc, tag, value)` | function | Update one control by tag. Type-dispatched on the control type |
-| `clear_control(doc, tag)` | function | Reset to the placeholder state |
-| `ControlValue` | dataclass (frozen) | `tag`, `alias`, `control_type`, `value`, `is_placeholder` |
-| `ControlType` | type alias | `Literal["text", "dropdown", "combobox", "date", "checkbox"]` |
-| `ControlNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. Tag missing |
-| `DuplicateTagError` | exception | Dual-bases: `DocxPlusError, ValueError`. Two SDTs share a tag (repeating-section binding is v0.2) |
+| `list_controls(doc)` | function | Returns `list[ControlValue]` — every control, document order, nothing keyed. Use on Word-authored documents |
+| `read_controls(doc, *, by="tag")` | function | Returns `dict[str, ControlValue]` keyed by tag (default) or alias. Controls with no usable key are omitted |
+| `set_control_value(doc, tag, value, *, control_id=None)` | function | Update one control. Type-dispatched on the control type. `control_id` disambiguates a repeated tag |
+| `clear_control(doc, tag, *, control_id=None)` | function | Reset to the placeholder state |
+| `ControlValue` | dataclass (frozen) | `tag` (`str \| None`), `alias`, `control_type`, `value`, `is_placeholder`, `control_id`, `index`, `location` |
+| `ControlType` | type alias | The five writable types plus `richtext`, `picture`, `group`, `repeating`, `repeatingitem`, `docpart`, `citation`, `bibliography`, `equation` |
+| `WRITABLE_TYPES` | frozenset | The `ControlType` values `set_control_value` / `clear_control` accept |
+| `ControlNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. No control matched the tag or id |
+| `DuplicateTagError` | exception | Dual-bases: `DocxPlusError, ValueError`. A tag doesn't identify exactly one control. Note `w:tag` is optional and non-unique in OOXML — Word writes `w:val=""` by default |
 | `ValueNotInListError` | exception | Dual-bases: `DocxPlusError, ValueError`. Dropdown value matches neither `w:value` nor `w:displayText`. Combobox is exempt — it accepts freeform |
 | `ControlTypeError` | exception | Dual-bases: `DocxPlusError, TypeError`. `set_control_value` value type doesn't match the control type |
 

@@ -93,13 +93,13 @@ wrote clean.docx
 ## `controls`
 
 List, set, or clear content controls (fillable form fields), wrapping
-[`read_controls` / `set_control_value` / `clear_control`](reference/controls-read.md).
+[`list_controls` / `set_control_value` / `clear_control`](reference/controls-read.md).
 
 ```console
 $ docx-plus controls list form.docx
-name: text alias='Full name' = (placeholder)
-dept: dropdown = 'Engineering'
-subscribed: checkbox = False
+name: text alias='Full name' id=1250917867 = (placeholder)
+dept: dropdown id=572353121 = 'Engineering'
+subscribed: checkbox id=1820634353 = False
 
 $ docx-plus controls set form.docx --tag name --value "Ada Lovelace" -o filled.docx
 set 'name' = 'Ada Lovelace'; wrote filled.docx
@@ -108,15 +108,34 @@ $ docx-plus controls clear filled.docx --tag name --in-place
 cleared 'name'; wrote filled.docx
 ```
 
+On a document Word produced, tags are usually empty (see [tags are not a
+primary key](concepts/controls.md#wtag-is-not-a-primary-key)), so the listing
+labels those controls `#INDEX` and `--control-id` is how you address one:
+
+```console
+$ docx-plus controls list contract.docx
+#0: text alias='Client' id=11 = (placeholder)
+#1: text alias='Matter' id=12 = 'Acme v. Roe'
+#2: richtext id=13 in header:1:primary = 'Confidential'
+
+$ docx-plus controls set contract.docx --tag "" --value X -o out.docx
+error: tag '' matches 2 controls (ids 11, 12); pass --control-id to choose one
+
+$ docx-plus controls set contract.docx --control-id 11 --value "Acme Corp" -o out.docx
+set id 11 = 'Acme Corp'; wrote out.docx
+```
+
 - `controls list FILE [--by tag|alias] [--json]` — every control with its tag,
-  alias, type, value, and placeholder state. `--by alias` keys on the alias and
-  skips controls without one.
-- `controls set FILE --tag T --value V -o OUT` — the command reads the control's
-  type and coerces the string `V`: `true/false/1/0/yes/no` for checkboxes, an
-  ISO 8601 string (`2026-06-15`) for dates, plain text otherwise. An un-coercible
-  value or unknown tag is a clean error.
-- `controls clear FILE --tag T -o OUT` — reset the control to its placeholder
-  state.
+  alias, `w:id`, type, story, value, and placeholder state. Nothing is dropped:
+  `--by alias` labels by alias and falls back to `#INDEX` for controls without
+  one.
+- `controls set FILE (--tag T | --control-id N) --value V -o OUT` — the command
+  reads the control's type and coerces the string `V`: `true/false/1/0/yes/no`
+  for checkboxes, an ISO 8601 string (`2026-06-15`) for dates, plain text
+  otherwise. An un-coercible value, an unknown target, or a `--tag` that
+  matches several controls is a clean error.
+- `controls clear FILE (--tag T | --control-id N) -o OUT` — reset the control to
+  its placeholder state.
 
 ## `comments`
 

@@ -1,12 +1,56 @@
 # Content controls
 
 `controls/builder.py:FormBuilder` is the build-side surface and
-`controls/read.py` is the read/modify side. Both target the five SDT
-control types Word's UI ribbon offers: text (single- and multi-line),
-dropdown / combobox, date picker, and checkbox. Rich-text SDTs (no
-marker child) are recognised but skipped — they're a v0.2 deferred case.
+`controls/read.py` is the read/modify side.
+
+The **write** surface targets the five SDT control types Word's UI ribbon
+offers a scalar value for: text (single- and multi-line), dropdown / combobox,
+date picker, and checkbox. These are `WRITABLE_TYPES`.
+
+The **read** surface is wider, and deliberately so: it reports every `w:sdt`,
+including rich-text and the container types (`group`, `repeatingSection`,
+`docPartObj`, `picture`, `citation`, `bibliography`, `equation`), which hold
+block-level content rather than a value. Anything the read side cannot classify
+would otherwise be invisible, and a control that silently does not exist is a
+worse failure than one that reports itself as read-only.
 
 For the calls, see the [forms guide](../guides/forms.md).
+
+## `w:tag` is not a primary key
+
+This is the assumption that most often breaks code written against
+`FormBuilder` output and then pointed at a real Word document.
+
+`FormBuilder` gives every control a deliberate, unique tag. OOXML does not
+require either property, and Word does not supply them: a control inserted from
+the Developer ribbon is written with `<w:tag w:val=""/>` unless the author
+opens the properties dialog and types a tag, which most authors never do. A
+real form therefore tends to have one empty tag shared across every control,
+and sometimes no `w:tag` element at all.
+
+`ControlValue` distinguishes the three states — a tag string, `""` for a
+present-but-empty tag, and `None` for no tag element — and carries
+`control_id` (the `w:id`, OOXML's actual identity field) for addressing.
+Aliases are no better: they are UI labels and repeat freely.
+
+The practical consequence is the split between the two read functions:
+
+| | `list_controls(doc)` | `read_controls(doc, by=...)` |
+| --- | --- | --- |
+| Returns | `list[ControlValue]`, document order | `dict[str, ControlValue]` |
+| Untagged / empty-tag controls | included | omitted (no usable key) |
+| Repeated key | fine — no keying | `DuplicateTagError` |
+| Use it for | any document, especially Word-authored | forms you built and tagged yourself |
+
+## Which story a control lives in
+
+Controls are not confined to the body. Both read functions walk the body, every
+section's explicitly-defined headers and footers, and the footnote and endnote
+parts, reporting the story in `ControlValue.location`. The traversal skips
+header/footer slots whose `is_linked_to_previous` is true — partly to avoid
+reporting an inherited definition once per section that inherits it, and partly
+because python-docx *creates* the part on first access to an undefined one,
+which would make a read mutate the document.
 
 ## `FormBuilder`
 
@@ -33,23 +77,35 @@ distinguishes the controls: `w:text` for text/multiline, `w:dropDownList`
 or `w:comboBox` for selectors, `w:date` for date pickers, `w14:checkbox`
 for checkboxes.
 
-## `read_controls` and `set_control_value`
+## `list_controls`, `read_controls`, and `set_control_value`
 
-`read_controls(doc, *, by="tag")` returns a `dict[str, ControlValue]`
-keyed by tag (default) or alias. Control-type dispatch lives in
-`_classify_sdt` and is shared with `_testing.ooxml_asserts.count_controls`
-so there is one source of truth. Repeating tags raise `DuplicateTagError`
-— a precondition v0.1 enforces because Custom-XML-Part data binding
-(the v0.2 feature that supports repeating sections) isn't shipped yet.
+`list_controls(doc)` is the primitive: one `ControlValue` per `w:sdt`, in
+document order, keying nothing. `read_controls(doc, *, by="tag")` is built on
+it and returns a `dict[str, ControlValue]` keyed by tag (default) or alias,
+skipping controls whose key is absent or empty and raising `DuplicateTagError`
+on a genuinely repeated key.
 
-`set_control_value(doc, tag, value)` accepts `str | bool | datetime`
-matched against the control type. Type mismatches raise
-`ControlTypeError`. Dropdowns try `w:value` first then `w:displayText`,
-raising `ValueNotInListError` if neither matches — unless the control
-is a combobox, in which case any string is accepted (matching Word's
-freeform-input behaviour). Date values round-trip through
-`w:date/@w:fullDate` (ISO 8601); the human-readable rendered text in
-`sdtContent` is best-effort because full Word date-format-token
-translation is a v0.2 concern.
+Control-type dispatch lives in `_classify_sdt` and is shared with
+`_testing.ooxml_asserts.count_controls` so there is one source of truth. A
+`w:sdt` with no marker child classifies as `richtext` rather than being
+skipped: ECMA-376 §17.5.2 makes rich text the default for that choice group,
+which is why Word omits the marker on the control it inserts most often.
 
-`clear_control(doc, tag)` resets to the placeholder state.
+`set_control_value(doc, tag, value, *, control_id=None)` accepts
+`str | bool | datetime` matched against the control type. Type mismatches
+raise `ControlTypeError`, as does a control outside `WRITABLE_TYPES`.
+Dropdowns try `w:value` first then `w:displayText`, raising
+`ValueNotInListError` if neither matches — unless the control is a combobox,
+in which case any string is accepted (matching Word's freeform-input
+behaviour). Date values round-trip through `w:date/@w:fullDate` (ISO 8601);
+the human-readable rendered text in `sdtContent` is best-effort because full
+Word date-format-token translation is a v0.2 concern.
+
+A `tag` that matches more than one control raises `DuplicateTagError` rather
+than writing to the first match, which would leave the other matches untouched
+while reporting success. Pass `control_id=` — from
+`ControlValue.control_id` — to target one unambiguously; it takes precedence
+over `tag`, so `tag` may be `None`.
+
+`clear_control(doc, tag, *, control_id=None)` resets to the placeholder state
+and follows the same selection rules.
