@@ -8,14 +8,19 @@ wrong.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections import Counter
+from typing import TYPE_CHECKING, TypeVar
 
 from docx_plus.core.ns import qn
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Hashable, Iterable
+
     from lxml import etree
 
-    from docx_plus.styles import ResolvedParagraph
+    from docx_plus.styles import ResolvedParagraph, ResolvedRun
+
+_T = TypeVar("_T", bound="Hashable")
 
 _BLOCK_TAGS = frozenset({qn("w:p"), qn("w:tbl")})
 """What counts as breaking a run of paragraphs. Anything else between two
@@ -74,3 +79,36 @@ def document_adjacent(previous: ResolvedParagraph, current: ResolvedParagraph) -
 
 
 __all__ = ["document_adjacent", "paragraph_element", "same_container"]
+
+
+def count_run_values(
+    paragraphs: Iterable[ResolvedParagraph],
+    key: Callable[[ResolvedRun], _T | None],
+) -> Counter[_T]:
+    """How often each ``key`` value occurs across the runs that carry text.
+
+    The population behind every "what does this document normally do"
+    question: runs of pure whitespace are skipped because their formatting
+    is invisible, and a run whose ``key`` is ``None`` is skipped because
+    an unset value is not a vote for anything. Callers wanting a subset of
+    paragraphs — body text without headings, say — filter before calling.
+    """
+    return Counter(
+        value
+        for resolved in paragraphs
+        for run in resolved.runs
+        if run.run.text.strip() and (value := key(run)) is not None
+    )
+
+
+def dominant(counts: Counter[_T]) -> _T | None:
+    """The most common value, or ``None`` when there is nothing to count.
+
+    Ties break by first occurrence, which is document order for every
+    counter built by :func:`count_run_values` — the earliest of two
+    equally common values wins, so the answer is stable across runs
+    rather than an artefact of hashing.
+    """
+    if not counts:
+        return None
+    return counts.most_common(1)[0][0]

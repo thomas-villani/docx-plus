@@ -49,6 +49,7 @@ classifiers = [
 dependencies = [
     "python-docx>=1.0.0",
     "lxml>=4.9",
+    "typing-extensions>=4.1; python_version < '3.11'",
 ]
 
 [project.urls]

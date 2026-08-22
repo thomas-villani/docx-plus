@@ -11,12 +11,16 @@ These are cheap only because the cascade resolves ``outline_level`` and
 from __future__ import annotations
 
 import re
-from collections import Counter
 from typing import TYPE_CHECKING
 
 from docx_plus.lint.models import Fix, FixOperation, Issue, Location
 from docx_plus.lint.registry import rule
-from docx_plus.lint.rules._common import document_adjacent, same_container
+from docx_plus.lint.rules._common import (
+    count_run_values,
+    document_adjacent,
+    dominant,
+    same_container,
+)
 from docx_plus.styles import list_styles
 
 if TYPE_CHECKING:
@@ -371,6 +375,7 @@ def manual_heading_formatting(ctx: LintContext) -> Iterator[Issue]:
     """
     body_size = _dominant_body_size(ctx)
     default_style = _default_paragraph_style(ctx)
+    max_chars = int(ctx.option("manual-heading-formatting", "max_chars", _HEADING_LIKE_MAX_CHARS))
 
     for resolved in ctx.paragraphs:
         if resolved.in_table or resolved.formatting.num_id:
@@ -380,7 +385,7 @@ def manual_heading_formatting(ctx: LintContext) -> Iterator[Issue]:
             continue
 
         text = resolved.text.strip()
-        if not text or len(text) > _HEADING_LIKE_MAX_CHARS or text[-1] in ".?!:;,":
+        if not text or len(text) > max_chars or text[-1] in ".?!:;,":
             continue
 
         runs = [r for r in resolved.runs if r.run.text.strip()]
@@ -434,13 +439,5 @@ def _dominant_body_size(ctx: LintContext) -> float | None:
     holds for a 10pt house style as readily as a 12pt one. Counted per run
     rather than per paragraph, since that is where a size usually sits.
     """
-    counts = Counter(
-        run.formatting.font_size
-        for resolved in ctx.paragraphs
-        if _heading_level(resolved) is None
-        for run in resolved.runs
-        if run.run.text.strip() and run.formatting.font_size is not None
-    )
-    if not counts:
-        return None
-    return counts.most_common(1)[0][0]
+    body = (resolved for resolved in ctx.paragraphs if _heading_level(resolved) is None)
+    return dominant(count_run_values(body, lambda run: run.formatting.font_size))

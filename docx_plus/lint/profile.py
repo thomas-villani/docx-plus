@@ -17,11 +17,12 @@ while still being useful to a team that has one.
 }
 ```
 
-**No rule reads ``options`` yet**, because no ``policy`` rule ships yet.
-The loader is here now on purpose: a profile is the *interface* between
-a rule catalogue and a team's conventions, and settling that shape while
-there is nothing to break is cheaper than retrofitting it around whichever
-policy rule happens to land first.
+``options`` reach a rule through :meth:`LintContext.option`, which falls
+back to the rule's own built-in threshold — so a profile overrides a
+number a rule already has rather than supplying one it lacks. The knobs
+that exist today are ``font-outliers``'s ``max_share`` / ``max_runs`` and
+``manual-heading-formatting``'s ``max_chars``; no ``policy`` rule ships
+yet, so nothing *requires* an option to run.
 
 What a profile deliberately does **not** do is select rules. ``--rule`` /
 ``--exclude`` stay the caller's, applied after the profile, so a profile
@@ -106,8 +107,9 @@ class Profile:
     def option(self, rule_id: str, key: str, default: Any = None) -> Any:
         """One rule-specific value, or ``default``.
 
-        The hook every ``policy`` rule will read its target through. Nothing
-        calls it yet — see the module docstring.
+        The hook a rule reads its thresholds through, via
+        :meth:`LintContext.option` — see the module docstring for which
+        rules honour which keys.
         """
         return self.settings(rule_id).options.get(key, default)
 
