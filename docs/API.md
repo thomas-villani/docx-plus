@@ -39,7 +39,7 @@ Google-style docstring (enforced by ruff's `D` ruleset on `docx_plus/`).
 
 ---
 
-## Public surface at v0.6.0
+## Public surface at v0.6.x
 
 v0.1's six phases, the initial v0.2 cycle (comments, layout, bookmarks
 / cross-references, footnotes / endnotes), the v0.2 in-place
@@ -51,7 +51,10 @@ cycle (threaded comments with resolve / reopen), and the v0.5 cycle
 presence, the packaged agent skill), and the v0.6 cycle (the `lint`
 layer — `lint`, `plan_fixes`, and the `lint` / `plan` CLI commands —
 plus the cascade corrections, the document sweep, `stop_below`
-baselines, and `read_fields`) are all complete.
+baselines, and `read_fields`) are all complete. The v0.6.x patch
+releases extend the sweep to headers, footers, notes and comments
+(`parts=`), let styles link numbering (`num_id` / `num_level`), and
+route lint profile `options` through to the rules that read them.
 Fourteen runnable example scripts in
 `docx_plus/examples/` demonstrate the surface: `inspect_document.py`,
 `restyle_existing.py`, `build_form.py`, `populate_form.py`,
@@ -66,7 +69,7 @@ want to see the library in motion before reading the index.
 | Symbol | Kind | Notes |
 |---|---|---|
 | `DocxPlusError` | exception | Root of every typed library error. See [the error hierarchy](concepts/invariants.md#error-hierarchy) |
-| `__version__` | str | `"0.6.1"` |
+| `__version__` | str | `"0.6.2"` |
 
 ### `docx_plus.core`
 
@@ -83,9 +86,12 @@ The foundation primitives. Every capability module imports from here only.
 | `ParaIdRegistry(doc)` | class | v0.4. Per-*package* `w14:paraId` allocator — threaded comments key their parent/child links off it, so it seeds from the body plus the comments / footnotes / endnotes parts. `next_hex()` renders the 8-uppercase-hex-digit form |
 | `DuplicateIdError` | exception | Dual-bases: `DocxPlusError, ValueError`. `reserve()` on an already-issued value |
 | `IdRangeError` | exception | Dual-bases: `DocxPlusError, ValueError`. A reserved id falls outside the 31-bit positive range |
+| `RegistryExhaustedError` | exception | v0.6.2. Dual-bases: `DocxPlusError, RuntimeError`. A registry has no value left to issue. Effectively unreachable (the `w:id` space is 31 bits, the `_Ref` name space nine digits) but typed so the one path in `core/` that could abort a command is still a `DocxPlusError` |
 | `qn(name)` | function | `"w:tag"` → Clark-notation `{namespace}tag` |
 | `InvalidNamespaceError` | exception | Dual-bases: `DocxPlusError, ValueError`. `qn()` got a malformed name or unknown prefix |
 | `NSMAP` | dict | The library's pre-bound *query* namespace map (`w`, `w14`, `w15`, `w16cid`, `r`, `mc`, `a`, `xml`) |
+| `BUILD_NSMAP` | dict | v0.6.2 (re-exported). The narrower *build* map (`w`, `w14`, `r`, `mc`, `a`, `xml`) — what `el()` binds on a new element that is going into `document.xml`, so the element does not carry the `w15` / `w16cid` declarations the query map needs |
+| `W`, `W14`, `R`, `MC` | str | Namespace URIs — WordprocessingML main, the Word 2010 extension (`w14:paraId`), relationships, and markup compatibility |
 | `W15` | str | The Word 2012 extension namespace URI — `commentsExtended.xml`, `people.xml`. v0.4 |
 | `W16CID` | str | The Word 2016 extension namespace URI — `commentsIds.xml`. v0.5 |
 | `XML` | str | XML namespace URI (added Phase 5 to make `qn("xml:space")` work for `w:instrText`) |
@@ -93,6 +99,8 @@ The foundation primitives. Every capability module imports from here only.
 | `sub(parent, tag, **attrs)` | function | Create + append a namespaced child |
 | `xpath(node, expr)` | function | XPath against `node` with `NSMAP` pre-bound. Use this — `BaseOxmlElement.xpath()` rejects `namespaces=` kwarg |
 | `remove(node)` | function | Detach from parent, no-op if already detached |
+| `on_off(value, *, absent=False)` | function | v0.6.2. **The** reader for an ECMA-376 `ST_OnOff` attribute — `1` / `0`, `true` / `false`, `on` / `off`. `absent` is what a missing attribute means (`<w:b/>` is on, so toggle callers pass `True`). Do not open-code the test: reading `off` as anything but false inverts the property |
+| `parse_ooxml_datetime(value)` | function | v0.6.2. Parse an `xsd:dateTime` attribute, tolerating the trailing `Z` Word writes (which `fromisoformat` rejected before 3.11). Returns `None` for a missing, empty, or unparseable value rather than raising — a bad date on a comment is no reason to refuse the rest of it |
 | `body_document_for(proxy, *, operation=...)` | function | Resolve the owning main-body `Document` from a python-docx proxy; raises `ValueError` for header/footer proxies. Shared by `comments` / `notes` |
 | `build_complex_field(p_element, instruction, initial_text)` | function | Emit the 5-run complex-field sequence (begin / instrText / separate / result / end). Used by `fields/simple.py` and `bookmarks/crossref.py` |
 | `build_bookmark(start_anchor, end_anchor, *, bookmark_id, name)` | function | v0.5. Bracket a range with a `bookmarkStart` / `bookmarkEnd` pair. Lives in core so `publishing` can make a caption referenceable — a `REF` field can only point at a bookmark, never at the caption's `SEQ` field |
@@ -126,16 +134,20 @@ for the algorithm walkthrough.
 | `resolve_effective_formatting(target, *, include_provenance=False, table_context=None, stop_below=None)` | function | The headline API — walks the eight cascade layers, returns `ResolvedFormatting`. `table_context` overrides the auto-derived cell position for conditional table-style branches. `stop_below` (v0.6) resolves the target as if that layer and everything above it were absent — the baseline "what would this look like without its own direct formatting?" question the linter is built on. A paragraph whose `w:pStyle` is absent, dangling, or of the wrong `w:type` resolves through the **default paragraph style**, which is what `style_id` then reports |
 | `Layer` | type alias | v0.6. The eight cascade layers in order: `docDefaults`, `tableStyle`, `paragraphStyle`, `styleNumbering`, `numbering`, `directParagraph`, `runStyle`, `directRun`. What `stop_below` accepts and `FormattingSource.layer` reports |
 | `StyleKind` | type alias | `Literal["paragraph", "character", "table", "numbering"]` — the `w:type` of a `w:style`. A style reference only resolves to a style of the type it demands |
+| `StyleType` | type alias | v0.6.2. Alias of `StyleKind`, exported from `docx_plus.styles` — the name the modification side (`create_style(style_type=...)`, `StyleInfo.style_type`) has always used |
 | `AUTO_COLOR` | str | v0.6. `"auto"` — what `color_rgb` holds for Word's *Automatic*. The one value of that field which is not `RRGGBB` hex, so `color_rgb is not None` does **not** imply a parseable hex value. Automatic is a colour Word applies, not the absence of one: it overrides whatever a lower layer set. `modify_style` accepts it, so a resolved value round-trips |
-| `iter_resolved_paragraphs(doc, *, include_provenance=False, include_runs=True, include_tables=True, include_baseline=False)` | function | v0.6. The document-wide sweep — every paragraph and run resolved against **one shared cache**, in document order, yielding lazily. Identical results to calling `resolve_effective_formatting` per target, but the theme, styles part and every `basedOn` chain are read once. Body only: headers, footers, notes and comments are not swept |
-| `ResolvedParagraph` | dataclass (frozen) | v0.6. `paragraph`, `index`, `formatting`, `runs`, `table_depth`, optional `baseline`; `in_table` and `text` properties. `runs` includes runs inside a `<w:hyperlink>`, which `Paragraph.runs` omits, so `runs` and `text` cover the same content |
+| `iter_resolved_paragraphs(doc, *, include_provenance=False, include_runs=True, include_tables=True, include_baseline=False, include_spacing=False, parts=("body",))` | function | v0.6. The document-wide sweep — every paragraph and run resolved against **one shared cache**, in document order, yielding lazily. Identical results to calling `resolve_effective_formatting` per target, but the theme, styles part and every `basedOn` chain are read once. `include_spacing=True` (v0.6.2) also computes each paragraph's `ParagraphSpacing` against the shared cache. Body only by default; `parts=` (v0.6.2) takes any of the `SweepPart` names or `"all"`, which adds every header, footer, footnote, endnote, and comment after the body |
+| `SweepPart` | type alias | v0.6.2. `Literal["body", "header", "footer", "footnotes", "endnotes", "comments"]` — what `parts=` accepts and `ResolvedParagraph.part` reports |
+| `InvalidSweepPartError` | exception | v0.6.2. Dual-bases: `DocxPlusError, ValueError`. `parts=` named something that is not a `SweepPart` |
+| `ResolvedParagraph` | dataclass (frozen) | v0.6. `paragraph`, `index`, `formatting`, `runs`, `table_depth`, optional `baseline`, optional `spacing` (v0.6.2, with `include_spacing=True`), `part` (v0.6.2 — always `"body"` unless swept with `parts=`); `in_table` and `text` properties. A paragraph from a footnotes, endnotes, or comments part is wrapped in a `Paragraph` whose `.part` is that side part, so its `.style` accessor does not work; `.text`, `.runs` and the resolved formatting do. `runs` includes runs inside a `<w:hyperlink>`, which `Paragraph.runs` omits, so `runs` and `text` cover the same content |
 | `ResolvedRun` | dataclass (frozen) | v0.6. `run`, `index`, `formatting`, optional `baseline` (the same run with `stop_below="directRun"`) |
 | `resolve_paragraph_spacing(paragraph)` | function | The vertical space Word actually leaves around a paragraph, after `<w:contextualSpacing>` and Word's space-after/space-before arithmetic. Returns `ParagraphSpacing` |
 | `ParagraphSpacing` | dataclass (frozen) | `space_above` / `space_below` (the applied gaps, in twips), `declared_before` / `declared_after`, `contextual_spacing`, `before_suppressed` / `after_suppressed`. One paragraph's `space_below` equals the next one's `space_above` |
-| `ResolvedFormatting` | dataclass (frozen) | 35 formatting fields + `partial` + optional `provenance`. SPEC §4. All twelve ECMA-376 17.7.3 toggles are surfaced (`bold`, `italic`, `cs_bold`, `cs_italic`, `caps`, `small_caps`, `strike`, `vanish`, `emboss`, `imprint`, `outline`, `shadow`). `spacing_before` / `spacing_after` are what the cascade *declares*; `contextual_spacing` carries the flag, and `resolve_paragraph_spacing` applies it |
+| `ResolvedFormatting` | dataclass (frozen) | 37 formatting fields + `partial` + optional `provenance`. SPEC §4. All twelve ECMA-376 17.7.3 toggles are surfaced (`bold`, `italic`, `cs_bold`, `cs_italic`, `caps`, `small_caps`, `strike`, `vanish`, `emboss`, `imprint`, `outline`, `shadow`). `spacing_before` / `spacing_after` are what the cascade *declares*; `contextual_spacing` carries the flag, and `resolve_paragraph_spacing` applies it |
 | `FormattingSource` | dataclass (frozen) | `layer`, `style_id`, `chain_depth`, `is_toggle_resolved`. `layer` is one of `docDefaults`, `tableStyle`, `paragraphStyle`, `styleNumbering`, `numbering`, `directParagraph`, `runStyle`, `directRun` |
 | `TableContext` | dataclass (frozen) | Cell position within a table — `is_first_row`, `is_last_row`, `is_first_col`, `is_last_col`, the four `is_band*` fields — plus the table's `w:tblLook` gating (`first_row_enabled`, `last_row_enabled`, `first_col_enabled`, `last_col_enabled`, all defaulting to True). Drives `<w:tblStylePr>` branch selection (`firstRow`, `lastRow`, `band1Horz`, …) |
 | `StyleCascadeError` | exception | `basedOn` cycles or depth > 11 |
+| `InvalidLayerError` | exception | v0.6.2. Dual-bases: `DocxPlusError, ValueError`. `stop_below` named something that is not a `Layer` (was a bare `ValueError`) |
 | `MissingPartError` | exception | Referenced part absent (reserved — currently no caller raises it) |
 
 ### `docx_plus.styles` — modification
@@ -162,6 +174,7 @@ Style creation, modification, application, removal, and reconciliation.
 | `StyleInUseError` | exception | `delete_style` without `force=True` on referenced style |
 | `UnknownStylePropertyError` | exception | Dual-bases: `DocxPlusError, TypeError`. Unknown `**properties` kwarg |
 | `InvalidColorError` | exception | Dual-bases: `DocxPlusError, ValueError`. A `color_rgb` value that isn't valid `RRGGBB` hex |
+| `InvalidStylePropertyError` | exception | v0.6.2. Dual-bases: `DocxPlusError, ValueError`. The right property name with the wrong *value* — a negative `num_id`, a `num_level` outside 0–8, or `num_level` on a style that links no numbering definition |
 
 #### Properties accepted by `create_style` / `modify_style`
 
@@ -169,13 +182,20 @@ Field names match `ResolvedFormatting` so output round-trips back through
 the modifier without translation. Paragraph-level: `alignment`,
 `indent_left`, `indent_right`, `indent_first_line`, `spacing_before`,
 `spacing_after`, `line_spacing`, `line_spacing_rule`, `keep_with_next`,
-`keep_lines`, `page_break_before`, `outline_level`. Run-level:
-`font_name`, `font_size`, `bold`, `italic`, `underline`, `strike`,
-`color_rgb`, `highlight`, `caps`, `small_caps`, `vanish`, `vert_align`.
-(`ResolvedFormatting` additionally exposes the complex-script /
+`keep_lines`, `page_break_before`, `outline_level`, and (v0.6.2)
+`num_id` / `num_level`. Run-level: `font_name`, `font_size`, `bold`,
+`italic`, `underline`, `strike`, `color_rgb`, `highlight`, `caps`,
+`small_caps`, `vanish`, `vert_align`, and the complex-script /
 decorative toggles `cs_bold`, `cs_italic`, `emboss`, `imprint`,
-`outline`, `shadow` on the read side; `create_style` / `modify_style`
-do not yet take them as kwargs — they are read-only.)
+`outline`, `shadow`.
+
+`num_id` / `num_level` write `w:pPr/w:numPr`, linking the style to a
+numbering definition. `num_id` is the `w:numId` that
+`numbering.define_list_definition` (or a preset) returned; `0` is the schema's "explicitly not
+numbered" sentinel (how a style based on a list style opts out) and
+`None` removes the link entirely. `num_level` is the 0-based `w:ilvl`
+(0–8); it defaults to 0 when only `num_id` is given and raises
+`InvalidStylePropertyError` on a style that links no definition.
 
 ### `docx_plus.styles.theme`
 
@@ -222,6 +242,7 @@ Architecture walkthrough in [Content controls](concepts/controls.md).
 | `set_control_value(doc, tag, value, *, control_id=None)` | function | Update one control. Type-dispatched on the control type. `control_id` disambiguates a repeated tag |
 | `clear_control(doc, tag, *, control_id=None)` | function | Reset to the placeholder state |
 | `ControlValue` | dataclass (frozen) | `tag` (`str \| None`), `alias`, `control_type`, `value`, `is_placeholder`, `control_id`, `index`, `location` |
+| `ControlValueT` | type alias | v0.6.2 (exported). `str \| bool \| datetime` — the Python type of `ControlValue.value` and what `set_control_value` accepts |
 | `ControlType` | type alias | The five writable types plus `richtext`, `picture`, `group`, `repeating`, `repeatingitem`, `docpart`, `citation`, `bibliography`, `equation` |
 | `WRITABLE_TYPES` | frozenset | The `ControlType` values `set_control_value` / `clear_control` accept |
 | `ControlNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. No control matched the tag or id |
@@ -244,6 +265,8 @@ Complex field insertion (PAGE / DATE / generic) and the
 | `add_field(paragraph, *, instruction, initial_text="")` | function | Generic complex field. Use for `TOC`, `REF`, `MERGEFIELD`, etc. Spaces are normalised around `instruction` |
 | `mark_fields_dirty(doc)` | function | Set `w:updateFields val="true"` in `settings.xml`. Idempotent |
 | `PageFieldName` | type alias | `Literal["PAGE", "NUMPAGES", "SECTIONPAGES"]` |
+| `read_fields(doc, *, keyword=None)` | function | v0.6. Every complex field in the body, in document order, as `FieldInfo`; `keyword` filters by type, case-insensitively. Body only — a `PAGE` field in a header is not reported. See [`reference/fields-read.md`](reference/fields-read.md) |
+| `FieldInfo` | dataclass | v0.6. `keyword` (upper-cased), `arguments` (remaining tokens, quotes stripped, switches in order), `instruction` (raw), `result` (the cached text Word last rendered — **not** authoritative), `paragraph_index` (0-based, counts table-cell `w:p`s like `read_bookmarks`), `begin_element`; `switches` and `operands` properties |
 
 ### `docx_plus.protection`
 
@@ -303,7 +326,8 @@ distinct even/odd headers. Architecture walkthrough in
 | `enable_distinct_even_odd_headers(doc)` | function | Write `<w:evenAndOddHeaders/>` into `settings.xml`. Idempotent. Distinct from per-section `titlePg` (which python-docx already exposes) |
 | `disable_distinct_even_odd_headers(doc)` | function | Remove the element. Idempotent |
 | `set_line_numbering(section, *, count_by=1, restart="newPage", start=1, distance=None)` | function | Emit `<w:lnNumType>` for marginal line numbers. Idempotent, schema-strict (lands in its ECMA-376 17.6.17 slot) |
-| `set_page_borders(section, *, top=None, bottom=None, left=None, right=None)` | function | Emit `<w:pgBorders>` from one `Border` per side. All-None removes the element. Idempotent, schema-strict |
+| `set_page_borders(section, *, top=None, bottom=None, left=None, right=None, offset_from="page")` | function | Emit `<w:pgBorders>` from one `Border` per side. All-None removes the element. Idempotent, schema-strict. `offset_from` says what `Border.space` is measured from |
+| `OffsetFrom` | type alias | `Literal["page", "text"]` — `"page"` (default) measures `Border.space` from the page edge, what Word's UI emits; `"text"` measures from the body text edge, the spec's implicit default when the attribute is omitted, producing a tight inner box |
 | `Border` | dataclass (frozen) | One side of a page border: `style`, `size` (eighths of a point), `color` (RGB hex or `"auto"`), `space` (twips from text) |
 | `SectionStartType` | type alias | `Literal["nextPage", "continuous", "evenPage", "oddPage", "nextColumn"]` |
 | `LineNumberRestart` | type alias | `Literal["newPage", "newSection", "continuous"]` |
@@ -319,9 +343,7 @@ Bookmarks and cross-references — paired body markers plus `REF` /
 | `add_bookmark(target, name, *, id_registry=None)` | function | Wrap target with `<w:bookmarkStart>` / `<w:bookmarkEnd>`. Validates `name` against `[A-Za-z_][A-Za-z0-9_]{0,39}` |
 | `delete_bookmark(doc, name)` | function | Remove every bookmark with the given name. Idempotent |
 | `read_bookmarks(doc)` | function | List every bookmark paired with its anchored text. Returns `list[BookmarkInfo]` |
-| `add_cross_reference(paragraph, *, bookmark, kind="text", hyperlink=True, number=None, position=False, suppress_non_delimiters=False, numeric_format=None, preserve_formatting=False)` | function | Append a `REF` (`kind="text"`) or `PAGEREF` (`kind="page"`) complex field. `\h` appended by default. v0.5 added the switch surface: `number` → `
-`/`
-`/`\w` (paragraph number), `position` → `\p` (`"above"`/`"below"`), `numeric_format` → `\#`, `preserve_formatting` → `\* MERGEFORMAT`. `bookmark` is validated. Pair with `mark_fields_dirty` |
+| `add_cross_reference(paragraph, *, bookmark, kind="text", hyperlink=True, number=None, position=False, suppress_non_delimiters=False, numeric_format=None, preserve_formatting=False)` | function | Append a `REF` (`kind="text"`) or `PAGEREF` (`kind="page"`) complex field. `\h` appended by default. v0.5 added the switch surface: `number` → `\n` / `\r` / `\w` (paragraph number), `position` → `\p` (`"above"`/`"below"`), `numeric_format` → `\#`, `preserve_formatting` → `\* MERGEFORMAT`. `bookmark` is validated. Pair with `mark_fields_dirty` |
 | `NumberContext` | type alias | v0.5. `"plain"` / `"relative"` / `"full"` for `number` above |
 | `BookmarkRef` | dataclass (frozen) | `bookmark_id`, `name`, `start_element`, `end_element` |
 | `BookmarkInfo` | dataclass (frozen) | `bookmark_id`, `name`, `anchored_text`, `paragraph_index` |
@@ -375,7 +397,10 @@ restarting possible. See
 | `ListLevel` | dataclass (frozen) | Read-side level. Every field is `None` when its element is absent — which Word reads as its own default, not as zero |
 | `NumIdRegistry(doc)` | class | `w:numId` allocator, from 1. Allocates lowest-free via `next_sequential()`, matching Word |
 | `AbstractNumIdRegistry(doc)` | class | `w:abstractNumId` allocator, from **0** — the one id namespace where zero is legal |
-| `InvalidLevelError` | exception | Dual-bases: `DocxPlusError, ValueError`. A bad `numFmt`, an over-deep `%N` placeholder, more than nine levels |
+| `Suffix` | type alias | `Literal["tab", "space", "nothing"]` — what `LevelDefinition.suffix` accepts: the `w:suff` between the number and the text |
+| `Justification` | type alias | `Literal["left", "center", "right", "start", "end"]` — `LevelDefinition.justify`, the `w:lvlJc` of the number |
+| `MultiLevelType` | type alias | `Literal["singleLevel", "multilevel", "hybridMultilevel"]` — `define_list_definition(multi_level_type=...)`; derived from the level count when `None` |
+| `InvalidLevelError` | exception | Dual-bases: `DocxPlusError, ValueError`. A bad `numFmt`, an over-deep `%N` placeholder, more than nine levels; also (v0.6.2) what `apply_list` / `restart_list` raise for a `level` outside 0–8 or a negative `start` (was a bare `ValueError`) |
 | `ListDefinitionNotFoundError` | exception | Dual-bases: `DocxPlusError, KeyError`. `restart_list` on an unknown `numId` |
 | `MAX_LEVELS` | int | `9` — ECMA-376 caps `w:lvl` per definition |
 
@@ -468,21 +493,29 @@ is deferred to v0.7. Full reference in
 | `PlannedFix` | dataclass (frozen) | One kept or withheld fix paired with the finding that produced it. `rule` / `safety` / `adds_content` / `operations` / `deletes` properties |
 | `FixConflict` | dataclass (frozen) | `kept`, `dropped`, `reason` — two edits claimed the same run property or overlapping text spans; the earlier one wins |
 | `Profile` | dataclass (frozen) | Per-rule enable / disable and severity overrides — the one place a house opinion may live. `load()` takes a path, a mapping, or `None`; `discover(start)` walks up for `docx-plus-lint.json`. A profile may not configure a *tag* |
-| `RuleSettings` | dataclass (frozen) | `enabled`, `severity`, `options` for one rule |
+| `RuleSettings` | dataclass (frozen) | `enabled`, `severity`, `options` for one rule. `options` reach the rule through `LintContext.option` (v0.6.2); the rule validates the value, the profile only promises it is JSON |
 | `DEFAULT_PROFILE_NAME` | str | `"docx-plus-lint.json"` — what `Profile.discover` looks for |
 | `Rule` | dataclass (frozen) | A registered rule: `id`, `kind`, `severity`, `description`, `check`, `tags`, `default_on`. `matches(selector)` |
 | `rule(*, id, kind, severity, description, tags=(), default_on=True)` | decorator | Register a check function. Rules register at import, so a new one is a single function |
 | `all_rules()` | function | Every registered rule, in id order |
 | `select_rules(select, exclude, profile=None)` | function | Resolve selectors to rules. Precedence: profile adjusts the defaults, explicit `select` overrides both, `exclude` is applied last |
-| `LintContext` | dataclass | What a rule is given: `doc` and `paragraphs` (the whole swept document, so comparative rules are possible), plus `resolve(target, stop_below=...)` and `excerpt(paragraph_index)` |
+| `LintContext` | dataclass | What a rule is given: `doc` and `paragraphs` (the whole swept document, so comparative rules are possible), plus `resolve(target, stop_below=...)` and `excerpt(paragraph_index)`. v0.6.2 adds `profile` (the loaded `Profile`, empty by default) and `option(rule_id, key, default)` — one rule-specific value from the profile's `options` block, or the rule's own default |
+| `CheckFn` | type alias | v0.6.2. `Callable[[LintContext], Iterator[Issue]]` — the shape of a rule body, what `@rule` decorates |
 | `RuleKind` | type alias | `Literal["consistency", "structural", "policy"]` — the distinction that keeps an opinionated feature inside a lean library. No `policy` rule ships enabled |
 | `Severity` | type alias | `Literal["error", "warning", "info"]` |
 | `UnknownRuleError` | exception | Dual-bases: `DocxPlusError, KeyError`. A selector, or a profile, named a rule id or tag that does not exist |
 | `InvalidProfileError` | exception | Dual-bases: `DocxPlusError, ValueError`. The profile is unreadable or malformed |
+| `InvalidFixError` | exception | Dual-bases: `DocxPlusError, ValueError`. A rule produced a fix `plan_fixes` cannot order safely — one that both deletes and does positional work |
 
 Twenty rules ship, sixteen on by default; eleven are deliberately
 report-only, because their repair is a judgement the document cannot
 supply. `docx-plus lint --list-rules` prints the catalogue.
+
+Three options are read today (v0.6.2): `font-outliers` honours
+`max_share` (default `0.05`) and `max_runs` (default `5`), and
+`manual-heading-formatting` honours `max_chars` (default `80`). A
+`{"rules": {"font-outliers": {"options": {"max_share": 0.02}}}}`
+profile tightens the first without touching the rule's code.
 
 ### `docx_plus.cli`
 
@@ -517,10 +550,16 @@ Shared test-suite assertion helpers. Internal — referenced from
 | `count_controls(doc, control_type=None)` | Count SDTs in the body; filter by `"text"`/`"dropdown"`/`"combobox"`/`"date"`/`"checkbox"` |
 | `assert_protected(doc, mode=None)` | `w:documentProtection` present with `w:enforcement="1"`; optionally validates `w:edit` |
 | `assert_field_dirty(doc)` | `w:updateFields val="true"` present in `settings.xml` |
+| `assert_field_not_dirty(doc)` | `settings.xml` carries no `w:updateFields` element |
+| `field_instruction_text(p_element)` | The concatenated `<w:instrText>` text in a paragraph element, or `None` |
+| `assert_para_ids_unique(doc)` | Every `w14:paraId` in the package (body plus side parts) appears exactly once |
+| `assert_durable_ids_well_formed(doc)` | `commentsIds.xml` satisfies the invariants Word relies on |
+| `assert_numbering_well_formed(doc)` | `numbering.xml` satisfies the invariants Word relies on |
 
-The SPEC §10 list is now mostly populated; `assert_style_not_defined`
-and `assert_no_orphan_relationships` remain unwritten (no caller
-needs them yet — see `TEST_GAPS.md` N1).
+The SPEC §10 list is populated, and the v0.4–v0.5 side-part helpers
+have joined it; `assert_style_not_defined` and
+`assert_no_orphan_relationships` remain unwritten (no caller needs
+them yet — see `TEST_GAPS.md` N1).
 
 ---
 

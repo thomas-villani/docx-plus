@@ -107,15 +107,26 @@ for resolved in iter_resolved_paragraphs(doc, include_baseline=True):
 `include_baseline=True` resolves each target a second time with its own
 direct layer excluded, which is what makes "is this override doing
 anything?" answerable across a whole document. It roughly doubles the work,
-so it is off by default.
+so it is off by default. `include_spacing=True` likewise populates
+`resolved.spacing` with the same `ParagraphSpacing` that
+`resolve_paragraph_spacing` returns, but against the shared cache — several
+times cheaper per paragraph, and off by default because it resolves each
+paragraph's neighbours as well.
 
 !!! note "`index` is not an index into `doc.paragraphs`"
     The sweep descends into table cells, which `doc.paragraphs` omits, so
     the two diverge at the first table. Pass `include_tables=False` to make
     them line up.
 
-    The sweep is **body only** — headers, footers, footnotes, endnotes, and
-    comments live in separate parts and are not visited.
+    The sweep is **body only by default** — headers, footers, footnotes,
+    endnotes, and comments live in separate parts. Pass `parts="all"`, or a
+    tuple of `SweepPart` names (`"body"`, `"header"`, `"footer"`,
+    `"footnotes"`, `"endnotes"`, `"comments"`), to visit them after the
+    body; each `ResolvedParagraph.part` says where it came from. A
+    paragraph from a footnotes, endnotes, or comments part is wrapped in a
+    `Paragraph` whose `.part` is that side part, so its `.style` accessor
+    does not work — `.text`, `.runs`, and the resolved formatting do. An
+    unknown name raises `InvalidSweepPartError`.
 
 `resolved.runs` includes runs inside a `<w:hyperlink>`, which
 `Paragraph.runs` omits; together they cover exactly the text `.text`
@@ -164,15 +175,22 @@ straight back into the modifier.
 
 - **Paragraph:** `alignment`, `indent_left`, `indent_right`,
   `indent_first_line`, `spacing_before`, `spacing_after`, `line_spacing`,
-  `line_spacing_rule`, `contextual_spacing`, `keep_with_next`,
-  `keep_lines`, `page_break_before`, `outline_level`
+  `line_spacing_rule`, `keep_with_next`, `keep_lines`,
+  `page_break_before`, `outline_level`, `num_id`, `num_level`
 - **Run:** `font_name`, `font_size`, `bold`, `italic`, `underline`,
   `strike`, `color_rgb`, `highlight`, `caps`, `small_caps`, `vanish`,
-  `vert_align`
+  `vert_align`, and the decorative / complex-script toggles `cs_bold`,
+  `cs_italic`, `emboss`, `imprint`, `outline`, `shadow`
 
-The decorative and complex-script toggles (`cs_bold`, `cs_italic`,
-`emboss`, `imprint`, `outline`, `shadow`) are **read-only** — reported by
-`resolve_effective_formatting` but not accepted as kwargs here.
+`num_id` / `num_level` link a style to a numbering definition
+(`w:pPr/w:numPr`). `num_id` is the `w:numId` that `define_list_definition` (or a preset) returned;
+`0` is the schema's "explicitly not numbered" sentinel, which a style based
+on a list style uses to opt out, and `None` removes the link. `num_level`
+is the 0-based `w:ilvl` (0–8) and defaults to 0 when only `num_id` is
+given; setting it on a style that links no definition, like a negative
+`num_id` or an out-of-range level, raises `InvalidStylePropertyError`.
+`contextual_spacing` is reported by the resolver but is not a writable
+property.
 
 ### Restyling an existing document
 
@@ -266,7 +284,9 @@ out of scope.
 All subclass `DocxPlusError`: `StyleExistsError`, `StyleNotFoundError`,
 `StyleInUseError`, `StyleCascadeError` (a `basedOn` cycle, or a chain
 deeper than 11), `UnknownStylePropertyError` (also `TypeError`),
-`InvalidColorError` (also `ValueError`), `ThemeError`.
+`InvalidColorError`, `InvalidStylePropertyError`, `InvalidLayerError`
+(a `stop_below` that names no layer), `InvalidSweepPartError` (all three
+also `ValueError`), `ThemeError`.
 
 ## See also
 
