@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from docx_plus.cli._io import (
     CliError,
+    add_output_options,
     dump_json,
     load_document,
     resolve_output,
@@ -78,13 +79,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     set_p.add_argument(
         "--value", required=True, help="the new value (coerced to the control's type)"
     )
-    _add_output_args(set_p)
+    add_output_options(set_p)
     set_p.set_defaults(func=cmd_set)
 
     clear_p = actions.add_parser("clear", help="reset a control to its placeholder state")
     clear_p.add_argument("file", help="path to the source .docx file")
     _add_selector_args(clear_p)
-    _add_output_args(clear_p)
+    add_output_options(clear_p)
     clear_p.set_defaults(func=cmd_clear)
 
 
@@ -101,16 +102,6 @@ def _add_selector_args(parser: argparse.ArgumentParser) -> None:
         "--control-id",
         type=int,
         help="the control's w:id value, as shown by 'controls list'",
-    )
-
-
-def _add_output_args(parser: argparse.ArgumentParser) -> None:
-    """Add the shared -o/--output and --in-place options to a mutating action."""
-    parser.add_argument("-o", "--output", default=None, help="path to write the result")
-    parser.add_argument(
-        "--in-place",
-        action="store_true",
-        help="overwrite the input file instead of requiring -o/--output",
     )
 
 

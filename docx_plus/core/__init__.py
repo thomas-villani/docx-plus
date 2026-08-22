@@ -20,6 +20,7 @@ from docx_plus.core.ids import (
     IdRangeError,
     IdRegistry,
     ParaIdRegistry,
+    RegistryExhaustedError,
 )
 from docx_plus.core.ns import (
     BUILD_NSMAP,
@@ -97,6 +98,7 @@ __all__ = [
     "DuplicateBookmarkNameError",
     "DuplicateIdError",
     "IdRangeError",
+    "RegistryExhaustedError",
     "IdRegistry",
     "InvalidNamespaceError",
     "ParaIdRegistry",

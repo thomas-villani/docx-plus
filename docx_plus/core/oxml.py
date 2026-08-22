@@ -6,6 +6,7 @@ rather than calling ``lxml.etree`` directly. SPEC §9.2.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
@@ -56,6 +57,26 @@ def on_off(value: str | None, *, absent: bool = False) -> bool:
     if value is None:
         return absent
     return value.strip().lower() in _ON_OFF_TRUE
+
+
+def parse_ooxml_datetime(value: str | None) -> dt.datetime | None:
+    """Parse an ``xsd:dateTime`` attribute, tolerating the trailing ``Z`` form.
+
+    Word writes ``2024-01-15T10:30:00Z``; Python's ``fromisoformat`` did not
+    accept the ``Z`` suffix before 3.11, so it is rewritten as ``+00:00``.
+    Anything unparseable — including an empty or missing attribute — is
+    ``None`` rather than an error, since a malformed date on a comment or a
+    revision is no reason to refuse to read the rest of it.
+    """
+    if not value:
+        return None
+    normalized = value.rstrip("Z")
+    if value.endswith("Z"):
+        normalized = normalized + "+00:00"
+    try:
+        return dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
 
 
 def el(tag: str, **attrs: str) -> etree._Element:
@@ -412,6 +433,7 @@ __all__ = [
     "insert_before_first_anchor",
     "on_off",
     "ordered_insert",
+    "parse_ooxml_datetime",
     "remove",
     "sub",
     "validate_bookmark_name",

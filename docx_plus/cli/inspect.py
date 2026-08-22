@@ -15,7 +15,7 @@ from docx_plus.cli._io import dump_json, load_document
 from docx_plus.styles import (
     FormattingSource,
     ResolvedFormatting,
-    resolve_effective_formatting,
+    iter_resolved_paragraphs,
 )
 
 if TYPE_CHECKING:
@@ -124,9 +124,17 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     """Handle ``docx-plus inspect``."""
     doc = load_document(args.file)
     records: list[dict[str, Any]] = []
-    for index, paragraph in enumerate(doc.paragraphs, start=1):
-        text = paragraph.text
-        resolved = resolve_effective_formatting(paragraph, include_provenance=args.provenance)
+    # One shared cascade cache for the whole document, rather than a rebuild
+    # per paragraph. ``include_tables=False`` keeps the paragraph set and the
+    # 1-based numbering identical to what ``doc.paragraphs`` gave this
+    # command before; walking into cells is a reporting change, not a fix.
+    swept = iter_resolved_paragraphs(
+        doc, include_runs=False, include_tables=False, include_provenance=args.provenance
+    )
+    for swept_paragraph in swept:
+        index = swept_paragraph.index + 1
+        text = swept_paragraph.text
+        resolved = swept_paragraph.formatting
         if args.as_json:
             records.append(_paragraph_json(index, text, resolved))
         else:
