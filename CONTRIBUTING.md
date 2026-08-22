@@ -148,24 +148,33 @@ in — the format's edge cases are often version-specific.
 
 ## Releasing
 
-Maintainer-only, recorded here so the process is not folklore:
+Maintainer-only, recorded here so the process is not folklore. `main` is
+protected: every change, the version bump included, lands through a PR
+with all CI checks green, and admins cannot bypass that with a direct
+push. Because PRs are squash-merged, the tag is created on `main`
+*after* the merge, not by `bump-my-version`.
 
 ```bash
-uv run bump-my-version bump {major|minor|patch} --dry-run -v   # preview; tree must be clean
-uv run bump-my-version bump minor
-git push --follow-tags
+git checkout -b release/X.Y.Z
+# 1. Move [Unreleased] into a dated CHANGELOG section and re-stamp the
+#    prose docs (README, docs/index.md, docs/API.md, docs/SKILLS.md) for
+#    the new version -- these have historically lagged behind the bump.
+# 2. Bump (preview first; tree must be clean). It commits but does not tag:
+uv run bump-my-version bump {major|minor|patch} --dry-run -v
+uv run bump-my-version bump {major|minor|patch}
+# 3. Push the branch, open a PR, wait for CI, squash-merge.
+# 4. Tag the merge commit on main and push the tag:
+git checkout main && git pull
+git tag -a vX.Y.Z -m "chore(release): vX.Y.Z" && git push origin vX.Y.Z
 ```
 
 The bump updates `pyproject.toml`, `docx_plus/__init__.py`, and the
-project's own entry in `uv.lock`, then commits and tags `vX.Y.Z`.
-Pushing the tag triggers `.github/workflows/release.yml`, which
-re-runs the full matrix as a release gate and publishes to PyPI via
-trusted publishing.
+project's own entry in `uv.lock`. Pushing the tag triggers
+`.github/workflows/release.yml`, which re-runs the full matrix as a
+release gate, checks the tag against `pyproject.toml`, and publishes to
+PyPI via trusted publishing.
 
-`CHANGELOG.md` is maintained by hand. After a release, re-stamp the
-prose docs (README, `docs/index.md`, `docs/API.md`,
-`docs/getting-started.md`, `docs/concepts/index.md`, `docs/SKILLS.md`)
-for the new version — these have historically lagged behind the bump.
+`CHANGELOG.md` is maintained by hand.
 
 ## License
 

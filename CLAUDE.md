@@ -87,12 +87,24 @@ for that module. `docs/concepts/` has the full module-by-module breakdown
 
 ## Releasing
 
+`main` is protected: every change — the version bump included — lands through
+a PR with all CI checks green, and admins cannot bypass that with a direct
+push. Because PRs are squash-merged, the tag is created on `main` *after* the
+merge, not by `bump-my-version`.
+
 ```bash
-uv run bump-my-version bump {major|minor|patch} --dry-run -v   # preview first; tree must be clean
+# 1. On a branch: move [Unreleased] into a dated CHANGELOG section and re-stamp
+#    the prose docs (README, docs/index.md, docs/API.md, docs/SKILLS.md) for
+#    the new version — these have historically lagged behind the bump.
+# 2. Bump (preview first; tree must be clean). It commits but does not tag:
+uv run bump-my-version bump {major|minor|patch} --dry-run -v
+uv run bump-my-version bump {major|minor|patch}
+# 3. Push the branch, open a PR, wait for CI, squash-merge.
+# 4. Tag the merge commit on main and push the tag:
+git checkout main && git pull
+git tag -a vX.Y.Z -m "chore(release): vX.Y.Z" && git push origin vX.Y.Z
 ```
 
-Bumps `pyproject.toml` + `docx_plus/__init__.py`, commits, and tags `vX.Y.Z`.
-`CHANGELOG.md` is maintained by hand. After a release, re-stamp the prose docs
-(README, `docs/index.md`, `docs/API.md`, `docs/getting-started.md`,
-`docs/concepts/index.md`, `docs/SKILLS.md`)
-for the new version — these have historically lagged behind the bump.
+Pushing the `v*.*.*` tag runs `release.yml`, which re-runs the gate, checks the
+tag against `pyproject.toml`, and publishes to PyPI via trusted publishing.
+`CHANGELOG.md` is maintained by hand.

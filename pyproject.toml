@@ -162,7 +162,9 @@ exclude_lines = [
 
 [tool.bumpversion]
 # `bump-my-version bump {major|minor|patch}` updates the three version
-# sources below, then commits and tags. CHANGELOG.md is maintained by hand.
+# sources below and commits on the current branch. It does NOT tag: the bump
+# goes through a PR and the tag is created on main after the squash-merge
+# (see CLAUDE.md "Releasing"). CHANGELOG.md is maintained by hand.
 # Run with --dry-run -v first to preview; the tree must be clean to bump.
 current_version = "0.6.1"
 parse = '(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)'
@@ -170,7 +172,7 @@ serialize = ["{major}.{minor}.{patch}"]
 allow_dirty = false
 commit = true
 message = "chore(release): bump version {current_version} -> {new_version}"
-tag = true
+tag = false
 tag_name = "v{new_version}"
 tag_message = "chore(release): v{new_version}"
 sign_tags = false
