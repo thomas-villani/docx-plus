@@ -6,6 +6,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-21
+
+A patch release for the one thing v0.6.0 got wrong about real Word output:
+`read_controls` assumed `w:tag` was a required, unique key. It is neither.
+
 ### Fixed
 
 - **`read_controls` no longer fails, or silently under-reports, on documents
@@ -1504,7 +1509,8 @@ first-class API, anchored comments, footnotes / endnotes, bookmarks
 and cross-references, table cell shading / borders, theme writing,
 password-protected forms, content-control binding to Custom XML Parts.
 
-[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/thomas-villani/docx-plus/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/thomas-villani/docx-plus/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/thomas-villani/docx-plus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thomas-villani/docx-plus/compare/v0.3.0...v0.4.0

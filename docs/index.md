@@ -36,7 +36,7 @@ pip install docx-plus      # or: uv add docx-plus
 ```
 
 Requires Python 3.10+. The only dependencies are `python-docx` and
-`lxml`. Current release: **v0.6.0**, published 2026-07-31 on
+`lxml`. Current release: **v0.6.1**, published 2026-08-21 on
 [PyPI](https://pypi.org/project/docx-plus/).
 
 ## Start here
@@ -90,7 +90,7 @@ from a shell or CI? See the [**CLI**](cli.md).
 
 ## Project status
 
-**v0.6.0** — beta, and shipping. 2,043 tests, 96% coverage, `mypy
+**v0.6.1** — beta, and shipping. 2,098 tests, 96% coverage, `mypy
 --strict` clean with zero ignores. CI runs Python 3.10–3.13 on Linux
 plus a Windows job, and a lower-bound dependency job pinned to
 `python-docx==1.0.0` / `lxml==4.9.0`.

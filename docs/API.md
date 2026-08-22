@@ -66,7 +66,7 @@ want to see the library in motion before reading the index.
 | Symbol | Kind | Notes |
 |---|---|---|
 | `DocxPlusError` | exception | Root of every typed library error. See [the error hierarchy](concepts/invariants.md#error-hierarchy) |
-| `__version__` | str | `"0.6.0"` |
+| `__version__` | str | `"0.6.1"` |
 
 ### `docx_plus.core`
 

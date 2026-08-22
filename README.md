@@ -290,7 +290,7 @@ Full docs are published at
 
 ## Project status
 
-**v0.6.0**, released 2026-07-31 — beta, and shipping. 2,043 tests,
+**v0.6.1**, released 2026-08-21 — beta, and shipping. 2,098 tests,
 96% coverage, `mypy --strict` clean with zero ignores. CI runs Python
 3.10–3.13 on Linux plus a Windows job, and a lower-bound dependency job
 pinned to `python-docx==1.0.0` / `lxml==4.9.0`.
