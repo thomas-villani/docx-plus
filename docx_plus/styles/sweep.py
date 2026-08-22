@@ -16,13 +16,15 @@ each other.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from lxml import etree
 
+from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
 from docx_plus.styles.inspect import (
     ParagraphSpacing,
@@ -33,11 +35,46 @@ from docx_plus.styles.inspect import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
 
     from docx.document import Document
+    from docx.opc.part import Part
+    from docx.oxml.text.paragraph import CT_P
     from docx.oxml.text.run import CT_R
     from docx.table import _Cell
+
+
+SweepPart = Literal["body", "header", "footer", "footnotes", "endnotes", "comments"]
+"""Where a swept paragraph lives. ``"body"`` is the main document part;
+the others are the side parts that carry paragraphs of their own."""
+
+_SWEEP_PARTS: tuple[SweepPart, ...] = (
+    "body",
+    "header",
+    "footer",
+    "footnotes",
+    "endnotes",
+    "comments",
+)
+"""Sweep order: the body first, then each side part in this order — so a
+``parts="all"`` sweep's indices are stable across runs."""
+
+_PART_RELTYPES: dict[SweepPart, str] = {
+    "header": RT.HEADER,
+    "footer": RT.FOOTER,
+    "footnotes": RT.FOOTNOTES,
+    "endnotes": RT.ENDNOTES,
+    "comments": RT.COMMENTS,
+}
+
+_NOTE_SEPARATOR_TYPES = frozenset({"separator", "continuationSeparator"})
+"""``w:footnote`` / ``w:endnote`` entries that are Word's rule-line
+plumbing rather than a note anyone wrote; they hold a paragraph each and
+are skipped."""
+
+
+class InvalidSweepPartError(DocxPlusError, ValueError):
+    """Raised when ``parts`` names something that is not a :data:`SweepPart`."""
 
 
 @dataclass(frozen=True)
@@ -92,6 +129,8 @@ class ResolvedParagraph:
             neighbours, as :func:`~docx_plus.styles.resolve_paragraph_spacing`
             reports it. ``None`` unless the sweep was run with
             ``include_spacing=True``.
+        part: Which part of the document the paragraph came from. Always
+            ``"body"`` unless the sweep was run with ``parts=``.
     """
 
     paragraph: Paragraph
@@ -101,6 +140,7 @@ class ResolvedParagraph:
     table_depth: int
     baseline: ResolvedFormatting | None = None
     spacing: ParagraphSpacing | None = None
+    part: SweepPart = "body"
 
     @property
     def in_table(self) -> bool:
@@ -128,6 +168,7 @@ def iter_resolved_paragraphs(
     include_tables: bool = True,
     include_baseline: bool = False,
     include_spacing: bool = False,
+    parts: Iterable[SweepPart] | Literal["all"] = ("body",),
 ) -> Iterator[ResolvedParagraph]:
     """Resolve every paragraph in ``doc``, sharing one cascade cache.
 
@@ -160,6 +201,11 @@ def iter_resolved_paragraphs(
             against the shared cache, which is several times cheaper per
             paragraph. Populates ``.spacing``; off by default because it
             resolves each paragraph's neighbours as well.
+        parts: Which parts to sweep, in :data:`SweepPart` terms. The
+            default is the main body only; ``"all"`` adds every header,
+            footer, footnote, endnote, and comment, in that order after
+            the body. Each yielded paragraph says where it came from in
+            ``.part``.
 
     Yields:
         One :class:`ResolvedParagraph` per paragraph, in document order.
@@ -179,9 +225,16 @@ def iter_resolved_paragraphs(
         CLI's ``inspect`` command numbers from 1 rather than 0.
 
     Note:
-        Headers, footers, footnotes, endnotes, and comments are **not**
-        swept — only the main document body. Those live in separate parts
-        with their own style references.
+        Headers, footers, footnotes, endnotes, and comments are swept only
+        when asked for via ``parts``. A paragraph from a footnotes,
+        endnotes, or comments part is wrapped in a
+        :class:`~docx.text.paragraph.Paragraph` whose ``.part`` is that
+        side part rather than a python-docx story part, so its
+        ``.style`` accessor does not work; ``.text``, ``.runs`` and the
+        resolved formatting do.
+
+    Raises:
+        InvalidSweepPartError: If ``parts`` names an unknown part.
 
     Example:
         >>> from docx import Document
@@ -195,7 +248,7 @@ def iter_resolved_paragraphs(
     cache = _ResolverCache.for_document(doc)
     counter = 0
 
-    for paragraph, depth in _walk(doc, include_tables=include_tables):
+    for part, paragraph, depth in _walk_parts(doc, parts, include_tables=include_tables):
         runs: tuple[ResolvedRun, ...] = ()
         if include_runs:
             runs = tuple(
@@ -225,6 +278,7 @@ def iter_resolved_paragraphs(
                 else None
             ),
             spacing=_resolve_spacing_with_cache(cache, paragraph) if include_spacing else None,
+            part=part,
         )
         counter += 1
 
@@ -284,8 +338,104 @@ def _walk(
                     yield from _walk(cell, include_tables=True, depth=depth + 1)
 
 
+def _selected_parts(parts: Iterable[SweepPart] | Literal["all"]) -> tuple[SweepPart, ...]:
+    """Normalise ``parts`` to sweep order, rejecting unknown names."""
+    if parts == "all":
+        return _SWEEP_PARTS
+    wanted = set(parts)
+    unknown = wanted - set(_SWEEP_PARTS)
+    if unknown:
+        names = ", ".join(sorted(str(name) for name in unknown))
+        raise InvalidSweepPartError(f"unknown sweep part(s): {names}")
+    return tuple(part for part in _SWEEP_PARTS if part in wanted)
+
+
+def _walk_parts(
+    doc: Document,
+    parts: Iterable[SweepPart] | Literal["all"],
+    *,
+    include_tables: bool,
+) -> Iterator[tuple[SweepPart, Paragraph, int]]:
+    """Yield ``(part, paragraph, table_depth)`` across every selected part."""
+    for part in _selected_parts(parts):
+        if part == "body":
+            for paragraph, depth in _walk(doc, include_tables=include_tables):
+                yield part, paragraph, depth
+            continue
+        for target in _related_parts(doc, _PART_RELTYPES[part]):
+            for root in _story_roots(part, target):
+                for paragraph, depth in _walk_element(root, target, include_tables=include_tables):
+                    yield part, paragraph, depth
+
+
+def _related_parts(doc: Document, reltype: str) -> list[Part]:
+    """Every part of ``reltype`` related from the main document, in rel order."""
+    found: list[Part] = []
+    for rel in doc.part.rels.values():
+        if rel.is_external or rel.reltype != reltype:
+            continue
+        if isinstance(getattr(rel.target_part, "element", None), etree._Element):
+            found.append(rel.target_part)
+    return found
+
+
+def _story_roots(part: SweepPart, target: Part) -> list[etree._Element]:
+    """The elements whose direct children are the part's paragraphs.
+
+    A header or footer root *is* that element. A footnotes, endnotes, or
+    comments part holds one child per note / comment, each of which is.
+    """
+    element = cast("etree._Element", cast("Any", target).element)
+    if part in ("header", "footer"):
+        return [element]
+    roots: list[etree._Element] = []
+    for child in element:
+        if not isinstance(child.tag, str):
+            continue
+        if part != "comments" and child.get(qn("w:type")) in _NOTE_SEPARATOR_TYPES:
+            continue
+        roots.append(child)
+    return roots
+
+
+class _PartParent:
+    """The least a python-docx ``Paragraph`` needs from its parent: ``.part``."""
+
+    def __init__(self, part: Part) -> None:
+        self.part = part
+
+
+def _walk_element(
+    root: etree._Element,
+    target: Part,
+    *,
+    include_tables: bool,
+) -> Iterator[tuple[Paragraph, int]]:
+    """:func:`_walk` for a raw element whose children are ``w:p`` / ``w:tbl``.
+
+    The side parts have no ``iter_inner_content``-capable wrapper in
+    python-docx (footnotes and comments have no wrapper at all), so this
+    wraps each block element itself. Table cells *are* ``_Cell`` objects
+    once wrapped, so the descent reuses :func:`_walk`.
+    """
+    parent = cast("Any", _PartParent(target))
+    for child in root:
+        if child.tag == qn("w:p"):
+            yield Paragraph(cast("CT_P", child), parent), 0
+        elif include_tables and child.tag == qn("w:tbl"):
+            seen: set[etree._Element] = set()
+            for row in Table(cast("Any", child), parent).rows:
+                for cell in row.cells:
+                    if cell._tc in seen:
+                        continue
+                    seen.add(cell._tc)
+                    yield from _walk(cell, include_tables=True, depth=1)
+
+
 __all__ = [
+    "InvalidSweepPartError",
     "ResolvedParagraph",
     "ResolvedRun",
+    "SweepPart",
     "iter_resolved_paragraphs",
 ]

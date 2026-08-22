@@ -35,8 +35,10 @@ from docx_plus.styles.modify import (
     remap_styles,
 )
 from docx_plus.styles.sweep import (
+    InvalidSweepPartError,
     ResolvedParagraph,
     ResolvedRun,
+    SweepPart,
     iter_resolved_paragraphs,
 )
 
@@ -46,6 +48,7 @@ __all__ = [
     "InvalidColorError",
     "InvalidLayerError",
     "InvalidStylePropertyError",
+    "InvalidSweepPartError",
     "Layer",
     "MissingPartError",
     "ParagraphSpacing",
@@ -60,6 +63,7 @@ __all__ = [
     "StyleNotFoundError",
     "StyleProxy",
     "StyleType",
+    "SweepPart",
     "TableContext",
     "UnknownStylePropertyError",
     "apply_style",
