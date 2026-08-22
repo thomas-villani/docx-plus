@@ -62,6 +62,16 @@ class IdRangeError(DocxPlusError, ValueError):
     """
 
 
+class RegistryExhaustedError(DocxPlusError, RuntimeError):
+    """Raised when a registry has no value left to issue.
+
+    Effectively unreachable — the ``w:id`` space is 31 bits and the
+    ``_Ref`` bookmark space nine digits — but typed so that the one path
+    in ``core/`` that could abort a command still surfaces as a
+    :class:`DocxPlusError` rather than a bare traceback.
+    """
+
+
 class _IdRegistryBase:
     """Generic ``w:id`` tracker for a single namespace within one document.
 
@@ -167,8 +177,8 @@ class _IdRegistryBase:
             A new ``int`` in ``[1, 2**31 - 1]``.
 
         Raises:
-            RuntimeError: If the 31-bit space is exhausted (effectively
-                impossible — included for completeness).
+            RegistryExhaustedError: If the 31-bit space is exhausted
+                (effectively impossible — included for completeness).
         """
         for _ in range(64):
             candidate = secrets.randbelow(_MAX_W_ID) + 1
@@ -209,14 +219,14 @@ class _IdRegistryBase:
             A new ``int`` in ``[_MIN_ID, 2**31 - 1]``.
 
         Raises:
-            RuntimeError: If the 31-bit space is exhausted (effectively
-                impossible — included for completeness).
+            RegistryExhaustedError: If the 31-bit space is exhausted
+                (effectively impossible — included for completeness).
         """
         for candidate in range(self._MIN_ID, _MAX_W_ID + 1):
             if candidate not in self._issued:
                 self._issued.add(candidate)
                 return candidate
-        raise RuntimeError("ID registry exhausted the 31-bit ID space")
+        raise RegistryExhaustedError("ID registry exhausted the 31-bit ID space")
 
     def reserve(self, value: int) -> int:
         """Reserve a specific value, asserting it isn't already issued.
@@ -385,7 +395,7 @@ class BookmarkNameRegistry:
             A fresh name such as ``"_Ref418320715"``.
 
         Raises:
-            RuntimeError: If the space is exhausted (effectively
+            RegistryExhaustedError: If the space is exhausted (effectively
                 impossible — included for completeness).
         """
         for _ in range(64):
@@ -398,7 +408,7 @@ class BookmarkNameRegistry:
             if candidate not in self._names:
                 self._names.add(candidate)
                 return candidate
-        raise RuntimeError("bookmark name registry exhausted the _Ref space")
+        raise RegistryExhaustedError("bookmark name registry exhausted the _Ref space")
 
     def issued(self) -> frozenset[str]:
         """Return an immutable snapshot of every name in use."""
@@ -413,4 +423,5 @@ __all__ = [
     "IdRangeError",
     "IdRegistry",
     "ParaIdRegistry",
+    "RegistryExhaustedError",
 ]

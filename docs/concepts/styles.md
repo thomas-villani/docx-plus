@@ -99,7 +99,9 @@ property writer doesn't model them — these are intentionally omitted from
 - **Paragraph borders** (`pBdr`) on `IntenseQuote`, `BlockText`.
 - **`numPr` placeholder** on `ListBullet`/`ListNumber` — these styles
   in Word's default ship with an empty `numPr` child (a hint, no real
-  numbering link). Skipped; callers attach numbering separately.
+  numbering link). Skipped; callers link a real definition with
+  `modify_style(doc, style_id, num_id=...)` (v0.6.2) or attach numbering
+  per paragraph.
 
 ### `ensure_style` never overwrites
 

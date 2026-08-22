@@ -13,10 +13,12 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+from docx.shared import Pt
 
 from docx_plus.lint import (
     DEFAULT_PROFILE_NAME,
     InvalidProfileError,
+    LintContext,
     Profile,
     UnknownRuleError,
     lint,
@@ -73,13 +75,60 @@ def test_a_rule_the_profile_does_not_mention_keeps_its_registered_behaviour() ->
     assert profile.enabled("font-outliers", default=False) is False
 
 
-def test_options_are_carried_but_unread() -> None:
-    """The hook policy rules will read their target through; nothing uses it yet."""
+def test_options_are_carried() -> None:
     profile = Profile.load({"rules": {"font-outliers": {"options": {"max_share": 0.02}}}})
 
     assert profile.option("font-outliers", "max_share") == 0.02
     assert profile.option("font-outliers", "missing", "fallback") == "fallback"
     assert profile.option("double-space", "max_share") is None
+
+
+def test_the_context_falls_back_to_the_rule_s_own_default() -> None:
+    """A rule keeps its constant; a profile only replaces it."""
+    ctx = LintContext(doc=Document(), paragraphs=[])
+    assert ctx.option("font-outliers", "max_share", 0.05) == 0.05
+
+    ctx = LintContext(
+        doc=Document(),
+        paragraphs=[],
+        profile=Profile.load({"rules": {"font-outliers": {"options": {"max_share": 0.5}}}}),
+    )
+    assert ctx.option("font-outliers", "max_share", 0.05) == 0.5
+
+
+def _doc_with_one_odd_run(*, body_runs: int) -> Document:
+    doc = Document()
+    for index in range(body_runs):
+        run = doc.add_paragraph().add_run(f"body {index}")
+        run.font.name = "Calibri"
+        run.font.size = Pt(11)
+    run = doc.add_paragraph().add_run("pasted in")
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(12)
+    return doc
+
+
+def test_an_option_reaches_the_rule() -> None:
+    """``max_share`` is the rule's threshold, not a number the profile merely stores."""
+    doc = _doc_with_one_odd_run(body_runs=10)  # the odd run is 1/11 ~ 9% of the document
+
+    assert lint(doc, select=["font-outliers"]) == []
+    loosened = {"rules": {"font-outliers": {"options": {"max_share": 0.2}}}}
+    assert len(lint(doc, select=["font-outliers"], profile=loosened)) == 1
+
+
+def test_max_chars_reaches_manual_heading_formatting() -> None:
+    doc = Document()
+    for index in range(5):
+        run = doc.add_paragraph().add_run(f"Ordinary body text number {index}.")
+        run.font.size = Pt(11)
+    run = doc.add_paragraph().add_run("A bold line that is rather long for a heading")
+    run.font.size = Pt(16)
+    run.bold = True
+
+    assert len(lint(doc, select=["manual-heading-formatting"])) == 1
+    tightened = {"rules": {"manual-heading-formatting": {"options": {"max_chars": 20}}}}
+    assert lint(doc, select=["manual-heading-formatting"], profile=tightened) == []
 
 
 # --------------------------------------------------------------------------

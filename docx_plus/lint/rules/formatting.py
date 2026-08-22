@@ -18,11 +18,11 @@ this, leave it alone".
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import TYPE_CHECKING
 
 from docx_plus.lint.models import Fix, FixOperation, Issue, Location
 from docx_plus.lint.registry import rule
+from docx_plus.lint.rules._common import count_run_values, dominant
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -361,11 +361,10 @@ def font_outliers(ctx: LintContext) -> Iterator[Issue]:
     these runs actually need is a style, and picking one is the restyle
     planner's job rather than a rule's.
     """
-    combinations = Counter(
-        (r.formatting.font_name, r.formatting.font_size)
-        for resolved in ctx.paragraphs
-        for r in resolved.runs
-        if r.run.text.strip()
+    max_share = float(ctx.option("font-outliers", "max_share", _OUTLIER_MAX_SHARE))
+    max_runs = int(ctx.option("font-outliers", "max_runs", _OUTLIER_MAX_RUNS))
+    combinations = count_run_values(
+        ctx.paragraphs, lambda r: (r.formatting.font_name, r.formatting.font_size)
     )
     total = sum(combinations.values())
     if total == 0:
@@ -374,7 +373,7 @@ def font_outliers(ctx: LintContext) -> Iterator[Issue]:
     outliers = {
         combination
         for combination, count in combinations.items()
-        if count <= _OUTLIER_MAX_RUNS and count / total <= _OUTLIER_MAX_SHARE
+        if count <= max_runs and count / total <= max_share
     }
     if not outliers or len(outliers) == len(combinations):
         # Everything being an outlier means there is no dominant set to be
@@ -382,7 +381,8 @@ def font_outliers(ctx: LintContext) -> Iterator[Issue]:
         # needs restyling, not a list of every run in it.
         return
 
-    dominant = combinations.most_common(1)[0][0]
+    dominant_combination = dominant(combinations)
+    assert dominant_combination is not None  # total > 0, so the counter is non-empty
     for resolved in ctx.paragraphs:
         for resolved_run in resolved.runs:
             combination = (resolved_run.formatting.font_name, resolved_run.formatting.font_size)
@@ -392,7 +392,7 @@ def font_outliers(ctx: LintContext) -> Iterator[Issue]:
                 message=(
                     f"Run uses {_describe_font(combination)}, which appears in "
                     f"{combinations[combination]} of {total} runs; most of this "
-                    f"document is {_describe_font(dominant)}."
+                    f"document is {_describe_font(dominant_combination)}."
                 ),
                 location=Location(
                     paragraph_index=resolved.index,
@@ -401,7 +401,7 @@ def font_outliers(ctx: LintContext) -> Iterator[Issue]:
                     excerpt=ctx.excerpt(resolved.index),
                 ),
                 observed=_describe_font(combination),
-                expected=_describe_font(dominant),
+                expected=_describe_font(dominant_combination),
             )
 
 
@@ -436,25 +436,24 @@ def mixed_language(ctx: LintContext) -> Iterator[Issue]:
     genuinely bilingual document reports its minority language throughout,
     which is a fair description of what it contains — ``--exclude`` it.
     """
-    languages = Counter(
-        run.formatting.lang
-        for resolved in ctx.paragraphs
-        for run in resolved.runs
-        if run.run.text.strip() and run.formatting.lang is not None
-    )
+    languages = count_run_values(ctx.paragraphs, lambda r: r.formatting.lang)
     if len(languages) < 2:
         return
 
-    dominant = languages.most_common(1)[0][0]
+    dominant_language = dominant(languages)
     for resolved in ctx.paragraphs:
         for resolved_run in resolved.runs:
             language = resolved_run.formatting.lang
-            if not resolved_run.run.text.strip() or language is None or language == dominant:
+            if (
+                not resolved_run.run.text.strip()
+                or language is None
+                or language == dominant_language
+            ):
                 continue
             yield Issue(
                 message=(
                     f"Run is tagged {language}, but most of this document is "
-                    f"{dominant}; proofing will treat it differently."
+                    f"{dominant_language}; proofing will treat it differently."
                 ),
                 location=Location(
                     paragraph_index=resolved.index,
@@ -463,9 +462,9 @@ def mixed_language(ctx: LintContext) -> Iterator[Issue]:
                     excerpt=ctx.excerpt(resolved.index),
                 ),
                 observed=language,
-                expected=dominant,
+                expected=dominant_language,
                 fix=Fix(
-                    summary=f"Retag the run as {dominant}.",
+                    summary=f"Retag the run as {dominant_language}.",
                     safety="review",
                     operations=(
                         FixOperation(
@@ -473,7 +472,7 @@ def mixed_language(ctx: LintContext) -> Iterator[Issue]:
                             args={
                                 "paragraph_index": resolved.index,
                                 "run_index": resolved_run.index,
-                                "lang": dominant,
+                                "lang": dominant_language,
                             },
                         ),
                     ),

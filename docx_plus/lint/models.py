@@ -14,6 +14,7 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from docx_plus.lint.profile import Profile
 from docx_plus.styles import resolve_effective_formatting
 
 if TYPE_CHECKING:
@@ -336,10 +337,23 @@ class LintContext:
             cover (the styles element, the bookmark table).
         paragraphs: Every swept paragraph, in document order, materialised
             so rules can walk it more than once.
+        profile: The loaded profile, so a rule can read its own options
+            through :meth:`option`. Defaults to the empty profile.
     """
 
     doc: Document
     paragraphs: list[ResolvedParagraph]
+    profile: Profile = field(default_factory=Profile)
+
+    def option(self, rule_id: str, key: str, default: Any) -> Any:
+        """One rule-specific value from the profile, or the rule's ``default``.
+
+        The seam between a rule's built-in threshold and a team's
+        override: a rule keeps its constant as the ``default`` and a
+        profile's ``options`` block replaces it per document run. The
+        rule validates the value; the profile only promises it is JSON.
+        """
+        return self.profile.option(rule_id, key, default)
 
     def resolve(
         self,
@@ -447,4 +461,5 @@ __all__ = [
     "Rule",
     "RuleKind",
     "Severity",
+    "render_for_report",
 ]

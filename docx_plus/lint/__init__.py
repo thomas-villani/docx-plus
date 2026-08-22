@@ -41,6 +41,7 @@ Example:
 
 from docx_plus.lint.engine import lint
 from docx_plus.lint.models import (
+    CheckFn,
     Finding,
     Fix,
     FixOp,
@@ -69,6 +70,7 @@ from docx_plus.lint.profile import (
 from docx_plus.lint.registry import UnknownRuleError, all_rules, rule, select_rules
 
 __all__ = [
+    "CheckFn",
     "DEFAULT_PROFILE_NAME",
     "Finding",
     "Fix",

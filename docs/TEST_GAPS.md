@@ -1,5 +1,10 @@
 # Test Suite Gap Audit
 
+> **2026-08-21 (v0.6.2):** this audit predates v0.3 and has not been
+> re-run since. Every number below is historical; the suite is now
+> 2,101 passing tests (12 LibreOffice round-trips skip without
+> `soffice`). The gap list is kept as a record, not a status.
+
 > **Status (2026-05-20):** The per-item audit below was snapshotted at
 > end-of-Phase-5 (v0.1) and has **not** been re-run against the v0.2 suite.
 > Treat its stats as historical: the suite is now **2,043 tests** (12

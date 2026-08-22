@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from docx_plus.cli._io import add_lint_options, dump_json, load_document, resolve_profile
+from docx_plus.cli._io import CliError, add_lint_options, dump_json, load_document, resolve_profile
 from docx_plus.lint import all_rules, lint
 
 if TYPE_CHECKING:
@@ -146,7 +146,6 @@ def cmd_lint(args: argparse.Namespace) -> int:
 
     if not args.file:
         # argparse cannot express "required unless --list-rules".
-        from docx_plus.cli._io import CliError
 
         raise CliError("a FILE is required unless --list-rules is given")
 

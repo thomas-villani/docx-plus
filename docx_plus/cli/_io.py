@@ -56,6 +56,19 @@ def load_document(path_str: str) -> DocumentObj:
         raise CliError(f"could not open {path}: {exc}") from exc
 
 
+def add_output_options(parser: argparse.ArgumentParser, *, what: str = "the result") -> None:
+    """Add the ``-o/--output`` and ``--in-place`` pair every mutating command takes.
+
+    The counterpart of :func:`resolve_output`, which reads them back.
+    """
+    parser.add_argument("-o", "--output", default=None, help=f"path to write {what}")
+    parser.add_argument(
+        "--in-place",
+        action="store_true",
+        help="overwrite the input file instead of requiring -o/--output",
+    )
+
+
 def resolve_output(args: argparse.Namespace) -> Path:
     """Resolve where a mutating command should write its result.
 

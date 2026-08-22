@@ -25,6 +25,7 @@ from docx_plus.styles import (
     StyleCascadeError,
     iter_resolved_paragraphs,
     resolve_effective_formatting,
+    resolve_paragraph_spacing,
 )
 
 
@@ -376,3 +377,104 @@ def test_run_indices_stay_contiguous_across_a_hyperlink() -> None:
     resolved = next(iter_resolved_paragraphs(doc))
 
     assert [r.index for r in resolved.runs] == [0, 1, 2]
+
+
+def test_include_spacing_matches_the_single_paragraph_resolver() -> None:
+    doc = Document()
+    first = doc.add_paragraph("one")
+    first.paragraph_format.space_after = Pt(12)
+    second = doc.add_paragraph("two")
+    second.paragraph_format.space_before = Pt(6)
+    doc.add_paragraph("three")
+
+    swept = list(iter_resolved_paragraphs(doc, include_spacing=True))
+
+    assert [r.spacing for r in swept] == [resolve_paragraph_spacing(r.paragraph) for r in swept]
+    assert swept[0].spacing is not None and swept[0].spacing.space_below == 240
+
+
+def test_spacing_is_none_unless_asked_for() -> None:
+    doc = Document()
+    doc.add_paragraph("one")
+    (resolved,) = iter_resolved_paragraphs(doc)
+    assert resolved.spacing is None
+
+
+# --------------------------------------------------------------------------
+# parts= — sweeping the side parts.
+# --------------------------------------------------------------------------
+
+
+def _doc_with_every_part() -> Document:
+    from docx_plus.comments import add_comment
+    from docx_plus.notes import add_endnote, add_footnote
+
+    doc = Document()
+    body = doc.add_paragraph("body text")
+    doc.sections[0].header.paragraphs[0].text = "header text"
+    doc.sections[0].footer.paragraphs[0].text = "footer text"
+    add_footnote(body, "footnote text")
+    add_endnote(body, "endnote text")
+    add_comment(body, "comment text", author="Reviewer")
+    return doc
+
+
+def test_the_default_sweep_is_body_only() -> None:
+    doc = _doc_with_every_part()
+    swept = list(iter_resolved_paragraphs(doc))
+    assert [(r.part, r.text) for r in swept] == [("body", "body text")]
+
+
+def test_parts_all_reaches_every_side_part_in_a_fixed_order() -> None:
+    doc = _doc_with_every_part()
+    swept = list(iter_resolved_paragraphs(doc, parts="all"))
+
+    by_part = [(r.part, r.text) for r in swept]
+    assert by_part == [
+        ("body", "body text"),
+        ("header", "header text"),
+        ("footer", "footer text"),
+        ("footnotes", "footnote text"),
+        ("endnotes", "endnote text"),
+        ("comments", "comment text"),
+    ]
+    assert [r.index for r in swept] == list(range(6))
+    # The separator notes Word keeps in footnotes.xml are not content.
+    assert not any("separator" in r.text for r in swept)
+
+
+def test_a_subset_of_parts_keeps_sweep_order_whatever_order_was_asked() -> None:
+    doc = _doc_with_every_part()
+    swept = list(iter_resolved_paragraphs(doc, parts=["footnotes", "header"]))
+    assert [r.part for r in swept] == ["header", "footnotes"]
+
+
+def test_side_part_paragraphs_resolve_through_the_cascade() -> None:
+    from docx.shared import Pt
+
+    doc = _doc_with_every_part()
+    header = doc.sections[0].header.paragraphs[0]
+    header.runs[0].font.size = Pt(8)
+
+    (resolved,) = iter_resolved_paragraphs(doc, parts=["header"])
+    assert resolved.runs[0].formatting.font_size == 8.0
+    assert resolved.formatting.font_size == 11.0
+
+
+def test_side_part_tables_are_walked() -> None:
+    doc = Document()
+    header = doc.sections[0].header
+    table = header.add_table(rows=1, cols=2, width=Pt(200))
+    table.cell(0, 0).text = "left"
+    table.cell(0, 1).text = "right"
+    doc.add_paragraph("body")
+
+    swept = list(iter_resolved_paragraphs(doc, parts=["header"]))
+    assert [(r.text, r.table_depth) for r in swept if r.text] == [("left", 1), ("right", 1)]
+
+
+def test_an_unknown_part_is_rejected() -> None:
+    from docx_plus.styles import InvalidSweepPartError
+
+    with pytest.raises(InvalidSweepPartError, match="sidebar"):
+        list(iter_resolved_paragraphs(Document(), parts=["sidebar"]))  # type: ignore[list-item]

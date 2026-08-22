@@ -6,6 +6,89 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-21
+
+A sanding pass over the v0.6 surface: the consistency items the v0.6
+review recorded as "real and non-blocking", the two styles-side backlog
+items that were already fully derived, and the rough edges a fresh read of
+the whole package turned up — duplicated helpers, bare exceptions leaking
+past `DocxPlusError`, exports and docs that had drifted from the code.
+Nothing here changes a default behaviour.
+
+### Added
+
+- **Styles can link a numbering definition.** `modify_style` and
+  `create_style` accept `num_id` (the `w:numId` a `define_*_list` call
+  returned; `0` is the schema's explicit opt-out, `None` unlinks) and
+  `num_level` (the 0-based `w:ilvl`), writing `w:pPr/w:numPr` in schema
+  order. With the v0.6 resolver already walking style-supplied numbering,
+  `modify_style(doc, "ListBullet", num_id=define_bullet_list(doc))` now
+  produces a style that bullets. Bad values raise the new
+  `InvalidStylePropertyError`, the value-side counterpart of
+  `UnknownStylePropertyError`.
+- **The sweep reaches the side parts.**
+  `iter_resolved_paragraphs(..., parts="all")` — or any subset of
+  `"body"`, `"header"`, `"footer"`, `"footnotes"`, `"endnotes"`,
+  `"comments"` — walks those parts after the body, in that fixed order,
+  and each `ResolvedParagraph` says where it came from in `.part`. Note
+  separators are skipped; a table inside a header descends through the
+  same merged-cell-safe walk as the body. The body stays the default, and
+  `lint()` stays body-only for now. New `SweepPart` type and
+  `InvalidSweepPartError`.
+- **Batch paragraph spacing.** `iter_resolved_paragraphs(...,
+  include_spacing=True)` populates `ResolvedParagraph.spacing` against the
+  shared cache — the same answer as `resolve_paragraph_spacing`, without
+  rebuilding the resolver per paragraph (the ~6x gap the v0.6 review
+  measured).
+- **Profile options reach rules.** `LintContext.profile` and
+  `LintContext.option(rule_id, key, default)` give `Profile.option` its
+  first callers: `font-outliers` honours `max_share` and `max_runs`, and
+  `manual-heading-formatting` honours `max_chars`, each falling back to
+  the rule's built-in threshold. The example the profile module's own
+  docstring has carried since v0.6 now does something.
+- `core.on_off` — the one ST_OnOff reader, promoted from the resolver so
+  `styles/modify.py` and `comments/_extended.py` stop open-coding the
+  `("1", "true", "on")` test. `core.parse_ooxml_datetime` likewise
+  replaces the identical `_parse_date` in `comments/` and `revisions/`.
+- Typed errors where bare ones leaked past `except DocxPlusError`:
+  `InvalidLayerError` for a bad `stop_below`, `InvalidLevelError` from
+  `apply_list` / `restart_list` for a bad level or start, and
+  `RegistryExhaustedError(DocxPlusError, RuntimeError)` for the two
+  (unreachable) registry-exhaustion paths in `core.ids`. Each keeps its
+  old stdlib base, so existing `except ValueError` clauses still catch it.
+
+### Changed
+
+- **`lint/plan.py` builds claims with one exhaustive `match` over
+  `FixOp`**, closed by `assert_never`, so a new operation that is not
+  handled fails type-checking rather than silently claiming nothing and
+  bypassing conflict detection. `_Claim.scope` and `.kind` are
+  `Literal`-typed. (`typing-extensions` is declared on 3.10 for
+  `assert_never`.)
+- The three `Counter(...).most_common(1)` reimplementations across the
+  rule modules are one `count_run_values` / `dominant` pair in
+  `rules/_common.py`.
+- `docx-plus inspect` resolves through `iter_resolved_paragraphs`, sharing
+  one cascade cache instead of rebuilding it per paragraph. Same paragraph
+  set, same 1-based numbering.
+- `cli/_io.add_output_options` replaces two copies of `_add_output_args`
+  and a third inlined pair in `restyle.py`.
+- `StyleType` is an alias of `StyleKind` rather than a second, unexported
+  copy of the same `Literal`, and is exported from `docx_plus.styles`.
+
+### Fixed
+
+- `docx_plus.styles.modify.__all__` regains `InvalidColorError` and
+  `find_unused_styles`; `docx_plus.core` re-exports `BUILD_NSMAP`;
+  `docx_plus.controls` exports `ControlValueT`; `docx_plus.lint` exports
+  `CheckFn`.
+- Docs: the six run toggles (`cs_bold`, `cs_italic`, `emboss`, `imprint`,
+  `outline`, `shadow`) were documented as read-only but have been writable
+  since v0.6; `read_fields` / `FieldInfo` and `set_page_borders`'s
+  `offset_from` were missing from the API index; the error-hierarchy table
+  stopped at v0.4; a fields table row was broken by a literal newline;
+  assorted version and test-count stamps lagged the release.
+
 ## [0.6.1] - 2026-08-21
 
 A patch release for the one thing v0.6.0 got wrong about real Word output:
@@ -1509,7 +1592,8 @@ first-class API, anchored comments, footnotes / endnotes, bookmarks
 and cross-references, table cell shading / borders, theme writing,
 password-protected forms, content-control binding to Custom XML Parts.
 
-[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/thomas-villani/docx-plus/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/thomas-villani/docx-plus/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/thomas-villani/docx-plus/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/thomas-villani/docx-plus/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/thomas-villani/docx-plus/compare/v0.4.0...v0.5.0

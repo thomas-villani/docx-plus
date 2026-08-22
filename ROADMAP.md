@@ -8,15 +8,16 @@ things `python-docx` can't. Every item below either fills a documented
 `python-docx` gap or rounds out a surface already started here. Ideas that
 don't fit that charter are routed to sibling projects, not absorbed.
 
-## Current state — v0.6.0 released
+## Current state — v0.6.2 released
 
 Tagged: `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.3.0` (2026-06-15), `v0.4.0`
-(2026-07-26), `v0.5.0` (2026-07-27), `v0.6.0` (2026-07-31). Shipped
+(2026-07-26), `v0.5.0` (2026-07-27), `v0.6.0` (2026-07-31), `v0.6.1`
+and `v0.6.2` (2026-08-21). Shipped
 capability modules:
 
 | Module | Surface |
 |---|---|
-| `styles/` | Cascade inspection (`ResolvedFormatting`, all 12 toggles, theme fonts + colors, conditional table styles), modification, remapping; document-wide sweep, `stop_below` baselines, resolved paragraph spacing, unused-style closure (v0.6) |
+| `styles/` | Cascade inspection (`ResolvedFormatting`, all 12 toggles, theme fonts + colors, conditional table styles), modification, remapping; document-wide sweep, `stop_below` baselines, resolved paragraph spacing, unused-style closure (v0.6); sweep over side parts, batch spacing, numbering linked into styles (v0.6.2) |
 | `controls/` | Content controls — `FormBuilder`, read / set / clear values |
 | `fields/` | Simple + complex fields, `mark_fields_dirty`, `read_fields` (v0.6) |
 | `protection/` | `protect_document` |
@@ -31,8 +32,8 @@ capability modules:
 | `lint/` | Document linter — 20 rules over the resolved cascade, profiles, and `plan_fixes` (v0.6). Reports and plans; applies nothing |
 | `cli/` | `docx-plus` console command — `inspect` (effective formatting), `restyle` (style remapping), `controls` (list / set / clear values) (v0.3), `comments` (list / resolve / reopen threads) (v0.4), `skill` (path / list / show / install the packaged agent skill) (v0.5), `lint` + `plan` (v0.6) |
 
-Suite at the v0.6.0 release: 2055 tests (2043 pass, 12
-LibreOffice-skipped), 96% coverage; `mypy --strict`, `ruff`, and
+Suite at the v0.6.2 release: 2113 tests (2101 pass, 12
+LibreOffice-skipped), 97% coverage; `mypy --strict`, `ruff`, and
 `mkdocs build --strict` all clean.
 
 ## v0.6 — shipped: the linter (`lint/`)
@@ -490,25 +491,48 @@ rewrite, and the CLI / skill / docs / packaging surface. Five confirmed
 critical bugs and around fifteen significant ones were fixed; all are in
 the CHANGELOG. Two findings are worth recording as *deliberately* left:
 
-- **`resolve_paragraph_spacing` builds a throwaway `_ResolverCache` per
-  call**, so it is ~6x slower per paragraph than going through the sweep
-  (2144 vs 363 microseconds, measured over 300 body paragraphs). That is
-  the same shape as `resolve_effective_formatting`, which is documented
-  to work that way, so it is consistent rather than wrong — but there is
-  no batch entry point for spacing. A `include_spacing=` flag on
-  `iter_resolved_paragraphs` is the obvious answer, and it is v0.7 work.
-- **`modify.py` open-codes the ST_OnOff test twice more.** Both use the
-  correct value set, so this is duplication rather than the bug fixed in
-  the resolver; unifying them means either exporting `_on_off` across
-  modules or promoting it into `core/`, and neither is worth doing
-  mid-release.
+- ~~**`resolve_paragraph_spacing` builds a throwaway `_ResolverCache` per
+  call**~~ — **shipped in v0.6.2** as `include_spacing=` on
+  `iter_resolved_paragraphs`. The single-paragraph function keeps its
+  documented per-call shape.
+- ~~**`modify.py` open-codes the ST_OnOff test twice more.**~~ —
+  **shipped in v0.6.2**: promoted into `core.on_off`, which
+  `comments/_extended.py` turned out to open-code a third time.
 
-The tail of consistency items the review raised — an exhaustive `match`
-over `FixOp` so a new operation cannot silently lose conflict detection,
-`Literal` types on `_Claim`'s string fields, `Profile.option` reaching
-the four hard-coded rule thresholds, and the shared "dominant value"
-helper the rule modules each reimplement — are all real and all
-non-blocking.
+The tail of consistency items the review raised all **shipped in v0.6.2**:
+the claim builder is an exhaustive `match` over `FixOp` closed by
+`assert_never`; `_Claim.scope` / `.kind` are `Literal`-typed;
+`LintContext.option` carries `Profile.option` to `font-outliers`
+(`max_share`, `max_runs`) and `manual-heading-formatting` (`max_chars`);
+and `rules/_common.py` owns the one `count_run_values` / `dominant`
+pair. Of the "four thresholds", `references.py`'s `_TARGET_LIMIT` turned
+out to be an excerpt width rather than a detection threshold and stays a
+constant.
+
+### v0.6.2 — shipped: the sanding pass
+
+A fresh read of the whole package, not just the v0.6 diff, ahead of the
+regularizer. Beyond the review tail above: the non-body sweep and the
+numbering-into-style link from the backlog (both below), the
+`_parse_date` / `_is_property_mark` / `_add_output_args` duplications,
+the bare `ValueError` / `RuntimeError` raises that escaped
+`except DocxPlusError` (now `InvalidLayerError`, `InvalidLevelError`,
+`InvalidStylePropertyError`, `RegistryExhaustedError`), `docx-plus
+inspect` rebuilding the resolver cache per paragraph, and a run of
+`__all__` / docs drift. Full list in the CHANGELOG.
+
+Two things the pass found and **deliberately left** for v0.7, because
+each changes what a user sees rather than how the code is shaped:
+
+- **`docx-plus inspect` numbers paragraphs from 1 and skips table
+  cells**, while every library surface and `docx-plus lint --json` are
+  0-based and walk tables. It is documented as a gotcha; fixing it is a
+  breaking CLI change and belongs with the regularizer's own CLI work.
+- **`lint()` sweeps the body only**, even though the sweep now reaches
+  the side parts. Routing a header's paragraph through
+  `Location.paragraph_index` means deciding what that index addresses
+  when a plan is *applied*, which is exactly the contract the regularizer
+  defines. Expose `parts=` on `lint()` there.
 
 ## v0.7 — sketched: the regularizer
 
@@ -782,13 +806,14 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   skipping them, and surfaced a resolver bug of its own (see the v0.6
   notes). `direct-numbering-override` is now writable via
   `stop_below="numbering"`. (`styles/`.)
-- **Sweep the non-body parts** — `iter_resolved_paragraphs` covers the
-  main document body only, so any lint rule over headers, footers,
-  footnotes, endnotes, or comments has a blind spot there. Confirmed as
-  acceptable for v0.6 (the body is the concern), and bounded when it
-  comes: `remap_styles` / `delete_style` already carry the
-  reference-scanning pattern across exactly those five parts, so the walk
-  is a port rather than a design. (`styles/`.)
+- ~~**Sweep the non-body parts**~~ — **shipped in v0.6.2** as
+  `iter_resolved_paragraphs(parts=...)`, with `ResolvedParagraph.part`
+  saying where each paragraph came from. Less of a port than expected:
+  `remap_styles` walks raw lxml roots, while the sweep needs
+  `Paragraph` wrappers python-docx does not provide for footnotes,
+  endnotes, or comments, so `sweep.py` wraps the block elements itself
+  behind a minimal parent. `lint()` does not use it yet — see the v0.6.2
+  note above. (`styles/`.)
 
 ## Backlog — larger or dependency-gated
 
@@ -817,31 +842,14 @@ Each reuses existing plumbing; pull into a cycle as priority dictates.
   the paragraph and run cascade. The largest single item on this list.
   **Gates the linter's table rules**, and was deliberately kept out of
   v0.6 for that reason — see the v0.6 stage 1 note.
-- **Link a numbering definition into a style** —
-  `w:style/w:pPr/w:numPr`, so `ensure_style("ListBullet")` produces a
-  style that actually bullets. Split out of the v0.5 numbering cycle
-  because `styles/modify.py` already owns writing into `w:style` and
-  carries `_STYLE_CHILD_ORDER` / `_PPR_CHILD_ORDER`; duplicating that in
-  `numbering/` would put the same schema knowledge in two places.
-  (`styles/`.)
-
-  Concretely, so this doesn't need re-deriving:
-
-  - The seam is documented in the code already —
-    `styles/modify.py` `_BUILTIN_STYLES` Tier D carries a comment saying
-    the `List*` styles omit `numPr` and that "callers wanting actual
-    auto-numbering should attach a numbering definition separately".
-    Asymmetry to fix: the *bundled template's* `ListBullet` does link
-    `numId` 1, so `ensure_style` on a document lacking the style
-    produces something weaker than a stock `Document()` already has.
-  - The work is a new key in `_write_paragraph_property`
-    (`modify.py:835`) plus an entry in `_validate_property_keys`
-    (`:818`), which currently rejects anything outside the
-    paragraph/run property sets. `_PPR_CHILD_ORDER` already reserves the
-    `numPr` slot; `_ordered_insert` places it.
-  - No cross-capability import is needed: linking is just writing
-    `w:numPr` with an int, so `styles/` never has to reach into
-    `numbering/`. That is why this lands in `styles/`, not here.
+- ~~**Link a numbering definition into a style**~~ — **shipped in
+  v0.6.2** as the `num_id` / `num_level` properties on `modify_style` /
+  `create_style`, landing in `styles/` exactly as derived here: a new
+  branch in `_write_paragraph_property`, `numPr` written into the slot
+  `_PPR_CHILD_ORDER` already reserved, no import from `numbering/`. The
+  bundled `List*` built-ins still omit `numPr` — a `numId` only means
+  something in the document that defined it — and the Tier D comment now
+  points at the one-liner that links one.
 - **Resolve style-supplied numbering in the cascade** — related, and
   arguably the more surprising half. **Scheduled into v0.6 stage 1** as a
   linter prerequisite; the derivation below is the implementation note.

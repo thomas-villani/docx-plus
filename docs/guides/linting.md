@@ -196,17 +196,26 @@ what the rule kinds exist to prevent.
 ## Profiles
 
 The one place a house opinion may live. A profile enables and disables
-rules and overrides severities.
+rules, overrides severities, and supplies rule-specific `options`.
 
 ```json
 {
   "rules": {
     "double-space": {"enabled": false},
     "unused-styles": {"enabled": true},
-    "style-drift": {"severity": "error"}
+    "style-drift": {"severity": "error"},
+    "font-outliers": {"enabled": true, "options": {"max_share": 0.02}}
   }
 }
 ```
+
+`options` reach a rule through `LintContext.option(rule_id, key, default)`
+(v0.6.2). Three are read today: `font-outliers` honours `max_share`
+(default `0.05`) and `max_runs` (default `5`) — a font is an outlier only
+when it is on at most that many runs *and* that share of them — and
+`manual-heading-formatting` honours `max_chars` (default `80`), the
+longest paragraph it will still consider heading-shaped. The rule
+validates the value; the profile only promises it is JSON.
 
 ```python
 from docx_plus.lint import Profile, lint

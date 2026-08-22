@@ -11,7 +11,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from docx_plus.cli._io import CliError, dump_json, load_document, resolve_output, save_document
+from docx_plus.cli._io import (
+    CliError,
+    add_output_options,
+    dump_json,
+    load_document,
+    resolve_output,
+    save_document,
+)
 from docx_plus.styles import remap_styles
 
 if TYPE_CHECKING:
@@ -47,17 +54,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="materialize known built-in targets that aren't defined yet",
     )
-    parser.add_argument(
-        "-o",
-        "--output",
-        default=None,
-        help="path to write the restyled document",
-    )
-    parser.add_argument(
-        "--in-place",
-        action="store_true",
-        help="overwrite the input file instead of requiring -o/--output",
-    )
+    add_output_options(parser, what="the restyled document")
     parser.add_argument(
         "--json",
         dest="as_json",

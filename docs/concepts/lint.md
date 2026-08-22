@@ -120,8 +120,12 @@ what the rule kinds exist to prevent.
 ## Profiles
 
 `profile.py` is the one place a house opinion may live: per-rule enable
-/ disable and severity overrides, discovered as `docx-plus-lint.json`
-beside the document or above it. Precedence is a profile adjusts the
+/ disable, severity overrides, and rule-specific `options`, discovered
+as `docx-plus-lint.json` beside the document or above it. `options`
+reach a rule through `LintContext.option(rule_id, key, default)`
+(v0.6.2); the rule validates the value, the profile only promises it
+is JSON. Three are read today: `font-outliers`'s `max_share` and
+`max_runs`, and `manual-heading-formatting`'s `max_chars`. Precedence is a profile adjusts the
 registry defaults, an explicit `select` overrides both, and `exclude`
 is applied last and always wins — so naming a rule on the command line
 overrides a profile that disabled it. Configuration does not get to

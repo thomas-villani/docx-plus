@@ -30,8 +30,14 @@ process is not much of a plan.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
+
+if sys.version_info >= (3, 11):
+    from typing import assert_never
+else:  # pragma: no cover
+    from typing_extensions import assert_never
 
 from docx_plus.core import DocxPlusError
 
@@ -57,6 +63,10 @@ class InvalidFixError(DocxPlusError, ValueError):
 _DELETING_OPS = frozenset({"delete-paragraph", "delete-style"})
 
 
+_ClaimScope = Literal["paragraph", "style"]
+_ClaimKind = Literal["whole", "run-property", "paragraph-property", "text"]
+
+
 @dataclass(frozen=True)
 class _Claim:
     """What one operation asserts exclusive use of.
@@ -66,7 +76,9 @@ class _Claim:
     part of it. See :func:`_collides`.
 
     Attributes:
-        scope: ``("paragraph", index)`` or ``("style", style_id)``.
+        scope: ``("paragraph", index)`` or ``("style", style_id)``. The
+            second element is a string either way so the two scope kinds
+            share one tuple type; a paragraph index is its decimal form.
         kind: ``whole`` (the scope is removed), ``run-property``,
             ``paragraph-property``, or ``text``.
         prop: The property name, for the two property kinds.
@@ -74,8 +86,8 @@ class _Claim:
         span: The half-open character span, for ``text``.
     """
 
-    scope: tuple[str, str]
-    kind: str
+    scope: tuple[_ClaimScope, str]
+    kind: _ClaimKind
     prop: str = ""
     run: int = -1
     span: tuple[int, int] = (-1, -1)
@@ -391,42 +403,50 @@ def _claims(operations: Iterable[FixOperation]) -> list[_Claim]:
     """
     claims: list[_Claim] = []
     for operation in operations:
-        args = operation.args
-        if operation.op == "delete-style":
-            claims.append(_Claim(scope=("style", str(args["style_id"])), kind="whole"))
-            continue
+        claims.extend(_claims_for(operation))
+    return claims
 
-        scope = ("paragraph", str(int(args["paragraph_index"])))
-        if operation.op == "delete-paragraph":
-            claims.append(_Claim(scope=scope, kind="whole"))
-        elif operation.op == "clear-run-properties":
+
+def _claims_for(operation: FixOperation) -> list[_Claim]:
+    """The claims one operation makes.
+
+    Exhaustive over :data:`FixOp`: a new operation that is not matched
+    here fails type-checking (``assert_never``) rather than silently
+    claiming nothing and so bypassing conflict detection.
+    """
+    args = operation.args
+    op = operation.op
+    if op == "delete-style":
+        return [_Claim(scope=("style", str(args["style_id"])), kind="whole")]
+
+    scope: tuple[_ClaimScope, str] = ("paragraph", str(int(args["paragraph_index"])))
+    match op:
+        case "delete-paragraph":
+            return [_Claim(scope=scope, kind="whole")]
+        case "clear-run-properties":
             run = int(args["run_index"])
-            claims.extend(
+            return [
                 _Claim(scope=scope, kind="run-property", run=run, prop=str(prop))
                 for prop in args["properties"]
-            )
-        elif operation.op == "set-run-language":
-            claims.append(
-                _Claim(
-                    scope=scope,
-                    kind="run-property",
-                    run=int(args["run_index"]),
-                    prop="lang",
-                )
-            )
-        elif operation.op == "clear-paragraph-properties":
-            claims.extend(
+            ]
+        case "set-run-language":
+            return [
+                _Claim(scope=scope, kind="run-property", run=int(args["run_index"]), prop="lang")
+            ]
+        case "clear-paragraph-properties":
+            return [
                 _Claim(scope=scope, kind="paragraph-property", prop=str(prop))
                 for prop in args["properties"]
-            )
-        elif operation.op == "clear-paragraph-numbering":
-            claims.append(_Claim(scope=scope, kind="paragraph-property", prop="num_id"))
-        elif operation.op == "replace-paragraph-text":
-            claims.extend(
+            ]
+        case "clear-paragraph-numbering":
+            return [_Claim(scope=scope, kind="paragraph-property", prop="num_id")]
+        case "replace-paragraph-text":
+            return [
                 _Claim(scope=scope, kind="text", span=(int(span["start"]), int(span["end"])))
                 for span in args["spans"]
-            )
-    return claims
+            ]
+        case _:
+            assert_never(op)
 
 
 def _collides(left: _Claim, right: _Claim) -> bool:
@@ -450,13 +470,17 @@ def _describe(claim: _Claim) -> str:
     """Render a claim for a conflict message."""
     kind, name = claim.scope
     where = f"style {name}" if kind == "style" else f"paragraph {name}"
-    if claim.kind == "whole":
-        return f"{where} is removed"
-    if claim.kind == "text":
-        return f"{where}, characters {claim.span[0]}-{claim.span[1]}"
-    if claim.kind == "run-property":
-        return f"{where}, run {claim.run}, {claim.prop}"
-    return f"{where}, {claim.prop}"
+    match claim.kind:
+        case "whole":
+            return f"{where} is removed"
+        case "text":
+            return f"{where}, characters {claim.span[0]}-{claim.span[1]}"
+        case "run-property":
+            return f"{where}, run {claim.run}, {claim.prop}"
+        case "paragraph-property":
+            return f"{where}, {claim.prop}"
+        case _:
+            assert_never(claim.kind)
 
 
 __all__ = ["FixConflict", "FixPlan", "InvalidFixError", "PlannedFix", "plan_fixes"]

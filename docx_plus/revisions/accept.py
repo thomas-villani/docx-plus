@@ -36,6 +36,7 @@ from lxml import etree
 from docx_plus.core.ns import qn
 from docx_plus.core.oxml import el, remove, xpath
 from docx_plus.revisions.mark import RevisionNotFoundError
+from docx_plus.revisions.read import _is_property_mark
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -236,14 +237,6 @@ def _retag_runs(runs: list[etree._Element], from_tag: str, to_tag: str) -> None:
             new.text = old.text
             old.addprevious(new)
             remove(old)
-
-
-def _is_property_mark(elem: etree._Element) -> bool:
-    """True if a ``w:ins`` / ``w:del`` marks a paragraph/run mark, not content."""
-    parent = elem.getparent()
-    if parent is None:
-        return False
-    return parent.tag in (qn("w:rPr"), qn("w:pPr"))
 
 
 def _depth(elem: etree._Element) -> int:

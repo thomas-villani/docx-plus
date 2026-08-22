@@ -57,9 +57,21 @@ These are the architectural commitments. Each is enforced by a test.
 
 ## Error hierarchy
 
-Every library-raised exception subclasses `DocxPlusError`. A few also
-dual-inherit a stdlib base when an existing API contract (or SPEC
-sentence) calls for it.
+Every *named* exception the library defines subclasses `DocxPlusError`,
+and many dual-inherit a stdlib base when an existing API contract (or
+SPEC sentence) calls for it. That is not quite "every exception the
+library raises": argument-shape validation in several modules —
+`bookmarks/`, `comments/`, `revisions/` (bad target shapes), `fields/`,
+`layout/`, `notes/`, `publishing/`, `tables/shading`, `core/borders`,
+and the non-level checks in `numbering/define` — still raises bare
+`ValueError` / `TypeError`, as do `resolve_effective_formatting` and
+`apply_style` for a target of the wrong Python type. v0.6.2 closed the
+gaps that were reachable through a *valid* call: `stop_below`
+(`InvalidLayerError`), `apply_list` / `restart_list` level and start
+(`InvalidLevelError`), `num_id` / `num_level` on a style
+(`InvalidStylePropertyError`), `parts=` on the sweep
+(`InvalidSweepPartError`), and registry exhaustion
+(`RegistryExhaustedError`, the one `RuntimeError` in the tree).
 
 | Exception | Bases | Raised from | Meaning |
 |---|---|---|---|
@@ -105,6 +117,24 @@ new edit verbs:
 | `CommentNotFoundError` | `DocxPlusError`, `KeyError` | `comments/anchor.py` | `edit_comment` against an id that doesn't exist in `comments.xml` (or when the comments part itself is absent) |
 | `NoteNotFoundError` | `DocxPlusError`, `KeyError` | `notes/write.py` | `edit_footnote` / `edit_endnote` against an id that doesn't exist in the corresponding part |
 
+v0.3 through v0.6.2 added the rest of the tree:
+
+| Exception | Bases | Raised from | Meaning |
+|---|---|---|---|
+| `RevisionNotFoundError` | `DocxPlusError`, `KeyError` | `revisions/mark.py` | `accept_revision` / `reject_revision` on a missing id |
+| `CliError` | `DocxPlusError`, `ValueError` | `cli/_io.py` | A user-facing CLI failure — bad path, missing output, un-coercible value. The dispatcher prints it and exits `1` |
+| `InvalidMergeError` | `DocxPlusError`, `ValueError` | `tables/merge.py` | A merge that cannot be performed as requested — a non-rectangular selection (wraps python-docx's `InvalidSpanError`) or a normalisation failure |
+| `InvalidLevelError` | `DocxPlusError`, `ValueError` | `numbering/define.py` | A malformed `LevelDefinition`, level list, or level index; since v0.6.2 also what `apply_list` / `restart_list` raise for a `level` outside 0–8 or a negative `start` |
+| `ListDefinitionNotFoundError` | `DocxPlusError`, `KeyError` | `numbering/apply.py` | `restart_list` on a `numId` that `numbering.xml` does not define |
+| `DuplicateBookmarkNameError` | `DocxPlusError`, `ValueError` | `core/ids.py` | `BookmarkNameRegistry.reserve` on a name already in use |
+| `UnknownRuleError` | `DocxPlusError`, `KeyError` | `lint/registry.py` | A selector, or a profile, named a rule id or tag that does not exist |
+| `InvalidProfileError` | `DocxPlusError`, `ValueError` | `lint/profile.py` | The lint profile is unreadable or malformed |
+| `InvalidFixError` | `DocxPlusError`, `ValueError` | `lint/plan.py` | A rule produced a fix `plan_fixes` cannot order safely — one that both deletes and does positional work |
+| `RegistryExhaustedError` | `DocxPlusError`, `RuntimeError` | `core/ids.py` | v0.6.2. A registry has no value left to issue. Effectively unreachable, but typed so the one path in `core/` that could abort a command is still a `DocxPlusError` |
+| `InvalidLayerError` | `DocxPlusError`, `ValueError` | `styles/inspect.py` | v0.6.2. `resolve_effective_formatting(stop_below=...)` named something that is not a `Layer` |
+| `InvalidStylePropertyError` | `DocxPlusError`, `ValueError` | `styles/modify.py` | v0.6.2. The right property name with the wrong value — a negative `num_id`, a `num_level` outside 0–8, or `num_level` on a style that links no numbering definition. Distinct from `UnknownStylePropertyError`, which is the wrong *name* |
+| `InvalidSweepPartError` | `DocxPlusError`, `ValueError` | `styles/sweep.py` | v0.6.2. `iter_resolved_paragraphs(parts=...)` named something that is not a `SweepPart` |
+
 The dual-inheritance pattern (`DuplicateIdError`, `UnknownStylePropertyError`,
 the four Phase 4 `controls/read.py` errors) exists because SPEC sentences
 predating §9.7's typed-error invariant documented
@@ -119,8 +149,8 @@ ValueError` and `except DocxPlusError` both catch.
 SPEC §10 specifies three layers:
 
 - **Layer 1 — structural unit tests.** One file per module, fast, no
-  I/O beyond reading fixtures. **2055 tests** at the end of the v0.6
-  cycle (2043 pass; 12 LibreOffice round-trips skip without `soffice`),
+  I/O beyond reading fixtures. **2113 tests** at v0.6.2
+  (2101 pass; 12 LibreOffice round-trips skip without `soffice`),
   at 96% coverage against a 90% gate.
   Of these, 631 were collected at v0.2.0: v0.1's surface (319 tests)
   plus the v0.2 cycle — `core/parts` (13), `comments/` (35),

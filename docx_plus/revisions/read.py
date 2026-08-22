@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Literal
 from lxml import etree
 
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import xpath
+from docx_plus.core.oxml import parse_ooxml_datetime, xpath
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -168,7 +168,7 @@ def _build(
         revision_id=revision_id,
         revision_type=rtype,
         author=elem.get(qn("w:author")) or "",
-        timestamp=_parse_date(elem.get(qn("w:date"))),
+        timestamp=parse_ooxml_datetime(elem.get(qn("w:date"))),
         text=text,
         paragraph_index=_paragraph_index(elem, paragraphs),
     )
@@ -210,19 +210,6 @@ def _paragraph_index(elem: etree._Element, paragraphs: list[etree._Element]) -> 
         return paragraphs.index(ancestor)
     except ValueError:
         return -1
-
-
-def _parse_date(value: str | None) -> dt.datetime | None:
-    """Parse an ``xsd:dateTime`` value, tolerating the trailing ``Z`` form."""
-    if not value:
-        return None
-    normalized = value.rstrip("Z")
-    if value.endswith("Z"):
-        normalized = normalized + "+00:00"
-    try:
-        return dt.datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
 
 
 __all__ = ["RevisionType", "TrackedChange", "read_revisions"]

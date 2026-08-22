@@ -87,6 +87,7 @@ def lint(
                 include_tables=include_tables,
             )
         ),
+        profile=loaded,
     )
 
     findings: list[Finding] = []

@@ -6,6 +6,7 @@ rather than calling ``lxml.etree`` directly. SPEC §9.2.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
@@ -25,6 +26,57 @@ def _resolve_attr_key(key: str) -> str:
     and bare attributes naturally.
     """
     return qn(key) if ":" in key else key
+
+
+_ON_OFF_TRUE = frozenset({"1", "true", "on"})
+"""Every ST_OnOff spelling that means *on*.
+
+``on`` / ``off`` are the transitional-WML spellings (ECMA-376 Part 4).
+Word-2003-era files and several third-party generators emit them, and reading
+``off`` as anything but false inverts the property rather than merely failing
+to recognise it — so this set backs the single reader for **every** ST_OnOff
+attribute in the library. Do not open-code the test."""
+
+
+def on_off(value: str | None, *, absent: bool = False) -> bool:
+    """Read an ECMA-376 ST_OnOff attribute (§22.9.2.7).
+
+    Accepts ``1`` / ``0``, ``true`` / ``false``, and ``on`` / ``off``; Word
+    writes the digits, other producers do not always.
+
+    Args:
+        value: The attribute value, or ``None`` if it is not present.
+        absent: What a missing attribute means. Toggles and the ``w:pPr``
+            flags default to *on* when bare (``<w:b/>`` is bold), so those
+            callers pass ``True``; an attribute whose absence means nothing
+            in particular leaves it ``False``.
+
+    Returns:
+        ``True`` for an *on* spelling, ``absent`` for ``None``, else ``False``.
+    """
+    if value is None:
+        return absent
+    return value.strip().lower() in _ON_OFF_TRUE
+
+
+def parse_ooxml_datetime(value: str | None) -> dt.datetime | None:
+    """Parse an ``xsd:dateTime`` attribute, tolerating the trailing ``Z`` form.
+
+    Word writes ``2024-01-15T10:30:00Z``; Python's ``fromisoformat`` did not
+    accept the ``Z`` suffix before 3.11, so it is rewritten as ``+00:00``.
+    Anything unparseable — including an empty or missing attribute — is
+    ``None`` rather than an error, since a malformed date on a comment or a
+    revision is no reason to refuse to read the rest of it.
+    """
+    if not value:
+        return None
+    normalized = value.rstrip("Z")
+    if value.endswith("Z"):
+        normalized = normalized + "+00:00"
+    try:
+        return dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
 
 
 def el(tag: str, **attrs: str) -> etree._Element:
@@ -379,7 +431,9 @@ __all__ = [
     "build_complex_field",
     "el",
     "insert_before_first_anchor",
+    "on_off",
     "ordered_insert",
+    "parse_ooxml_datetime",
     "remove",
     "sub",
     "validate_bookmark_name",

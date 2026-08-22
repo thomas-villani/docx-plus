@@ -25,7 +25,7 @@ from lxml import etree
 
 from docx_plus.comments import _extended, _ids
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import xpath
+from docx_plus.core.oxml import parse_ooxml_datetime, xpath
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -119,7 +119,7 @@ def read_comments(doc: Document) -> list[AnchoredComment]:
 
         author = comment_el.get(qn("w:author")) or ""
         initials = comment_el.get(qn("w:initials"))
-        timestamp = _parse_date(comment_el.get(qn("w:date")))
+        timestamp = parse_ooxml_datetime(comment_el.get(qn("w:date")))
 
         text = _comment_body_text(comment_el)
 
@@ -207,19 +207,6 @@ def _text_between(
         if collecting and elem.tag == t_tag and elem.text:
             parts.append(elem.text)
     return "".join(parts)
-
-
-def _parse_date(value: str | None) -> dt.datetime | None:
-    """Parse an ``xsd:dateTime`` value, tolerating the trailing ``Z`` form."""
-    if not value:
-        return None
-    normalized = value.rstrip("Z")
-    if value.endswith("Z"):
-        normalized = normalized + "+00:00"
-    try:
-        return dt.datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
 
 
 __all__ = ["AnchoredComment", "read_comments"]

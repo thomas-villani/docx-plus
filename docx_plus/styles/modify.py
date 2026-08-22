@@ -23,9 +23,9 @@ from lxml import etree
 
 from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el, xpath
+from docx_plus.core.oxml import el, on_off, xpath
 from docx_plus.core.oxml import ordered_insert as _ordered_insert
-from docx_plus.styles.inspect import AUTO_COLOR
+from docx_plus.styles.inspect import AUTO_COLOR, StyleKind
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -34,7 +34,10 @@ if TYPE_CHECKING:
     from docx.text.run import Run
 
 
-StyleType = Literal["paragraph", "character", "table", "numbering"]
+StyleType = StyleKind
+"""The ``w:type`` of a style. An alias of
+:data:`~docx_plus.styles.inspect.StyleKind`, kept so the name the modify
+API has always used keeps working."""
 
 
 # --------------------------------------------------------------------------
@@ -56,6 +59,16 @@ class StyleInUseError(DocxPlusError):
 
 class UnknownStylePropertyError(DocxPlusError, TypeError):
     """Raised when a property kwarg is not a recognised style property."""
+
+
+class InvalidStylePropertyError(DocxPlusError, ValueError):
+    """Raised when a recognised style property is given a value it cannot take.
+
+    The counterpart of :class:`UnknownStylePropertyError` (wrong *name*):
+    this is the right name with the wrong *value* — a negative ``num_id``,
+    a ``num_level`` outside 0–8, or one given to a style that links no
+    numbering definition. Subclasses ``ValueError`` for ``except`` ergonomics.
+    """
 
 
 class InvalidColorError(DocxPlusError, ValueError):
@@ -330,6 +343,8 @@ _PARAGRAPH_LEVEL_PROPS: frozenset[str] = frozenset(
         "keep_lines",
         "page_break_before",
         "outline_level",
+        "num_id",
+        "num_level",
     }
 )
 
@@ -442,8 +457,7 @@ def create_style(
     if q_format:
         _set_simple_child(style_el, "qFormat", {})
 
-    for prop_name, value in properties.items():
-        _write_property(style_el, prop_name, value)
+    _write_properties(style_el, properties)
 
     styles_root.append(style_el)
     return StyleProxy(doc, style_el)
@@ -489,8 +503,7 @@ def modify_style(
         if if_missing == "create":
             return create_style(doc, style_id, **properties)
         raise StyleNotFoundError(f"style {style_id!r} is not defined")
-    for prop_name, value in properties.items():
-        _write_property(style_el, prop_name, value)
+    _write_properties(style_el, properties)
     return StyleProxy(doc, style_el)
 
 
@@ -846,7 +859,7 @@ def find_unused_styles(doc: Document) -> list[StyleInfo]:
     reachable: set[str] = {
         style_el.get(qn("w:styleId")) or ""
         for style_el in styles_root.findall(qn("w:style"))
-        if style_el.get(qn("w:default")) in ("1", "true", "on")
+        if on_off(style_el.get(qn("w:default")))
     }
     for body_root in _reference_search_roots(doc):
         for tag in ("pStyle", "rStyle", "tblStyle"):
@@ -923,6 +936,17 @@ def _validate_property_keys(properties: dict[str, Any]) -> None:
         raise UnknownStylePropertyError(f"unknown style properties: {names}")
 
 
+def _write_properties(style_el: etree._Element, properties: dict[str, Any]) -> None:
+    """Write every (name, value) pair, ``num_id`` before ``num_level``.
+
+    The only ordering dependency among the keys: ``num_level`` writes into
+    the ``w:numPr`` that ``num_id`` creates, so the two must land in that
+    order whatever order the caller spelled them in.
+    """
+    for prop_name, value in sorted(properties.items(), key=lambda kv: kv[0] == "num_level"):
+        _write_property(style_el, prop_name, value)
+
+
 def _write_property(style_el: etree._Element, name: str, value: Any) -> None:
     """Dispatch a (name, value) pair to the right pPr/rPr writer."""
     if name in _PARAGRAPH_LEVEL_PROPS:
@@ -949,8 +973,57 @@ def _write_paragraph_property(style_el: etree._Element, name: str, value: Any) -
         _write_indent(style_el, name, value)
     elif name in ("spacing_before", "spacing_after", "line_spacing", "line_spacing_rule"):
         _write_spacing(style_el, name, value)
+    elif name in ("num_id", "num_level"):
+        _write_numbering(style_el, name, value)
     else:
         raise UnknownStylePropertyError(f"unhandled paragraph property {name!r}")
+
+
+_NUM_PR_CHILD_ORDER: tuple[str, ...] = ("ilvl", "numId", "numberingChange", "ins")
+"""``CT_NumPr`` child order (ECMA-376 §17.3.1.19)."""
+
+
+def _write_numbering(style_el: etree._Element, name: str, value: Any) -> None:
+    """Link (or unlink) a numbering definition: ``w:pPr/w:numPr``.
+
+    ``num_id`` is the ``w:numId`` an instance of
+    :func:`~docx_plus.numbering.define_list` returned; ``0`` is the schema's
+    "explicitly not numbered" sentinel, which a style based on a list style
+    uses to opt out, and ``None`` removes the link entirely. ``num_level``
+    is the 0-based ``w:ilvl`` and defaults to 0 when only ``num_id`` is
+    given — it cannot be set on a style that links no definition.
+
+    Written here rather than in ``numbering/`` because this is writing into
+    ``w:style``, whose child order ``styles/`` already owns; the value is
+    just an int, so no cross-capability import is needed.
+    """
+    ppr = style_el.find(qn("w:pPr"))
+    num_pr = None if ppr is None else ppr.find(qn("w:numPr"))
+
+    if name == "num_id":
+        if value is None:
+            _remove_ppr_child(style_el, "numPr")
+            return
+        num_id = int(value)
+        if num_id < 0:
+            raise InvalidStylePropertyError(f"num_id must be >= 0, got {num_id}")
+        if num_pr is None:
+            _set_ppr_child(style_el, "numPr", {})
+            ppr = _get_or_create_ppr(style_el)
+            num_pr = ppr.find(qn("w:numPr"))
+            assert num_pr is not None
+            _ordered_insert(num_pr, el("w:ilvl", **{"w:val": "0"}), _NUM_PR_CHILD_ORDER)
+        _ordered_insert(num_pr, el("w:numId", **{"w:val": str(num_id)}), _NUM_PR_CHILD_ORDER)
+        return
+
+    level = int(value)
+    if not 0 <= level <= 8:
+        raise InvalidStylePropertyError(f"num_level must be 0-8, got {level}")
+    if num_pr is None:
+        raise InvalidStylePropertyError(
+            "num_level needs a num_id: the style links no numbering definition"
+        )
+    _ordered_insert(num_pr, el("w:ilvl", **{"w:val": str(level)}), _NUM_PR_CHILD_ORDER)
 
 
 def _write_run_property(style_el: etree._Element, name: str, value: Any) -> None:
@@ -1323,7 +1396,7 @@ def _style_info_from_element(style_el: etree._Element) -> StyleInfo | None:
         # table because that table does not cover the table-style gallery
         # (Light Shading, Medium Grid 3 Accent 2, and 90-odd more), which
         # is most of what a stock template materialises.
-        is_builtin=style_el.get(qn("w:customStyle")) not in ("1", "true", "on"),
+        is_builtin=not on_off(style_el.get(qn("w:customStyle"))),
     )
 
 
@@ -2564,17 +2637,21 @@ def _materialise_builtin(doc: Document, style_id: str, spec: dict[str, Any]) -> 
 
 
 __all__ = [
+    "InvalidColorError",
+    "InvalidStylePropertyError",
     "StyleExistsError",
     "StyleInUseError",
     "StyleInfo",
     "StyleNotFoundError",
     "StyleProxy",
+    "StyleType",
     "UnknownStylePropertyError",
     "apply_style",
     "create_style",
     "delete_style",
     "ensure_style",
     "find_matching_style",
+    "find_unused_styles",
     "list_styles",
     "modify_style",
     "remap_styles",

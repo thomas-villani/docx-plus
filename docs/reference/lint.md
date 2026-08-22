@@ -124,14 +124,18 @@ prevent.
 ## Profiles
 
 The one place a house opinion may live. A profile enables and disables
-rules, overrides severities, and — once `policy` rules ship — supplies their
-targets.
+rules, overrides severities, and supplies rule-specific `options` — today
+`font-outliers`'s `max_share` / `max_runs` and
+`manual-heading-formatting`'s `max_chars`; once `policy` rules ship, their
+targets. A rule reads them through `LintContext.option(rule_id, key,
+default)`.
 
 ```json
 {
   "rules": {
-    "double-space": {"enabled": false},
-    "style-drift":  {"severity": "error"}
+    "double-space":  {"enabled": false},
+    "style-drift":   {"severity": "error"},
+    "font-outliers": {"enabled": true, "options": {"max_share": 0.02}}
   }
 }
 ```

@@ -160,10 +160,13 @@ MultiLevelType = Literal["singleLevel", "multilevel", "hybridMultilevel"]
 
 
 class InvalidLevelError(DocxPlusError, ValueError):
-    """Raised for a malformed :class:`LevelDefinition` or level list.
+    """Raised for a malformed :class:`LevelDefinition`, level list, or level index.
 
-    Subclasses ``ValueError`` so existing ``except ValueError:`` clauses
-    still catch it; also subclasses :class:`DocxPlusError` per SPEC §9.7.
+    Also what :func:`apply_list` / :func:`restart_list` raise for a
+    ``level`` outside 0–8 or a negative ``start``, so one ``except`` covers
+    every "that is not a valid level" complaint in this package. Subclasses
+    ``ValueError`` so existing ``except ValueError:`` clauses still catch
+    it; also subclasses :class:`DocxPlusError` per SPEC §9.7.
     """
 
 

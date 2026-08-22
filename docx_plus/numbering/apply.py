@@ -28,7 +28,7 @@ from docx_plus.core.oxml import (
     sub,
 )
 from docx_plus.core.parts import NUMBERING_SPEC, get_or_create_part
-from docx_plus.numbering.define import _abstract_id_for
+from docx_plus.numbering.define import InvalidLevelError, _abstract_id_for
 from docx_plus.numbering.registry import NumIdRegistry
 
 if TYPE_CHECKING:
@@ -113,7 +113,7 @@ def apply_list(paragraph: Paragraph, num_id: int, *, level: int = 0) -> None:
         level: Zero-based outline depth. Level 0 is the outermost.
 
     Raises:
-        ValueError: If ``level`` is negative or beyond the ninth level.
+        InvalidLevelError: If ``level`` is negative or beyond the ninth level.
 
     Example:
         >>> from docx import Document
@@ -201,7 +201,7 @@ def restart_list(
         ListDefinitionNotFoundError: If ``num_id`` has no ``<w:num>``, or
             that entry has no ``<w:abstractNumId>`` to branch from.
             Subclasses :class:`KeyError`.
-        ValueError: If ``level`` is negative or beyond the ninth level,
+        InvalidLevelError: If ``level`` is negative or beyond the ninth level,
             or ``start`` is negative.
 
     Example:
@@ -216,7 +216,7 @@ def restart_list(
     """
     _check_level(level)
     if start < 0:
-        raise ValueError(f"start must be non-negative; got {start!r}")
+        raise InvalidLevelError(f"start must be non-negative; got {start!r}")
 
     doc = body_document_for(paragraph, operation="restart_list")
     _, root = get_or_create_part(doc, NUMBERING_SPEC)
@@ -251,7 +251,7 @@ def _check_level(level: int) -> None:
     from docx_plus.numbering.define import MAX_LEVELS
 
     if not 0 <= level < MAX_LEVELS:
-        raise ValueError(
+        raise InvalidLevelError(
             f"level is zero-based and a definition holds at most {MAX_LEVELS} levels, "
             f"so it must be 0 to {MAX_LEVELS - 1}; got {level!r}"
         )

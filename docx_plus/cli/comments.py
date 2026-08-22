@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from docx_plus.cli._io import (
+    add_output_options,
     dump_json,
     load_document,
     resolve_output,
@@ -56,24 +57,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     resolve_p = actions.add_parser("resolve", help="mark a comment's thread resolved")
     resolve_p.add_argument("file", help="path to the source .docx file")
     resolve_p.add_argument("id", type=int, help="w:id of any comment in the thread")
-    _add_output_args(resolve_p)
+    add_output_options(resolve_p)
     resolve_p.set_defaults(func=cmd_resolve)
 
     reopen_p = actions.add_parser("reopen", help="mark a comment's thread unresolved")
     reopen_p.add_argument("file", help="path to the source .docx file")
     reopen_p.add_argument("id", type=int, help="w:id of any comment in the thread")
-    _add_output_args(reopen_p)
+    add_output_options(reopen_p)
     reopen_p.set_defaults(func=cmd_reopen)
-
-
-def _add_output_args(parser: argparse.ArgumentParser) -> None:
-    """Add the shared -o/--output and --in-place options to a mutating action."""
-    parser.add_argument("-o", "--output", default=None, help="path to write the result")
-    parser.add_argument(
-        "--in-place",
-        action="store_true",
-        help="overwrite the input file instead of requiring -o/--output",
-    )
 
 
 def _comment_json(comment: AnchoredComment) -> dict[str, object]:
