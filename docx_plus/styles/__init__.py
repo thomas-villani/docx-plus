@@ -3,6 +3,7 @@
 from docx_plus.styles.inspect import (
     AUTO_COLOR,
     FormattingSource,
+    InvalidLayerError,
     Layer,
     MissingPartError,
     ParagraphSpacing,
@@ -15,11 +16,13 @@ from docx_plus.styles.inspect import (
 )
 from docx_plus.styles.modify import (
     InvalidColorError,
+    InvalidStylePropertyError,
     StyleExistsError,
     StyleInfo,
     StyleInUseError,
     StyleNotFoundError,
     StyleProxy,
+    StyleType,
     UnknownStylePropertyError,
     apply_style,
     create_style,
@@ -41,6 +44,8 @@ __all__ = [
     "AUTO_COLOR",
     "FormattingSource",
     "InvalidColorError",
+    "InvalidLayerError",
+    "InvalidStylePropertyError",
     "Layer",
     "MissingPartError",
     "ParagraphSpacing",
@@ -54,6 +59,7 @@ __all__ = [
     "StyleKind",
     "StyleNotFoundError",
     "StyleProxy",
+    "StyleType",
     "TableContext",
     "UnknownStylePropertyError",
     "apply_style",

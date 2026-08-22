@@ -25,7 +25,9 @@ from lxml import etree
 
 from docx_plus.core.ns import qn
 from docx_plus.styles.inspect import (
+    ParagraphSpacing,
     ResolvedFormatting,
+    _resolve_spacing_with_cache,
     _resolve_with_cache,
     _ResolverCache,
 )
@@ -86,6 +88,10 @@ class ResolvedParagraph:
             ``directParagraph``, so a direct ``<w:numPr>`` still supplies
             ``num_id`` and the indents it implies. The baseline excludes
             the direct paragraph layer, not the whole element.
+        spacing: The paragraph's effective vertical spacing against its
+            neighbours, as :func:`~docx_plus.styles.resolve_paragraph_spacing`
+            reports it. ``None`` unless the sweep was run with
+            ``include_spacing=True``.
     """
 
     paragraph: Paragraph
@@ -94,6 +100,7 @@ class ResolvedParagraph:
     runs: tuple[ResolvedRun, ...]
     table_depth: int
     baseline: ResolvedFormatting | None = None
+    spacing: ParagraphSpacing | None = None
 
     @property
     def in_table(self) -> bool:
@@ -120,6 +127,7 @@ def iter_resolved_paragraphs(
     include_runs: bool = True,
     include_tables: bool = True,
     include_baseline: bool = False,
+    include_spacing: bool = False,
 ) -> Iterator[ResolvedParagraph]:
     """Resolve every paragraph in ``doc``, sharing one cascade cache.
 
@@ -146,6 +154,12 @@ def iter_resolved_paragraphs(
             formatting layer excluded, populating ``.baseline``. Roughly
             doubles the resolve work, so it is off by default; turn it on
             for the "is this direct override doing anything?" question.
+        include_spacing: Also compute each paragraph's
+            :class:`~docx_plus.styles.ParagraphSpacing` — the same answer
+            as :func:`~docx_plus.styles.resolve_paragraph_spacing`, but
+            against the shared cache, which is several times cheaper per
+            paragraph. Populates ``.spacing``; off by default because it
+            resolves each paragraph's neighbours as well.
 
     Yields:
         One :class:`ResolvedParagraph` per paragraph, in document order.
@@ -210,6 +224,7 @@ def iter_resolved_paragraphs(
                 if include_baseline
                 else None
             ),
+            spacing=_resolve_spacing_with_cache(cache, paragraph) if include_spacing else None,
         )
         counter += 1
 

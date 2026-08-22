@@ -18,9 +18,11 @@ import pytest
 from docx import Document
 
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import sub
+from docx_plus.core.oxml import sub, xpath
+from docx_plus.numbering import define_bullet_list
 from docx_plus.styles.inspect import resolve_effective_formatting
 from docx_plus.styles.modify import (
+    InvalidStylePropertyError,
     StyleExistsError,
     StyleInfo,
     StyleInUseError,
@@ -1082,3 +1084,51 @@ def test_remap_styles_rewrites_header_refs() -> None:
 
     pstyle = hp._p.find(qn("w:pPr")).find(qn("w:pStyle"))  # type: ignore[attr-defined]
     assert pstyle.get(qn("w:val")) == "Heading 1"
+
+
+# --------------------------------------------------------------------------
+# num_id / num_level — linking a numbering definition into a style.
+# --------------------------------------------------------------------------
+
+
+def _num_pr(doc: Document, style_id: str) -> list[tuple[str, str]]:
+    nodes = xpath(doc.styles.element, f'w:style[@w:styleId="{style_id}"]/w:pPr/w:numPr/*')
+    return [(node.tag.split("}")[1], node.get(qn("w:val"))) for node in nodes]
+
+
+def test_num_id_links_a_numbering_definition_into_a_style() -> None:
+    doc = Document()
+    num_id = define_bullet_list(doc)
+    create_style(doc, "Bulleted", num_id=num_id)
+
+    assert _num_pr(doc, "Bulleted") == [("ilvl", "0"), ("numId", str(num_id))]
+    p = doc.add_paragraph("x", style="Bulleted")
+    assert resolve_effective_formatting(p).num_id == num_id
+
+
+def test_num_level_follows_num_id_whatever_the_kwarg_order() -> None:
+    doc = Document()
+    create_style(doc, "Sub", num_level=2, num_id=3)
+    assert _num_pr(doc, "Sub") == [("ilvl", "2"), ("numId", "3")]
+
+    modify_style(doc, "Sub", num_level=1)
+    assert _num_pr(doc, "Sub") == [("ilvl", "1"), ("numId", "3")]
+
+
+def test_num_id_none_unlinks_and_zero_opts_out() -> None:
+    doc = Document()
+    create_style(doc, "S", num_id=3)
+    modify_style(doc, "S", num_id=0)
+    assert _num_pr(doc, "S") == [("ilvl", "0"), ("numId", "0")]
+    modify_style(doc, "S", num_id=None)
+    assert _num_pr(doc, "S") == []
+
+
+def test_num_level_without_a_link_is_rejected() -> None:
+    doc = Document()
+    with pytest.raises(InvalidStylePropertyError, match="needs a num_id"):
+        create_style(doc, "S", num_level=1)
+    with pytest.raises(InvalidStylePropertyError, match="0-8"):
+        create_style(doc, "T", num_id=1, num_level=9)
+    with pytest.raises(InvalidStylePropertyError, match=">= 0"):
+        create_style(doc, "U", num_id=-1)

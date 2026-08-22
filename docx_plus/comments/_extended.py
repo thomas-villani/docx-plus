@@ -40,7 +40,7 @@ from lxml import etree
 
 from docx_plus.core.ids import ParaIdRegistry
 from docx_plus.core.ns import qn
-from docx_plus.core.oxml import el, remove, xpath
+from docx_plus.core.oxml import el, on_off, remove, xpath
 from docx_plus.core.parts import (
     COMMENTS_EXTENDED_SPEC,
     RT_COMMENTS_EXTENDED,
@@ -341,10 +341,7 @@ def _is_done(entry: etree._Element) -> bool:
     ``true``/``false``, and ``on``/``off``. Word writes ``0`` and ``1``;
     other producers do not always.
     """
-    raw = entry.get(qn("w15:done"))
-    if raw is None:
-        return False
-    return raw.strip().lower() in {"1", "true", "on"}
+    return on_off(entry.get(qn("w15:done")))
 
 
 __all__ = [

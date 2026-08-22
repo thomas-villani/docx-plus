@@ -22,6 +22,7 @@ from docx_plus.core.ids import (
     ParaIdRegistry,
 )
 from docx_plus.core.ns import (
+    BUILD_NSMAP,
     MC,
     NSMAP,
     W14,
@@ -40,6 +41,7 @@ from docx_plus.core.oxml import (
     build_complex_field,
     el,
     insert_before_first_anchor,
+    on_off,
     ordered_insert,
     remove,
     sub,
@@ -65,6 +67,7 @@ from docx_plus.core.parts import (
 )
 
 __all__ = [
+    "BUILD_NSMAP",
     "A",
     "COMMENTS_EXTENDED_SPEC",
     "COMMENTS_IDS_SPEC",
@@ -105,6 +108,7 @@ __all__ = [
     "el",
     "get_or_create_part",
     "insert_before_first_anchor",
+    "on_off",
     "ordered_insert",
     "qn",
     "remove",

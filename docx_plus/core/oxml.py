@@ -27,6 +27,37 @@ def _resolve_attr_key(key: str) -> str:
     return qn(key) if ":" in key else key
 
 
+_ON_OFF_TRUE = frozenset({"1", "true", "on"})
+"""Every ST_OnOff spelling that means *on*.
+
+``on`` / ``off`` are the transitional-WML spellings (ECMA-376 Part 4).
+Word-2003-era files and several third-party generators emit them, and reading
+``off`` as anything but false inverts the property rather than merely failing
+to recognise it — so this set backs the single reader for **every** ST_OnOff
+attribute in the library. Do not open-code the test."""
+
+
+def on_off(value: str | None, *, absent: bool = False) -> bool:
+    """Read an ECMA-376 ST_OnOff attribute (§22.9.2.7).
+
+    Accepts ``1`` / ``0``, ``true`` / ``false``, and ``on`` / ``off``; Word
+    writes the digits, other producers do not always.
+
+    Args:
+        value: The attribute value, or ``None`` if it is not present.
+        absent: What a missing attribute means. Toggles and the ``w:pPr``
+            flags default to *on* when bare (``<w:b/>`` is bold), so those
+            callers pass ``True``; an attribute whose absence means nothing
+            in particular leaves it ``False``.
+
+    Returns:
+        ``True`` for an *on* spelling, ``absent`` for ``None``, else ``False``.
+    """
+    if value is None:
+        return absent
+    return value.strip().lower() in _ON_OFF_TRUE
+
+
 def el(tag: str, **attrs: str) -> etree._Element:
     """Create a namespaced element with attributes.
 
@@ -379,6 +410,7 @@ __all__ = [
     "build_complex_field",
     "el",
     "insert_before_first_anchor",
+    "on_off",
     "ordered_insert",
     "remove",
     "sub",

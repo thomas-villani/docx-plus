@@ -25,6 +25,7 @@ from docx_plus.styles import (
     StyleCascadeError,
     iter_resolved_paragraphs,
     resolve_effective_formatting,
+    resolve_paragraph_spacing,
 )
 
 
@@ -376,3 +377,24 @@ def test_run_indices_stay_contiguous_across_a_hyperlink() -> None:
     resolved = next(iter_resolved_paragraphs(doc))
 
     assert [r.index for r in resolved.runs] == [0, 1, 2]
+
+
+def test_include_spacing_matches_the_single_paragraph_resolver() -> None:
+    doc = Document()
+    first = doc.add_paragraph("one")
+    first.paragraph_format.space_after = Pt(12)
+    second = doc.add_paragraph("two")
+    second.paragraph_format.space_before = Pt(6)
+    doc.add_paragraph("three")
+
+    swept = list(iter_resolved_paragraphs(doc, include_spacing=True))
+
+    assert [r.spacing for r in swept] == [resolve_paragraph_spacing(r.paragraph) for r in swept]
+    assert swept[0].spacing is not None and swept[0].spacing.space_below == 240
+
+
+def test_spacing_is_none_unless_asked_for() -> None:
+    doc = Document()
+    doc.add_paragraph("one")
+    (resolved,) = iter_resolved_paragraphs(doc)
+    assert resolved.spacing is None

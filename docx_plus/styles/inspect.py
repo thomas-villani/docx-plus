@@ -21,6 +21,7 @@ from lxml import etree
 
 from docx_plus.core import DocxPlusError
 from docx_plus.core.ns import qn
+from docx_plus.core.oxml import on_off as _on_off
 from docx_plus.core.oxml import xpath
 from docx_plus.styles.theme import (
     ThemeColors,
@@ -211,30 +212,6 @@ the style called ``Normal`` in that case and applied nothing when no such style
 existed, so this reproduces both — though it may equally be Word repairing the
 document on load rather than a cascade rule."""
 
-_ON_OFF_TRUE = frozenset({"1", "true", "on"})
-"""Every ST_OnOff spelling that means *on*.
-
-``on`` / ``off`` are the transitional-WML spellings (ECMA-376 Part 4).
-Word-2003-era files and several third-party generators emit them, and reading
-``off`` as anything but false inverts the property rather than merely failing
-to recognise it — so this set is the single reader for **every** ST_OnOff
-attribute in the resolver. Do not open-code the test."""
-
-
-def _on_off(value: str | None, *, absent: bool = False) -> bool:
-    """Read an ECMA-376 ST_OnOff attribute.
-
-    Args:
-        value: The ``w:val`` attribute, or ``None`` if it is not present.
-        absent: What a missing ``w:val`` means. Toggles and the ``w:pPr``
-            flags default to *on* when bare (``<w:b/>`` is bold), so those
-            callers pass ``True``; an attribute whose absence means nothing
-            in particular leaves it ``False``.
-    """
-    if value is None:
-        return absent
-    return value in _ON_OFF_TRUE
-
 
 def _style_kind(style_el: etree._Element) -> str:
     """The ``w:type`` of a ``w:style``, defaulting to ``paragraph``."""
@@ -285,6 +262,10 @@ def _includes(stop_below: Layer | None, layer: Layer) -> bool:
 
 class StyleCascadeError(DocxPlusError):
     """Raised when the basedOn chain cycles or exceeds Word's depth limit."""
+
+
+class InvalidLayerError(DocxPlusError, ValueError):
+    """Raised when ``stop_below`` names something that is not a :data:`Layer`."""
 
 
 class MissingPartError(DocxPlusError):
@@ -539,7 +520,9 @@ def resolve_effective_formatting(
     # isinstance checks are nothing against a full cascade walk.
     _classify_target(target)
     if stop_below is not None and stop_below not in _LAYER_ORDER:
-        raise ValueError(f"stop_below must be one of {', '.join(_LAYER_ORDER)}; got {stop_below!r}")
+        raise InvalidLayerError(
+            f"stop_below must be one of {', '.join(_LAYER_ORDER)}; got {stop_below!r}"
+        )
     return _resolve_with_cache(
         _ResolverCache.for_document(_document_of(target)),
         target,
@@ -763,8 +746,18 @@ def resolve_paragraph_spacing(paragraph: Paragraph) -> ParagraphSpacing:
         space-before at the top of a *page* is layout the resolver does not
         model, since it depends on pagination.
     """
-    element = paragraph._p
     cache = _ResolverCache.for_document(_document_of(paragraph))
+    return _resolve_spacing_with_cache(cache, paragraph)
+
+
+def _resolve_spacing_with_cache(cache: _ResolverCache, paragraph: Paragraph) -> ParagraphSpacing:
+    """The body of :func:`resolve_paragraph_spacing`, against a shared cache.
+
+    The sweep's entry point: ``include_spacing=True`` on
+    :func:`~docx_plus.styles.iter_resolved_paragraphs` goes through here
+    so the cache is built once per document rather than once per paragraph.
+    """
+    element = paragraph._p
     own = _resolve_with_cache(cache, paragraph)
     declared_before = own.spacing_before or 0
     declared_after = own.spacing_after or 0
@@ -2185,6 +2178,7 @@ def _find_level(abstract_num: etree._Element, ilvl: int) -> etree._Element | Non
 __all__ = [
     "AUTO_COLOR",
     "FormattingSource",
+    "InvalidLayerError",
     "Layer",
     "MissingPartError",
     "ParagraphSpacing",
